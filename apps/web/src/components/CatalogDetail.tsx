@@ -155,6 +155,16 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const [drawer, setDrawer] = useState<null | 'engrave' | 'weaponArts'>(null);
   const [pickQ, setPickQ] = useState('');
 
+  // Monster Scratch Points play-tracker (session only; base comes from the stat).
+  const scratchBase = Math.max(0, parseInt(fv(item, 'scratch'), 10) || 0);
+  const [scratchVal, setScratchVal] = useState(scratchBase);
+  const [scratchDelta, setScratchDelta] = useState('');
+  const applyScratch = (dir: 1 | -1) => {
+    const d = parseInt(scratchDelta, 10) || 0;
+    setScratchVal((v) => Math.max(0, Math.min(scratchBase, v + dir * d)));
+    setScratchDelta('');
+  };
+
   // Drawer data: magic spells to engrave, or features tagged "Weapon Arts".
   const spellPick = useQuery({
     queryKey: ['catalog', 'magic', 'pick-spell', pickQ],
@@ -263,6 +273,22 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {category === 'monster' && scratchBase > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scratch Points</span>
+            <span style={{ fontSize: 20, fontWeight: 800 }}>{scratchVal}</span>
+            <span style={{ fontSize: 11, color: '#a8a59d' }}>/ ฐาน {scratchBase}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input value={scratchDelta} onChange={(e) => setScratchDelta(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" placeholder="ใส่จำนวน" style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none' }} />
+            <button onClick={() => applyScratch(-1)} style={{ border: '1px solid #f0d3cb', background: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#b4513a' }}>− ลด</button>
+            <button onClick={() => applyScratch(1)} style={{ border: '1px solid #cbe0d2', background: '#fff', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#3f6b4f' }}>+ เพิ่ม</button>
+          </div>
+          <div style={{ fontSize: 10.5, color: '#a8a59d', marginTop: 5 }}>พิมพ์จำนวนแล้วกด − ลด / + เพิ่ม (ไม่เกินฐาน {scratchBase})</div>
         </div>
       )}
 
