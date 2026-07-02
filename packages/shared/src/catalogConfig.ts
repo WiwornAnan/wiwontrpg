@@ -162,7 +162,7 @@ const MAGIC: CatalogConfig = {
   filterFields: [
     { key: 'tag', label: 'Color of Ehen', any: 'Any Color', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
     { key: 'school', label: 'School', any: 'Any School', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
-    { key: 'castLevel', label: 'Casting Level', any: 'Any Level', options: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'] },
+    { key: 'castLevel', label: 'Casting Level', any: 'Any Level', options: ['Root Magic', 'Basic Magic', 'Advanced Magic', 'High Magic', 'Ritual Magic', 'Grand Magic'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Rarity', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', any: 'Any Slot', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
     { key: 'ql', label: 'Quality of Life', any: 'Any QL', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
@@ -176,7 +176,7 @@ const MAGIC: CatalogConfig = {
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
     { key: 'tag', label: 'Color of Ehen', kind: 'select', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
     { key: 'school', label: 'School', kind: 'select', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
-    { key: 'castLevel', label: 'Casting Level', kind: 'select', options: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'] },
+    { key: 'castLevel', label: 'Casting Level', kind: 'select', options: ['Root Magic', 'Basic Magic', 'Advanced Magic', 'High Magic', 'Ritual Magic', 'Grand Magic'] },
     { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', kind: 'select', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
     { key: 'ql', label: 'Quality of Life', kind: 'select', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
