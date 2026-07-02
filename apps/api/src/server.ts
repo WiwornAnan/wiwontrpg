@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import session from 'express-session';
@@ -70,6 +71,17 @@ app.use('/api/search', searchRouter);
 app.use('/api/announcements', announcementsRouter);
 app.use('/api/heroes', heroesRouter);
 app.use('/api/stats', statsRouter);
+
+// Serve the built frontend (single-port deployment). SPA fallback for client routes.
+const webDist = path.join(__dirname, '..', '..', 'web', 'dist');
+if (fs.existsSync(webDist)) {
+  app.use(express.static(webDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    res.sendFile(path.join(webDist, 'index.html'));
+  });
+  console.log('[api] serving built frontend from', webDist);
+}
 
 // Central error handler.
 app.use(
