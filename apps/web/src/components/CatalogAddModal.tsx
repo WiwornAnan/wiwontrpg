@@ -49,6 +49,17 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Tags auto-derived from the dropdown / multi-select choices, so the picks
+  // themselves become the item's tags (plus any typed manually).
+  const autoTags = Array.from(
+    new Set(
+      addFields
+        .filter((f) => f.kind === 'select' || f.kind === 'checks')
+        .flatMap((f) => (fields[f.key] ?? '').split(',').map((s) => s.trim()))
+        .filter(Boolean),
+    ),
+  );
+
   const save = useMutation({
     mutationFn: () => {
       const { name, ...rest } = fields;
@@ -60,7 +71,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
           if (!Number.isNaN(n)) outFields[numKey] = n;
         }
       }
-      const body = { isFeature, name, fields: outFields, description, tags, iconUrl };
+      const body = { isFeature, name, fields: outFields, description, tags: Array.from(new Set([...autoTags, ...tags])), iconUrl };
       if (editItem) return api.patch(`/catalog/${category}/item/${editItem.id}`, body);
       return api.post(`/catalog/${category}`, body);
     },
@@ -157,15 +168,23 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
 
       <div style={{ marginTop: 14 }}>
         <label style={labelStyle}>แท็ก</label>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>ตัวเลือกด้านบนกลายเป็นแท็กอัตโนมัติ (สีม่วง) — เพิ่มแท็กเองได้ด้านล่าง</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-          {tags.map((t) => (
-            <span key={t} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#edeae4', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+          {autoTags.map((t) => (
+            <span key={`auto-${t}`} title="แท็กอัตโนมัติจากตัวเลือก" style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#ede7f6', color: '#5b3fa0', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
               #{t}
-              <button onClick={() => setTags(tags.filter((x) => x !== t))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>
-                ×
-              </button>
             </span>
           ))}
+          {tags
+            .filter((t) => !autoTags.includes(t))
+            .map((t) => (
+              <span key={t} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#edeae4', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                #{t}
+                <button onClick={() => setTags(tags.filter((x) => x !== t))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>
+                  ×
+                </button>
+              </span>
+            ))}
         </div>
         <input
           style={inputStyle}
@@ -238,10 +257,12 @@ function RichTextEditor({ initialHtml, onChange }: { initialHtml: string; onChan
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const sync = () => onChange(ref.current?.innerHTML ?? '');
-  const exec = (cmd: string, val?: string) => {
+  // styleWithCSS only for colour (so it emits <span style="color">); bold/italic
+  // stay as <b>/<i> tags, which is what survives the server sanitiser.
+  const exec = (cmd: string, val?: string, css = false) => {
     ref.current?.focus();
     try {
-      document.execCommand('styleWithCSS', false, 'true');
+      document.execCommand('styleWithCSS', false, css ? 'true' : 'false');
     } catch {
       /* older browsers */
     }
@@ -281,7 +302,7 @@ function RichTextEditor({ initialHtml, onChange }: { initialHtml: string; onChan
         <span style={{ width: 1, height: 20, background: 'var(--border-soft)', margin: '0 2px' }} />
         <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>สี:</span>
         {RT_COLORS.map(([c, label]) => (
-          <button key={c} type="button" title={label} onMouseDown={hold} onClick={() => exec('foreColor', c)} style={{ width: 22, height: 22, borderRadius: 6, cursor: 'pointer', border: '1.5px solid rgba(0,0,0,.12)', background: c }} />
+          <button key={c} type="button" title={label} onMouseDown={hold} onClick={() => exec('foreColor', c, true)} style={{ width: 22, height: 22, borderRadius: 6, cursor: 'pointer', border: '1.5px solid rgba(0,0,0,.12)', background: c }} />
         ))}
       </div>
       <div
