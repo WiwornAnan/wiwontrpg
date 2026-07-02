@@ -193,6 +193,70 @@ async function main() {
     console.log(`Seeded ${charDocs.length} characters articles`);
   }
 
+  // ---- Catalog items (seed once per category) ----
+  type SeedItem = { name: string; isFeature?: boolean; tags: string[]; source: string; description: string; fields: Record<string, unknown> };
+  const catalogSeed: Record<'equipment' | 'magic' | 'monster', SeedItem[]> = {
+    equipment: [
+      { name: 'Hunter Bow', source: "Player's Handbook", tags: ['Weapon', 'Wood', 'Piercing', 'Two-Handed'], description: 'ธนูล่าสัตว์ฝีมือช่างชำนาญ ยืดหยุ่นและน้ำหนักเบา เป็นที่ไว้วางใจของนักล่าและนักผจญภัย.', fields: { type: 'Weapon', tag: 'Weapon', equipType: 'อาวุธ (Weapon)', dmgBonus: 4, rarity: 'Common', cost: '75 Cr.', costNum: 75, weight: '0.9 kg', weightNum: 0.9, material: 'Wood', availability: 'Kiosk', professionalLevel: 'Amateur', damage: 'Piercing', wielding: 'Two-Handed', requirements: 'Proficiency', source: "Player's Handbook" } },
+      { name: 'Heal Potion', source: "Player's Handbook", tags: ['Potion', 'Consumable', 'Restorative'], description: 'ยาฟื้นพลังชีวิตขั้นพื้นฐาน หาซื้อได้ทั่วไป ฟื้น HP เล็กน้อยเมื่อดื่ม.', fields: { type: 'Potion', tag: 'Potion', rarity: 'Poor', cost: '80 Cr.', costNum: 80, weight: '0.28 kg', weightNum: 0.28, material: 'Crystal', availability: 'Common', professionalLevel: 'Amateur', damage: 'None', wielding: 'None', requirements: 'None', source: "Player's Handbook" } },
+      { name: 'Iron Greaves', source: "Player's Handbook", tags: ['Armor', 'Metal', 'Defense'], description: 'สนับแข้งเหล็กหลอม ป้องกันขาส่วนล่างได้มั่นคง แลกกับน้ำหนัก.', fields: { type: 'Armor', tag: 'Armor', equipType: 'เกราะ (Armor)', rarity: 'Common', cost: '120 Cr.', costNum: 120, weight: '2.4 kg', weightNum: 2.4, material: 'Metal', availability: 'Smithy', professionalLevel: 'Journeyman', damage: 'None', wielding: 'Worn', requirements: 'Strength', source: "Player's Handbook" } },
+      { name: 'Ember Shortblade', source: "Player's Handbook", tags: ['Weapon', 'Metal', 'Fire', 'Slashing'], description: 'ดาบสั้นหลอมจากเหล็กไฟ ใบมีดอุ่นตลอดเวลา สร้างความเสียหายไฟติดตัวเล็กน้อย.', fields: { type: 'Weapon', tag: 'Weapon', equipType: 'อาวุธ (Weapon)', dmgBonus: 6, rarity: 'Uncommon', cost: '210 Cr.', costNum: 210, weight: '1.3 kg', weightNum: 1.3, material: 'Metal', availability: 'Smithy', professionalLevel: 'Journeyman', damage: 'Slashing', wielding: 'One-Handed', requirements: 'Dexterity', source: "Player's Handbook" } },
+      { name: 'Rune Lantern', source: 'Arcane Compendium', tags: ['Tool', 'Magic', 'Light', 'Arcane'], description: 'โคมไฟสลักรูนส่องแสงด้วยพลังอาคม ไม่ต้องใช้เชื้อเพลิง และเผยร่องรอยเวทมนตร์รอบตัว.', fields: { type: 'Tool', tag: 'Tool', rarity: 'Rare', cost: '340 Cr.', costNum: 340, weight: '0.6 kg', weightNum: 0.6, material: 'Crystal', availability: 'Vault', professionalLevel: 'Expert', damage: 'None', wielding: 'One-Handed', requirements: 'Proficiency', source: 'Arcane Compendium' } },
+    ],
+    magic: [
+      { name: 'Fireball', source: 'Arcane Compendium', tags: ['Fire', 'Evocation', 'AoE'], description: 'ลูกไฟพลังสูงที่ระเบิดเป็นวงกว้าง สร้างความเสียหาย [3RR+8] แก่ทุกเป้าหมายในรัศมี.', fields: { school: 'Evocation', rarity: 'Rare', tag: 'Fire', cost: '3 Slot', costNum: 3, castLevel: 'V', range: '30 m', duration: 'Instant', components: 'Material', ql: '3 QL', knowledge: '2 KP', curiosity: '3 CP', source: 'Arcane Compendium', type: 'Spell' } },
+      { name: 'Arcane Ward', source: 'Arcane Compendium', tags: ['Arcane', 'Abjuration', 'Shield'], description: 'เกราะพลังอาคมที่ดูดซับความเสียหายชั่วคราว ปกป้องผู้ร่ายจากการโจมตี.', fields: { school: 'Abjuration', rarity: 'Uncommon', tag: 'Arcane', cost: '2 Slot', costNum: 2, castLevel: 'III', range: 'Self', duration: '10 min', components: 'Somatic', ql: '2 QL', knowledge: '1 KP', curiosity: '1 CP', source: 'Arcane Compendium', type: 'Spell' } },
+      { name: 'Mending Light', source: "Player's Handbook", tags: ['Evocation', 'Water', 'Healing'], description: 'ลำแสงอ่อนโยนที่สมานบาดแผล ฟื้นฟูพลังชีวิต [3RR+3] ให้พันธมิตร.', fields: { school: 'Evocation', rarity: 'Common', tag: 'Water', cost: '1 Slot', costNum: 1, castLevel: 'I', range: 'Touch', duration: 'Instant', components: 'Verbal', ql: '1 QL', knowledge: '1 KP', curiosity: '1 CP', source: "Player's Handbook", type: 'Spell' } },
+      { name: 'Grave Grasp', source: 'Arcane Compendium', tags: ['Necromancy', 'Void', 'Control'], description: 'มือแห่งความตายผุดจากพื้น คว้าและตรึงศัตรู สร้างความเสียหาย [3RR+4] ต่อเทิร์น.', fields: { school: 'Necromancy', rarity: 'Rare', tag: 'Void', cost: '4 Slot', costNum: 4, castLevel: 'IV', range: '18 m', duration: 'Instant', components: 'Somatic', ql: '3 QL', knowledge: '3 KP', curiosity: '3 CP', source: 'Arcane Compendium', type: 'Spell' } },
+      // features (isFeature)
+      { name: 'Iron Stance', isFeature: true, source: "Player's Handbook", tags: ['Stance', 'Defense'], description: 'ตั้งการ์ดมั่นคง ลดความเสียหายที่ได้รับ [3RR+2] ตลอดฉาก.', fields: { class: 'Defender', mode: 'Passive', rarity: 'Common', tag: 'Stance', cost: '2 WP', costNum: 2, duration: '1 scene', ql: '1 QL', knowledge: '1 KP', curiosity: '1 CP', source: "Player's Handbook", type: 'Feature' } },
+      { name: 'Rallying Cry', isFeature: true, source: 'GM Guide', tags: ['Active', 'Buff'], description: 'ตะโกนปลุกใจ ฟื้น Willpower และเพิ่มขวัญกำลังใจให้พันธมิตรทั้งหมด.', fields: { class: 'Support', mode: 'Active', rarity: 'Uncommon', tag: 'Active', cost: '4 WP', costNum: 4, duration: 'Once/day', ql: '2 QL', knowledge: '2 KP', curiosity: '2 CP', source: 'GM Guide', type: 'Feature' } },
+    ],
+    monster: [
+      { name: 'Gloom Wisp', source: "Player's Handbook", tags: ['Aberration', 'Void', 'Spectral'], description: 'ดวงวิญญาณมืดที่ล่องลอยในรอยแยกมิติ ดูดกลืนแสงและความทรงจำ โจมตี [3RR+3].', fields: { type: 'Aberration', dr: 'DR 3', drNum: 3, tag: 'Aberration', habitat: 'Void', size: '0.6 m', weight: '2 kg', behavior: 'Cunning', friendliness: 'Hostile', resistances: 'Arcane', source: "Player's Handbook" } },
+      { name: 'Cinder Drake', source: 'GM Guide', tags: ['Dragon', 'Fire', 'Cavern'], description: 'มังกรไฟที่อาศัยในถ้ำภูเขาไฟ พ่นเปลวเพลิง [3RR+10] และหวงแหนสมบัติ.', fields: { type: 'Dragon', dr: 'DR 7', drNum: 7, tag: 'Dragon', habitat: 'Cavern', size: '4.5 m', weight: '900 kg', behavior: 'Aggressive', friendliness: 'Hostile', resistances: 'Fire', source: 'GM Guide' } },
+      { name: 'Dusk Wolf', source: "Player's Handbook", tags: ['Beast', 'Forest', 'Pack'], description: 'หมาป่าสนธยาที่ล่าเป็นฝูง ปราดเปรียวและดุร้ายเมื่อปกป้องอาณาเขต กัด [3RR+2].', fields: { type: 'Beast', dr: 'DR 2', drNum: 2, tag: 'Beast', habitat: 'Forest', size: '1.4 m', weight: '55 kg', behavior: 'Territorial', friendliness: 'Wary', resistances: 'Physical', source: "Player's Handbook" } },
+      { name: 'Stone Sentinel', source: 'Arcane Compendium', tags: ['Elemental', 'Stone', 'Guardian'], description: 'หุ่นหินที่ถูกปลุกด้วยอาคม เฝ้าสถานที่ศักดิ์สิทธิ์อย่างไม่รู้เหน็ดเหนื่อย.', fields: { type: 'Elemental', dr: 'DR 5', drNum: 5, tag: 'Elemental', habitat: 'Cavern', size: '3.0 m', weight: '1200 kg', behavior: 'Passive', friendliness: 'Neutral', resistances: 'Physical', source: 'Arcane Compendium' } },
+    ],
+  };
+
+  if ((await prisma.catalogItem.count()) === 0) {
+    let n = 0;
+    for (const [category, list] of Object.entries(catalogSeed)) {
+      for (const it of list) {
+        await prisma.catalogItem.create({
+          data: {
+            category,
+            isFeature: !!it.isFeature,
+            name: it.name,
+            subtitle: null,
+            fields: JSON.stringify(it.fields),
+            description: it.description,
+            tags: JSON.stringify(it.tags),
+            source: it.source,
+            isHomebrew: false,
+            isOfficialAdded: false,
+          },
+        });
+        n++;
+      }
+    }
+    // one player-owned homebrew item
+    await prisma.catalogItem.create({
+      data: {
+        category: 'equipment',
+        name: 'Whisperwind Dagger (โฮมบรูว์)',
+        fields: JSON.stringify({ type: 'Weapon', tag: 'Weapon', equipType: 'อาวุธ (Weapon)', dmgBonus: 3, rarity: 'Uncommon', cost: '150 Cr.', costNum: 150, weight: '0.5 kg', weightNum: 0.5, material: 'Metal', availability: 'Quest', damage: 'Slashing', wielding: 'One-Handed' }),
+        description: 'มีดสั้นที่ผู้เล่นออกแบบเอง ว่ากันว่าเบาราวสายลม.',
+        tags: JSON.stringify(['Weapon', 'Homebrew', 'Wind']),
+        source: 'Homebrew',
+        isHomebrew: true,
+        ownerUserId: player.id,
+      },
+    });
+    console.log(`Seeded ${n} official catalog items + 1 homebrew`);
+  }
+
   // ---- one home comment (if none) ----
   if ((await prisma.comment.count()) === 0) {
     await prisma.comment.create({

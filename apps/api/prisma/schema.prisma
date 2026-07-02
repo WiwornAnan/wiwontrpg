@@ -192,6 +192,18 @@ model Announcement {
   updatedAt DateTime @updatedAt
 }
 
+// Dev-managed custom tags + hidden built-ins, scoped per catalog page.
+model Tag {
+  id            String   @id @default(cuid())
+  scope         String // 'equipment' | 'magic' | 'magic-feature' | 'monster'
+  label         String
+  isCustom      Boolean  @default(false)
+  hiddenBuiltin Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@unique([scope, label])
+}
+
 // Generic key/value store for small dev-editable settings (e.g. per-category hero banners).
 model SiteSetting {
   key       String   @id
