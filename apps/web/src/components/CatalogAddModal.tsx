@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AddField, CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
+import { useCatalogFieldTags } from '../lib/catalogHooks';
 import { Modal } from './Modal';
 import { Button, inputStyle, labelStyle } from './ui';
 
@@ -23,6 +24,15 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
   const qc = useQueryClient();
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
   const addFields = source.addFields;
+  // Merge dev-managed tags into the field options, same as the filter panel:
+  // built-ins (minus hidden) + custom. Lets Tags management flow into this form.
+  const catScope = isFeature ? `${category}-feature` : category;
+  const { data: fieldTags } = useCatalogFieldTags(catScope);
+  const optsFor = (f: AddField): string[] => {
+    const t = fieldTags?.[f.key];
+    const hidden = new Set(t?.hidden ?? []);
+    return [...(f.options || []).filter((o) => !hidden.has(o)), ...(t?.custom ?? [])];
+  };
 
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -69,7 +79,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
       const toggle = (o: string) => set((cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o]).join(', '));
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-          {(f.options ?? []).map((o) => {
+          {optsFor(f).map((o) => {
             const on = cur.includes(o);
             return (
               <button
@@ -92,7 +102,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
       return (
         <select style={inputStyle} value={v} onChange={(e) => set(e.target.value)}>
           <option value="">— เลือก —</option>
-          {(f.options ?? []).map((o) => (
+          {optsFor(f).map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
@@ -103,7 +113,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
     if (f.kind === 'radio') {
       return (
         <div style={{ display: 'flex', gap: 8 }}>
-          {(f.options ?? []).map((o) => (
+          {optsFor(f).map((o) => (
             <button
               key={o}
               type="button"
