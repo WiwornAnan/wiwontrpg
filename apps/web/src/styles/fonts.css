@@ -1,0 +1,15 @@
+/* Self-hosted design fonts (bundled via @fontsource) so they match the design
+   exactly without depending on Google Fonts at runtime. */
+
+/* Anuphan — body/UI (Thai + Latin), weights 200–700 */
+@import '@fontsource/anuphan/200.css';
+@import '@fontsource/anuphan/300.css';
+@import '@fontsource/anuphan/400.css';
+@import '@fontsource/anuphan/500.css';
+@import '@fontsource/anuphan/600.css';
+@import '@fontsource/anuphan/700.css';
+
+/* Newsreader — serif display headings */
+@import '@fontsource/newsreader/400.css';
+@import '@fontsource/newsreader/500.css';
+@import '@fontsource/newsreader/400-italic.css';
