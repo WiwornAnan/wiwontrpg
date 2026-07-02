@@ -3,8 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
-import { useBookmarks } from '../lib/hooks';
 import { api } from '../lib/api';
+import { StarButton } from './StarButton';
 
 function fv(item: CatalogItem, key: string): string {
   if (key === 'source') return item.source;
@@ -105,7 +105,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
             {fv(item, cfg.subtitleKey) || item.source}
           </div>
         </div>
-        <StarBox catalogItemId={item.id} />
+        <StarButton catalogItemId={item.id} size={15} />
       </div>
 
       {canEdit && (
@@ -219,23 +219,3 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StarBox({ catalogItemId }: { catalogItemId: string }) {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const { data } = useBookmarks();
-  const marked = (data?.bookmarks ?? []).some((b) => b.catalogItemId === catalogItemId);
-  const toggle = useMutation({
-    mutationFn: () => (marked ? api.delete('/bookmarks', { catalogItemId }) : api.post('/bookmarks', { catalogItemId })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['bookmarks'] }),
-  });
-  return (
-    <button
-      title="Bookmark"
-      onClick={() => (user ? toggle.mutate() : navigate('/login'))}
-      style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #e0ded7', background: '#fff', cursor: 'pointer', color: marked ? '#e0b94a' : '#c9c6be', fontSize: 15, lineHeight: 1 }}
-    >
-      ★
-    </button>
-  );
-}

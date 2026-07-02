@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NAV_ITEMS, type SearchHit, type Announcement } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { Modal } from './Modal';
+import { Button, inputStyle } from './ui';
 import styles from './Header.module.css';
 
 function isNavActive(href: string, pathname: string): boolean {
@@ -18,6 +20,8 @@ export function Header() {
   const qc = useQueryClient();
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const [announceDraft, setAnnounceDraft] = useState('');
   const searchRef = useRef<HTMLDivElement>(null);
 
   const { data: announcement } = useQuery({
@@ -43,6 +47,19 @@ export function Header() {
   const claimCr = useMutation({
     mutationFn: () => api.post('/credits/claim'),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  });
+
+  const postAnnounce = useMutation({
+    mutationFn: () => api.post('/announcements', { body: announceDraft }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['announcement'] });
+      setAnnounceOpen(false);
+      setAnnounceDraft('');
+    },
+  });
+  const clearAnnounce = useMutation({
+    mutationFn: () => api.delete('/announcements'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcement'] }),
   });
 
   // Close search dropdown on outside click (onBlur-style, no full-screen backdrop).
@@ -173,7 +190,10 @@ export function Header() {
               DEVELOPER MODE
             </span>
             <span style={{ color: '#8d8a82' }}>— คุณสามารถแก้ไขเนื้อหาในเว็บไซต์ได้</span>
-            <button className={styles.devBtn} style={{ marginLeft: 'auto' }} onClick={() => navigate('/editor')}>
+            <button className={styles.devBtn} style={{ marginLeft: 'auto' }} onClick={() => setAnnounceOpen(true)}>
+              📢 ประกาศถึงผู้ใช้
+            </button>
+            <button className={styles.devBtn} onClick={() => navigate('/editor')}>
               เปิด Content Editor →
             </button>
           </div>
@@ -185,9 +205,37 @@ export function Header() {
           <div className={styles.announceInner}>
             <span style={{ fontSize: 15, flex: 'none' }}>📢</span>
             <span style={{ flex: 1, fontWeight: 500 }}>{announcement.announcement.body}</span>
+            {isDev && (
+              <button
+                onClick={() => clearAnnounce.mutate()}
+                style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 11px', fontSize: 11.5, cursor: 'pointer', flex: 'none' }}
+              >
+                ลบประกาศ
+              </button>
+            )}
           </div>
         </div>
       )}
+
+      <Modal
+        open={announceOpen}
+        onClose={() => setAnnounceOpen(false)}
+        title="📢 ประกาศถึงผู้ใช้"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAnnounceOpen(false)}>ยกเลิก</Button>
+            <Button variant="coral" onClick={() => announceDraft.trim() && postAnnounce.mutate()} disabled={postAnnounce.isPending}>ประกาศ</Button>
+          </>
+        }
+      >
+        <textarea
+          value={announceDraft}
+          onChange={(e) => setAnnounceDraft(e.target.value)}
+          placeholder="ข้อความประกาศที่จะแสดงแถบบนสุดให้ผู้ใช้ทุกคนเห็น…"
+          style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }}
+          autoFocus
+        />
+      </Modal>
     </header>
   );
 }

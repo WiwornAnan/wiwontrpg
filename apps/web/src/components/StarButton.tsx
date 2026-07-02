@@ -30,6 +30,7 @@ export function StarButton({ articleId, catalogItemId, size = 15 }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['bookmarks'] }),
   });
 
+  const box = Math.max(28, size + 12);
   return (
     <button
       title={marked ? 'เอาออกจากรายการที่สนใจ' : 'บันทึกอ่านภายหลัง'}
@@ -38,13 +39,19 @@ export function StarButton({ articleId, catalogItemId, size = 15 }: Props) {
         toggle.mutate();
       }}
       style={{
-        background: 'none',
-        border: 'none',
+        width: box,
+        height: box,
+        borderRadius: 8,
+        background: marked ? '#fffdf3' : '#fff',
+        border: `1px solid ${marked ? '#e6c98a' : '#e0ded7'}`,
         cursor: 'pointer',
         color: marked ? 'var(--gold-star)' : '#c9c6be',
         fontSize: size,
         lineHeight: 1,
-        padding: 2,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 'none',
       }}
     >
       ★

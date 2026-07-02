@@ -194,7 +194,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
           <div className={styles.pane}>
             <div className={styles.paneHead}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>{paneTitle ?? heroTitle ?? meta.name}</span>
-              <span style={{ fontSize: 12, color: '#9a978e' }}>Update: {new Date(selected.updatedAt).toLocaleDateString('th-TH')}</span>
+              <span style={{ fontSize: 12, color: '#9a978e' }}>Update date: {new Date(selected.updatedAt).toLocaleDateString('th-TH')}</span>
             </div>
             <div style={{ padding: '22px 24px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
