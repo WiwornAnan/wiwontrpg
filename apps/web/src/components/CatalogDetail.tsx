@@ -21,6 +21,16 @@ const COIN_TIERS: { key: string; label: string; abbr: string; color: string }[] 
   { key: 'copper', label: 'Copper', abbr: 'cp', color: '#c0744a' },
 ];
 
+// "Verbal, Ehen Device, Condition" -> "V · E · C" for the detail stat row.
+function abbrevComponents(value: string): string {
+  return value
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => x.charAt(0).toUpperCase())
+    .join(' · ');
+}
+
 // Turn [....] tokens in a description into bold dark badges (e.g. [3RR+4]).
 function renderBadges(html: string): string {
   return html.replace(
@@ -79,7 +89,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       seen.add(f.key);
       return true;
     })
-    .map((f) => ({ label: f.label, value: fv(item, f.key) }))
+    .map((f) => ({ label: f.label, value: f.key === 'components' ? abbrevComponents(fv(item, f.key)) : fv(item, f.key) }))
     .filter((s) => s.value !== '' && s.label !== 'Cost' && s.label !== 'Rarity' && s.label !== 'School');
 
   const keyStats = isMagicSpell
