@@ -192,6 +192,50 @@ catalogRouter.patch('/:category/item/:id', requireAuth, async (req, res) => {
   res.json({ item: toCatalogItem(row) });
 });
 
+// Owner submits their homebrew item to devs for Official promotion (creates a Pray request).
+catalogRouter.post('/:category/item/:id/submit-official', requireAuth, async (req, res) => {
+  const item = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
+  if (!item) {
+    res.status(404).json({ error: 'ไม่พบข้อมูล' });
+    return;
+  }
+  if (!item.isHomebrew || item.ownerUserId !== req.currentUser!.id) {
+    res.status(403).json({ error: 'ส่งได้เฉพาะ Homebrew ของตนเอง' });
+    return;
+  }
+  // Prevent duplicate pending requests.
+  const pending = await prisma.prayMessage.findFirst({
+    where: { catalogItemId: item.id, kind: 'official-request', approved: false },
+  });
+  if (pending) {
+    res.status(409).json({ error: 'มีคำขออยู่ระหว่างพิจารณาแล้ว' });
+    return;
+  }
+  const msg = await prisma.prayMessage.create({
+    data: {
+      kind: 'official-request',
+      catalogItemId: item.id,
+      fromUserId: req.currentUser!.id,
+      toUserId: null,
+      subject: `ขอยกระดับเป็น Official: ${item.name}`,
+      body: String(req.body?.message || `ขอส่ง "${item.name}" เพื่อพิจารณาลง Official ครับ/ค่ะ`),
+      readByUser: true,
+    },
+  });
+  res.status(201).json({ requestId: msg.id });
+});
+
+// Cancel a pending official-request for an item (owner only, not yet approved).
+catalogRouter.post('/:category/item/:id/cancel-official', requireAuth, async (req, res) => {
+  const item = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
+  if (!item || item.ownerUserId !== req.currentUser!.id) {
+    res.status(403).json({ error: 'ไม่มีสิทธิ์' });
+    return;
+  }
+  await prisma.prayMessage.deleteMany({ where: { catalogItemId: item.id, kind: 'official-request', approved: false } });
+  res.json({ ok: true });
+});
+
 catalogRouter.delete('/:category/item/:id', requireAuth, async (req, res) => {
   const existing = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
   if (!existing) {

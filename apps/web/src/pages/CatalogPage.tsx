@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCatalogConfig, type CatalogCategory, type CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { useCatalog, useCatalogTags, type CatalogQuery } from '../lib/catalogHooks';
+import { api } from '../lib/api';
 import { AdvancedFilterPanel } from '../components/AdvancedFilterPanel';
 import { CatalogDetail } from '../components/CatalogDetail';
 import { CatalogAddModal } from '../components/CatalogAddModal';
+import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 import styles from '../components/catalog.module.css';
@@ -22,6 +25,17 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
   const [selectedId, setSelectedId] = useState<string | null>(params.get('item'));
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<CatalogItem | null>(null);
+  const [submitItem, setSubmitItem] = useState<CatalogItem | null>(null);
+  const qc = useQueryClient();
+
+  const submitOfficial = useMutation({
+    mutationFn: (item: CatalogItem) => api.post(`/catalog/${category}/item/${item.id}/submit-official`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['catalog', category] });
+      qc.invalidateQueries({ queryKey: ['pray'] });
+      setSubmitItem(null);
+    },
+  });
 
   const isFeature = query.isFeature;
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
@@ -196,6 +210,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
               setEditItem(it);
               setAddOpen(true);
             }}
+            onSubmitOfficial={setSubmitItem}
           />
         ) : (
           <div className={styles.detail} style={{ padding: '50px 30px', textAlign: 'center', color: 'var(--text-ghost)', fontSize: 13 }}>
@@ -217,6 +232,26 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
           editItem={editItem}
         />
       )}
+
+      <Modal
+        open={!!submitItem}
+        onClose={() => setSubmitItem(null)}
+        title="ส่งเรื่องถึงผู้พัฒนา"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSubmitItem(null)}>
+              ยังก่อน
+            </Button>
+            <Button variant="coral" onClick={() => submitItem && submitOfficial.mutate(submitItem)} disabled={submitOfficial.isPending}>
+              ยืนยัน ส่งเรื่อง
+            </Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-muted)', margin: 0 }}>
+          คุณแน่ใจแล้วใช่ไหม? จะส่ง “{submitItem?.name}” ให้ผู้พัฒนาพิจารณายกระดับเป็น Official
+        </p>
+      </Modal>
     </div>
   );
 }

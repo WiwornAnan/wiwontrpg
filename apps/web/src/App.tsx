@@ -6,6 +6,7 @@ import { CoreRulesPage } from './pages/CoreRulesPage';
 import { WiwonPage } from './pages/WiwonPage';
 import { CharactersPage } from './pages/CharactersPage';
 import { CatalogPage } from './pages/CatalogPage';
+import { PrayPage } from './pages/PrayPage';
 import { ArticleDetailPage } from './pages/ArticleDetailPage';
 import { ContentEditorPage } from './pages/ContentEditorPage';
 import { Placeholder } from './pages/Placeholder';
@@ -26,7 +27,7 @@ export function App() {
           <Route path="/magic" element={<CatalogPage category="magic" />} />
           <Route path="/equipment" element={<CatalogPage category="equipment" />} />
           <Route path="/monster" element={<CatalogPage category="monster" />} />
-          <Route path="/pray" element={<Placeholder title="Pray to the Creator" note="Phase 5" />} />
+          <Route path="/pray" element={<PrayPage />} />
           <Route path="/editor" element={<ContentEditorPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Placeholder title="ไม่พบหน้านี้" note="404" />} />
