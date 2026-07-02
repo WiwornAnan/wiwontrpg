@@ -20,6 +20,7 @@ interface Props {
   aboveGrid?: ReactNode; // e.g. Wiwon cover carousel
   emptyNote?: string;
   hideHero?: boolean; // Wiwon renders its own cover-driven hero instead
+  hideTagSearch?: boolean; // Wiwon has no in-page tag search
   paneTitle?: string; // reading-pane header label
 }
 
@@ -28,7 +29,7 @@ interface Group {
   items: Article[];
 }
 
-export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote, hideHero, paneTitle }: Props) {
+export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote, hideHero, hideTagSearch, paneTitle }: Props) {
   const { isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -102,6 +103,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
       {aboveGrid}
 
       {/* tag search (this page only) */}
+      {!hideTagSearch && (
       <div style={{ position: 'relative', margin: '18px 0 22px', maxWidth: 520 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid var(--border-soft)', borderRadius: 11, padding: '0 14px' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a8a59d" strokeWidth="2">
@@ -134,6 +136,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
           </div>
         )}
       </div>
+      )}
 
       <div className={styles.docGrid}>
         <div className={styles.partCol}>
