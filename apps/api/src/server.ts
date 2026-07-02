@@ -6,6 +6,7 @@ import session from 'express-session';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { ENV } from './env.js';
+import { prisma } from './db.js';
 import { PrismaSessionStore } from './sessionStore.js';
 import { loadUser } from './middleware/auth.js';
 import { authRouter } from './routes/auth.js';
@@ -27,12 +28,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
-app.use(
-  cors({
-    origin: ENV.WEB_ORIGIN,
-    credentials: true,
-  }),
-);
+const isProd = ENV.NODE_ENV === 'production';
+// Behind Render/any reverse proxy: trust it so secure cookies + protocol work.
+if (isProd) app.set('trust proxy', 1);
+
+// CORS only matters when the frontend is served from a different origin (dev).
+// In production the SPA is served same-origin by this server, so CORS is a no-op.
+app.use(cors({ origin: ENV.WEB_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
 app.use(
@@ -45,15 +47,24 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: ENV.NODE_ENV === 'production',
+      secure: isProd,
       maxAge: 1000 * 60 * 60 * 24 * 30,
     },
   }),
 );
 app.use(loadUser);
 
-// Static serving of locally-stored uploads.
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// Serve uploaded images from the DB (persists across redeploys, no object storage).
+app.get('/uploads/:id', async (req, res) => {
+  const row = await prisma.upload.findUnique({ where: { id: req.params.id } });
+  if (!row) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader('Content-Type', row.mime);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.end(Buffer.from(row.data));
+});
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

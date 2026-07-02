@@ -18,6 +18,10 @@ apps/api/uploads/*
 
 # Vite
 apps/web/.vite/
+*.tsbuildinfo
+
+# Generated at build from schema.prisma (dev=sqlite → prod=postgres)
+apps/api/prisma/schema.prod.prisma
 
 # scratch
 render-check.mjs

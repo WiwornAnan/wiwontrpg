@@ -204,6 +204,15 @@ model Tag {
   @@unique([scope, label])
 }
 
+// Uploaded images stored in the DB (bytes) so they survive redeploys without
+// needing external object storage. Served via GET /uploads/:id.
+model Upload {
+  id        String   @id @default(cuid())
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+}
+
 // Generic key/value store for small dev-editable settings (e.g. per-category hero banners).
 model SiteSetting {
   key       String   @id

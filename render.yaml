@@ -1,0 +1,43 @@
+# Render Blueprint — one-click deploy for WiwonAnant.
+# In the Render dashboard: New → Blueprint → connect this repo. Render reads this
+# file, provisions the database + web service, and wires them together.
+#
+# NOTE: Render's free Postgres is deleted after 90 days. For a database that lasts,
+# see DEPLOY.md → "ใช้ Neon แทน (ฐานข้อมูลฟรีถาวร)" and set DATABASE_URL by hand
+# instead of using the `databases:` block below.
+
+databases:
+  - name: wiwonanant-db
+    plan: free
+    databaseName: wiwonanant
+    user: wiwonanant
+
+services:
+  - type: web
+    name: wiwonanant
+    runtime: node
+    plan: free
+    region: singapore # ใกล้ไทยที่สุด (latency ต่ำ)
+    # --include=dev: NODE_ENV=production makes npm skip devDeps, but the build
+    # (vite, prisma, typescript) and runtime (tsx) need them — force-install.
+    buildCommand: npm install --include=dev && npm run render:build
+    startCommand: npm run render:start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wiwonanant-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true # Render สุ่มให้เอง ปลอดภัย
+      # --- ต้องตั้งค่าเองในหน้า Render (Environment) ---
+      - key: DEV_INVITE_CODE
+        sync: false # โค้ดลับสำหรับสมัครเป็น dev เช่น WIWON-DEV-2569
+      - key: ADMIN_EMAIL
+        sync: false # อีเมลแอดมินคนแรก (ล็อกอินเป็น dev ได้ทันที)
+      - key: ADMIN_PASSWORD
+        sync: false # รหัสผ่านแอดมิน — ตั้งให้ยาว ๆ

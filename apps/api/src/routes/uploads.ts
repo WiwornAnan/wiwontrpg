@@ -1,37 +1,25 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import multer from 'multer';
-import { nanoid } from 'nanoid';
+import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.bin';
-    cb(null, `${nanoid(16)}${ext}`);
-  },
-});
-
+// Images are stored in the database (bytes) so they persist across redeploys
+// without external object storage. Kept in memory by multer, then written to DB.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    cb(null, /^image\//.test(file.mimetype));
-  },
+  fileFilter: (_req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
 });
 
 export const uploadsRouter = Router();
 
-// Returns the public URL of the stored file. Isolated here so a future S3 swap
-// only touches this handler.
-uploadsRouter.post('/', requireAuth, upload.single('file'), (req, res) => {
+uploadsRouter.post('/', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'ไม่พบไฟล์รูปภาพ' });
     return;
   }
-  res.status(201).json({ url: `/uploads/${req.file.filename}` });
+  const row = await prisma.upload.create({
+    data: { mime: req.file.mimetype, data: req.file.buffer },
+  });
+  res.status(201).json({ url: `/uploads/${row.id}` });
 });

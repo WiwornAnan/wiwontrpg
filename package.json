@@ -12,9 +12,12 @@
     "dev:api": "npm run dev --workspace @wiwonanant/api",
     "dev:web": "npm run dev --workspace @wiwonanant/web",
     "build": "npm run build --workspace @wiwonanant/shared && npm run build --workspace @wiwonanant/api && npm run build --workspace @wiwonanant/web",
+    "build:web": "npm run build --workspace @wiwonanant/shared && npm run build --workspace @wiwonanant/web",
     "db:migrate": "npm run db:migrate --workspace @wiwonanant/api",
     "db:seed": "npm run db:seed --workspace @wiwonanant/api",
-    "db:reset": "npm run db:reset --workspace @wiwonanant/api"
+    "db:reset": "npm run db:reset --workspace @wiwonanant/api",
+    "render:build": "npm run prod:setup --workspace @wiwonanant/api && npm run build:web",
+    "render:start": "npm run prod:start --workspace @wiwonanant/api"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

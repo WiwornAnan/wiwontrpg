@@ -10,7 +10,12 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx prisma/seed.ts",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "prod:schema": "node prisma/make-prod-schema.mjs",
+    "prod:generate": "prisma generate --schema prisma/schema.prod.prisma",
+    "prod:push": "prisma db push --schema prisma/schema.prod.prisma --skip-generate --accept-data-loss",
+    "prod:setup": "npm run prod:schema && npm run prod:generate && npm run prod:push && npm run db:seed",
+    "prod:start": "tsx src/server.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

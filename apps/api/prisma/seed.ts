@@ -4,33 +4,56 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const devHash = await bcrypt.hash('devpass', 10);
-  const userHash = await bcrypt.hash('playerpass', 10);
+  const isProd = process.env.NODE_ENV === 'production';
 
-  const dev = await prisma.user.upsert({
-    where: { email: 'dev@wiwonanant.local' },
-    update: {},
-    create: {
-      email: 'dev@wiwonanant.local',
-      passwordHash: devHash,
-      displayName: 'ผู้พัฒนา',
-      role: 'dev',
-      devCodeVerifiedAt: new Date(),
-      creditBalance: 0,
-    },
-  });
+  // Production: create a dev/admin account from env only (never a hardcoded
+  // password on a public site). Dev: create the demo dev + player accounts.
+  let dev: { id: string } | null = null;
+  let player: { id: string } | null = null;
 
-  const player = await prisma.user.upsert({
-    where: { email: 'player@wiwonanant.local' },
-    update: {},
-    create: {
-      email: 'player@wiwonanant.local',
-      passwordHash: userHash,
-      displayName: 'ผู้เล่นทดลอง',
-      role: 'user',
-      creditBalance: 12,
-    },
-  });
+  if (isProd) {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPass = process.env.ADMIN_PASSWORD;
+    if (adminEmail && adminPass) {
+      dev = await prisma.user.upsert({
+        where: { email: adminEmail },
+        update: {},
+        create: {
+          email: adminEmail,
+          passwordHash: await bcrypt.hash(adminPass, 10),
+          displayName: 'ผู้ดูแลระบบ',
+          role: 'dev',
+          devCodeVerifiedAt: new Date(),
+        },
+      });
+      console.log('Ensured admin account:', adminEmail);
+    } else {
+      console.log('No ADMIN_EMAIL/ADMIN_PASSWORD set — skipping admin creation.');
+    }
+  } else {
+    dev = await prisma.user.upsert({
+      where: { email: 'dev@wiwonanant.local' },
+      update: {},
+      create: {
+        email: 'dev@wiwonanant.local',
+        passwordHash: await bcrypt.hash('devpass', 10),
+        displayName: 'ผู้พัฒนา',
+        role: 'dev',
+        devCodeVerifiedAt: new Date(),
+      },
+    });
+    player = await prisma.user.upsert({
+      where: { email: 'player@wiwonanant.local' },
+      update: {},
+      create: {
+        email: 'player@wiwonanant.local',
+        passwordHash: await bcrypt.hash('playerpass', 10),
+        displayName: 'ผู้เล่นทดลอง',
+        role: 'user',
+        creditBalance: 12,
+      },
+    });
+  }
 
   // ---- Core Rules articles (only seed once) ----
   const existing = await prisma.article.count({ where: { category: 'core-rules' } });
@@ -241,30 +264,32 @@ async function main() {
         n++;
       }
     }
-    // one player-owned homebrew item
-    await prisma.catalogItem.create({
-      data: {
-        category: 'equipment',
-        name: 'Whisperwind Dagger (โฮมบรูว์)',
-        fields: JSON.stringify({ type: 'Weapon', tag: 'Weapon', equipType: 'อาวุธ (Weapon)', dmgBonus: 3, rarity: 'Uncommon', cost: '150 Cr.', costNum: 150, weight: '0.5 kg', weightNum: 0.5, material: 'Metal', availability: 'Quest', damage: 'Slashing', wielding: 'One-Handed' }),
-        description: 'มีดสั้นที่ผู้เล่นออกแบบเอง ว่ากันว่าเบาราวสายลม.',
-        tags: JSON.stringify(['Weapon', 'Homebrew', 'Wind']),
-        source: 'Homebrew',
-        isHomebrew: true,
-        ownerUserId: player.id,
-      },
-    });
-    console.log(`Seeded ${n} official catalog items + 1 homebrew`);
+    // one player-owned homebrew item (dev demo only)
+    if (player) {
+      await prisma.catalogItem.create({
+        data: {
+          category: 'equipment',
+          name: 'Whisperwind Dagger (โฮมบรูว์)',
+          fields: JSON.stringify({ type: 'Weapon', tag: 'Weapon', equipType: 'อาวุธ (Weapon)', dmgBonus: 3, rarity: 'Uncommon', cost: '150 Cr.', costNum: 150, weight: '0.5 kg', weightNum: 0.5, material: 'Metal', availability: 'Quest', damage: 'Slashing', wielding: 'One-Handed' }),
+          description: 'มีดสั้นที่ผู้เล่นออกแบบเอง ว่ากันว่าเบาราวสายลม.',
+          tags: JSON.stringify(['Weapon', 'Homebrew', 'Wind']),
+          source: 'Homebrew',
+          isHomebrew: true,
+          ownerUserId: player.id,
+        },
+      });
+    }
+    console.log(`Seeded ${n} official catalog items`);
   }
 
-  // ---- one home comment (if none) ----
-  if ((await prisma.comment.count()) === 0) {
+  // ---- one home comment (dev demo only) ----
+  if (player && (await prisma.comment.count()) === 0) {
     await prisma.comment.create({
       data: { authorUserId: player.id, body: 'เว็บสวยมากครับ รอเนื้อหา Part ต่อไปอยู่!' },
     });
   }
 
-  console.log('Seeded users:', dev.email, player.email);
+  console.log('Seed complete.');
 }
 
 main()
