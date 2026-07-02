@@ -1,16 +1,9 @@
-# Render Blueprint — one-click deploy for WiwonAnant.
-# In the Render dashboard: New → Blueprint → connect this repo. Render reads this
-# file, provisions the database + web service, and wires them together.
+# Render Blueprint — deploy WiwonAnant on Render's free web service, with a
+# permanent-free Neon Postgres as the database.
 #
-# NOTE: Render's free Postgres is deleted after 90 days. For a database that lasts,
-# see DEPLOY.md → "ใช้ Neon แทน (ฐานข้อมูลฟรีถาวร)" and set DATABASE_URL by hand
-# instead of using the `databases:` block below.
-
-databases:
-  - name: wiwonanant-db
-    plan: free
-    databaseName: wiwonanant
-    user: wiwonanant
+# In the Render dashboard: New → Blueprint → connect this repo → Apply.
+# Render will ask for DATABASE_URL (paste your Neon connection string) plus the
+# three secrets below. Full walkthrough in DEPLOY.md.
 
 services:
   - type: web
@@ -28,13 +21,11 @@ services:
         value: production
       - key: NODE_VERSION
         value: "20"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: wiwonanant-db
-          property: connectionString
       - key: SESSION_SECRET
         generateValue: true # Render สุ่มให้เอง ปลอดภัย
       # --- ต้องตั้งค่าเองในหน้า Render (Environment) ---
+      - key: DATABASE_URL
+        sync: false # วาง connection string ของ Neon (ลงท้าย ?sslmode=require)
       - key: DEV_INVITE_CODE
         sync: false # โค้ดลับสำหรับสมัครเป็น dev เช่น WIWON-DEV-2569
       - key: ADMIN_EMAIL

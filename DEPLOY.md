@@ -1,147 +1,127 @@
-# คู่มือขึ้นเว็บ WiwonAnant (ฟรี)
+# คู่มือขึ้นเว็บ WiwonAnant (ฟรีถาวร) — แบบจับมือทำ
 
-คู่มือนี้พาขึ้นเว็บจริงแบบฟรี ด้วย **GitHub + Render** โดยเก็บทุกอย่าง (บทความ, ไอเทม, รูปภาพ)
-ไว้ในฐานข้อมูล Postgres ที่เดียว ไม่ต้องใช้ที่เก็บไฟล์แยก
+ขึ้นเว็บจริงแบบฟรี ด้วย **GitHub + Render + Neon**
+- **Render** = รันเว็บ (ฟรี)
+- **Neon** = ฐานข้อมูล Postgres (ฟรี ~0.5 GB **ไม่หมดอายุ**)
+- เก็บทุกอย่าง (บทความ, ไอเทม, รูปภาพ) ไว้ใน Neon ที่เดียว รูปไม่หายข้าม deploy
 
-> ทำตามทีละขั้น ใช้เวลาประมาณ 15–20 นาที
+> ใช้เวลารวม ~20 นาที ทำตามทีละข้อ
 
 ---
 
-## ภาพรวมสถาปัตยกรรม
+## ภาพรวม
 
 ```
-ผู้ใช้ ──▶  Render Web Service (Node/Express)  ──▶  Postgres
-                 │  เสิร์ฟหน้าเว็บ React (build แล้ว)
-                 │  + API ทั้งหมด  + รูปภาพ (เก็บใน DB)
+ผู้ใช้ ──▶  Render (Node/Express)  ──▶  Neon Postgres (ถาวร)
+                เสิร์ฟหน้าเว็บ + API + รูปภาพ พอร์ตเดียว
 ```
 
-- เว็บกับ API อยู่ **โดเมนเดียวกัน** (same-origin) → คุกกี้ล็อกอินทำงานได้ ไม่มีปัญหา CORS
-- รูปภาพเก็บเป็นไบต์ในตาราง `Upload` → **อยู่รอดข้าม deploy** ไม่หาย
-
 ---
 
-## สิ่งที่ต้องมี (คุณมีครบแล้ว)
+## ขั้นที่ 1 — โค้ดขึ้น GitHub
 
-- [x] บัญชี **GitHub**
-- [x] บัญชี **Render** (render.com — สมัครด้วย GitHub ได้เลย)
-
----
-
-## ขั้นที่ 1 — ดันโค้ดขึ้น GitHub
-
-1. สร้าง repo ใหม่บน GitHub (เว้นว่าง ไม่ต้องติ๊ก README) เช่นชื่อ `wiwonanant`
-2. ในเครื่อง (โฟลเดอร์โปรเจกต์) รันคำสั่งตามที่ GitHub บอก โดยแทน `<URL>` เป็นลิงก์ repo ของคุณ:
+สร้าง repo เปล่าชื่อ `wiwonanant` (อย่าติ๊ก README/​.gitignore/​license) แล้ว push branch `implement-wiwonanant` ขึ้นไป
 
 ```bash
-git remote add origin <URL>       # เช่น https://github.com/yourname/wiwonanant.git
+git remote add origin <URL-repo-ของคุณ>
 git push -u origin implement-wiwonanant
 ```
-
-> โค้ดอยู่บน branch `implement-wiwonanant` — ดันขึ้นไปได้เลย ไม่ต้องรวมเข้า main ก่อน
-> (ตอนตั้งค่า Render จะเลือก branch นี้)
+> ตอนถาม password ให้วาง **Personal Access Token** ของ GitHub (สร้างที่ github.com/settings/tokens สิทธิ์ `repo`)
 
 ---
 
-## ขั้นที่ 2 — Deploy บน Render (แบบคลิกเดียว)
+## ขั้นที่ 2 — สร้างฐานข้อมูล Neon (ฟรีถาวร)
 
-ไฟล์ `render.yaml` ในโปรเจกต์เป็น "พิมพ์เขียว" (Blueprint) ที่บอก Render ให้สร้าง
-ฐานข้อมูล + เว็บเซอร์วิสให้อัตโนมัติ
+1. เปิด **neon.tech** → **Sign up** (ล็อกอินด้วย GitHub ได้เลย)
+2. มันจะให้สร้าง project อัตโนมัติ — ตั้งชื่ออะไรก็ได้ เช่น `wiwonanant`, region เลือก **Singapore** (ใกล้ไทย)
+3. กด **Create project**
+4. หน้าถัดมาจะมีกล่อง **Connection string** — กด **Copy** (หน้าตาแบบ
+   `postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/dbname?sslmode=require`)
+5. **เก็บลิงก์นี้ไว้** เดี๋ยวเอาไปวางที่ Render ในขั้นที่ 4
 
-1. เข้า Render Dashboard → **New +** → **Blueprint**
-2. เชื่อม GitHub แล้วเลือก repo `wiwonanant` + branch `implement-wiwonanant`
-3. Render จะอ่าน `render.yaml` แล้วขึ้นรายการ: `wiwonanant-db` (Postgres) + `wiwonanant` (web)
-4. กด **Apply** — Render เริ่ม build
-
-ระหว่าง build Render จะรัน:
-- `npm install`
-- `npm run render:build` → สร้าง schema Postgres → สร้างตาราง (`prisma db push`) → seed ข้อมูลเริ่มต้น → build หน้าเว็บ
-- เสร็จแล้วรัน `npm run render:start`
+> ต้องมี `?sslmode=require` ต่อท้าย — ถ้าไม่มี Neon มักมีปุ่มเลือกให้ ติ๊กเอา
 
 ---
 
-## ขั้นที่ 3 — ตั้งค่า Environment (สำคัญ)
+## ขั้นที่ 3 — Deploy บน Render
 
-Render จะถามค่า 3 ตัวที่ต้องกรอกเอง (ไปที่เซอร์วิส `wiwonanant` → **Environment**):
+1. เปิด **render.com** → **Get Started** → **Sign in with GitHub**
+2. Dashboard → มุมขวาบน **New +** → **Blueprint**
+3. กด **Connect** repo `wiwonanant`
+   - ถ้าไม่เห็น repo → **Configure account** → อนุญาต repo `wiwonanant` → กลับมา
+4. เลือก **Branch = `implement-wiwonanant`** (สำคัญ อย่าเลือก main)
+5. Render อ่าน `render.yaml` เอง แล้วโชว์เซอร์วิส `wiwonanant`
+6. กด **Apply**
 
-| ตัวแปร | ใส่อะไร |
+---
+
+## ขั้นที่ 4 — ใส่ค่า Environment (4 ตัว)
+
+Render จะถามค่าที่ต้องกรอกเอง — ไปที่เซอร์วิส `wiwonanant` → เมนูซ้าย **Environment**:
+
+| ช่อง | ใส่อะไร |
 |---|---|
-| `DEV_INVITE_CODE` | โค้ดลับสำหรับสมัครเป็น dev เช่น `WIWON-DEV-2569` |
-| `ADMIN_EMAIL` | อีเมลแอดมินคนแรกของคุณ |
-| `ADMIN_PASSWORD` | รหัสผ่านแอดมิน (ตั้งให้ยาว ๆ) |
+| `DATABASE_URL` | วาง connection string ของ **Neon** (จากขั้นที่ 2 ข้อ 4) |
+| `DEV_INVITE_CODE` | โค้ดลับสมัคร dev เช่น `WIWON-DEV-2569` |
+| `ADMIN_EMAIL` | อีเมลแอดมินของคุณ |
+| `ADMIN_PASSWORD` | รหัสผ่านแอดมิน (ยาว ๆ) |
 
-> `DATABASE_URL` และ `SESSION_SECRET` — Render กรอก/สุ่มให้เองแล้ว ไม่ต้องแตะ
+> `SESSION_SECRET`, `NODE_ENV`, `NODE_VERSION` — Render ตั้งให้เองแล้ว ไม่ต้องแตะ
 
-กรอกเสร็จกด **Save Changes** → Render deploy รอบใหม่ พร้อมสร้างบัญชีแอดมินให้อัตโนมัติ
+กด **Save Changes** → Render deploy ใหม่ ระหว่างนั้นจะรัน:
+`npm install` → สร้างตารางใน Neon (`prisma db push`) → seed ข้อมูล + สร้างบัญชีแอดมิน → build หน้าเว็บ
 
 ---
 
-## ขั้นที่ 4 — เข้าใช้งาน
+## ขั้นที่ 5 — เข้าใช้งาน
 
-- เปิด URL ที่ Render ให้ (เช่น `https://wiwonanant.onrender.com`)
-- ล็อกอินด้วย `ADMIN_EMAIL` / `ADMIN_PASSWORD` ที่ตั้งไว้ → ได้สิทธิ์ dev ทันที
-  (เข้าหน้า Content Editor, อนุมัติ Homebrew, จัดการ Tag ได้)
-- ผู้ใช้ทั่วไปกด "สมัคร" เองได้ (ไม่ต้องใส่โค้ด) — ถ้าจะสมัครเป็น dev ต้องกรอก `DEV_INVITE_CODE`
+1. รอจนสถานะขึ้น **Live** (เขียว) ~3–5 นาที
+2. กดลิงก์ที่ Render ให้ (เช่น `https://wiwonanant.onrender.com`)
+3. ล็อกอินด้วย `ADMIN_EMAIL` / `ADMIN_PASSWORD` → ได้สิทธิ์ dev เต็ม
+   (Content Editor, อนุมัติ Homebrew, จัดการ Tag)
+4. ผู้ใช้ทั่วไปกด "สมัคร" เองได้ (ไม่ต้องใส่โค้ด)
 
-🎉 เว็บขึ้นออนไลน์แล้ว
+🎉 เว็บออนไลน์แล้ว — ฐานข้อมูลอยู่ถาวรบน Neon
 
 ---
 
 ## ⚠️ ข้อควรรู้เรื่องแพ็กเกจฟรี
 
-1. **เว็บ "หลับ" หลังไม่มีคนเข้า 15 นาที** — คนเข้าครั้งถัดไปจะช้า ~30 วิ (ตื่นขึ้นมา) แล้วเร็วปกติ
-2. **Render Postgres ฟรีถูกลบทิ้งใน 90 วัน** — ถ้าจะใช้ยาว ให้ย้ายไป Neon (ข้างล่าง)
-3. **พื้นที่เก็บ ~1 GB** (Render) / ~0.5 GB (Neon) — ข้อความเก็บได้แทบไม่จำกัด, รูปได้หลักร้อย–พันใบ
+1. **เว็บ Render "หลับ" หลังไม่มีคนเข้า 15 นาที** — คนเข้าครั้งถัดไปรอ ~30 วิ (ตื่น) แล้วเร็วปกติ
+   ฐานข้อมูล Neon ไม่หลับแบบนั้น ข้อมูลอยู่ครบเสมอ
+2. **พื้นที่ Neon ฟรี ~0.5 GB** — ข้อความเก็บได้แทบไม่จำกัด, รูปได้หลักร้อย–พันใบ
+   (รูปจำกัดใบละ ≤ 8 MB) พอโตค่อยอัปเกรด Neon โดยไม่ต้องแก้โค้ด
 
 ---
 
-## (ทางเลือก) ใช้ Neon แทน — ฐานข้อมูลฟรีถาวร
+## (ทางเลือก) โดเมนตัวเอง + DNS ที่ Hostinglotus
 
-Neon ให้ Postgres ฟรี ~0.5 GB ที่ **ไม่หมดอายุ** เหมาะกับใช้ยาว ๆ
+Hostinglotus รัน Node ไม่ได้ แต่ตั้ง DNS ชี้มา Render ได้
 
-1. สมัคร [neon.tech](https://neon.tech) → สร้าง project → คัดลอก **connection string**
-   (เลือกแบบมี `?sslmode=require`)
-2. ใน `render.yaml` ลบบล็อก `databases:` ทั้งก้อน และลบบล็อก `DATABASE_URL` ที่เป็น `fromDatabase`
-3. ในหน้า Render → Environment เพิ่ม `DATABASE_URL` เอง วาง connection string ของ Neon
-4. Deploy ใหม่
-
-> ถ้าตั้งค่า Render ไปแล้วด้วย Render Postgres ก็แค่แก้ค่า `DATABASE_URL` ให้ชี้ Neon แล้ว deploy ใหม่
-> (ข้อมูลเก่าใน Render Postgres จะไม่ย้ายตามให้เอง — ทำตั้งแต่ยังไม่มีข้อมูลจะง่ายสุด)
-
----
-
-## (ทางเลือก) ใช้โดเมนตัวเอง + DNS ที่ Hostinglotus
-
-Hostinglotus เป็นโฮสต์แบบ FTP รัน Node.js ไม่ได้ แต่ใช้ **ตั้ง DNS ชี้มาที่ Render** ได้
-
-1. Render → เซอร์วิส `wiwonanant` → **Settings → Custom Domains** → เพิ่มโดเมนของคุณ
-2. Render จะให้ค่า DNS มา (ปกติเป็น CNAME) เช่น `wiwonanant.onrender.com`
-3. เข้าแผงจัดการโดเมน/DNS ของ Hostinglotus → เพิ่มเรคคอร์ด:
-   - โดเมนย่อย (เช่น `www`): **CNAME** → `wiwonanant.onrender.com`
-   - โดเมนหลัก (root): ตามที่ Render แนะนำ (มักเป็น ALIAS/ANAME หรือ A record ตาม IP ที่ Render ให้)
-4. รอ DNS อัปเดต (ไม่กี่นาที–ไม่กี่ชม.) Render จะออกใบรับรอง HTTPS ให้อัตโนมัติ
+1. Render → `wiwonanant` → **Settings → Custom Domains** → เพิ่มโดเมน
+2. Render ให้ค่า DNS มา (มักเป็น CNAME → `wiwonanant.onrender.com`)
+3. แผง DNS ของ Hostinglotus → เพิ่มเรคคอร์ดตามที่ Render บอก
+   - `www` → **CNAME** → `wiwonanant.onrender.com`
+   - root → ตามที่ Render แนะนำ (ALIAS/ANAME หรือ A record)
+4. รอ DNS อัปเดต Render ออกใบ HTTPS ให้เอง
 
 ---
 
 ## แก้ปัญหาที่พบบ่อย
 
-| อาการ | สาเหตุ / วิธีแก้ |
+| อาการ | วิธีแก้ |
 |---|---|
-| Build ล้ม ตอน `prisma db push` | `DATABASE_URL` ยังไม่ถูกตั้ง — เช็กว่า Blueprint สร้าง DB สำเร็จ หรือวาง Neon URL แล้ว |
+| Build ล้มตอน `prisma db push` | `DATABASE_URL` ผิด/ไม่มี `?sslmode=require` — ก๊อป Neon string ใหม่ให้ครบ |
 | ล็อกอินแอดมินไม่ได้ | ยังไม่ได้ตั้ง `ADMIN_EMAIL`/`ADMIN_PASSWORD` ก่อน deploy — ตั้งแล้ว deploy ใหม่ |
-| ล็อกอินแล้วหลุดทันที | ปกติในโหมด production ต้องเป็น HTTPS (Render เป็น HTTPS อยู่แล้ว) — ตรวจว่า `NODE_ENV=production` |
-| เข้าเว็บครั้งแรกช้ามาก | เว็บเพิ่งตื่นจากหลับ (แพ็กเกจฟรี) — รอ ~30 วิ |
-| รูปอัปโหลดไม่ขึ้น | ไฟล์เกิน 8 MB หรือไม่ใช่รูปภาพ — ระบบจำกัดไว้ |
+| เข้าเว็บครั้งแรกช้ามาก | เว็บเพิ่งตื่นจากหลับ (ปกติของแพ็กเกจฟรี) รอ ~30 วิ |
+| รูปอัปโหลดไม่ขึ้น | ไฟล์เกิน 8 MB หรือไม่ใช่รูปภาพ |
 
 ---
 
-## สรุปคำสั่ง (อ้างอิง)
+## สรุปคำสั่งที่ Render รันให้เอง (อ้างอิง)
 
 ```bash
-# ดันโค้ด
-git push -u origin implement-wiwonanant
-
-# Render รันให้เองตาม render.yaml:
-npm install
-npm run render:build   # schema → db push → seed → build web
+npm install --include=dev
+npm run render:build   # gen postgres schema → db push (Neon) → seed → build web
 npm run render:start   # tsx src/server.ts (เสิร์ฟเว็บ + API พอร์ตเดียว)
 ```
