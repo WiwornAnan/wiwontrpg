@@ -64,6 +64,30 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
   function renderField(f: AddField) {
     const v = fields[f.key] ?? '';
     const set = (val: string) => setFields((s) => ({ ...s, [f.key]: val }));
+    if (f.kind === 'checks') {
+      const cur = v ? v.split(',').map((x) => x.trim()).filter(Boolean) : [];
+      const toggle = (o: string) => set((cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o]).join(', '));
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {(f.options ?? []).map((o) => {
+            const on = cur.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggle(o)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, border: `1.5px solid ${on ? 'var(--ink)' : 'var(--border-soft)'}`, background: on ? 'var(--ink)' : '#fff', color: on ? '#fff' : 'var(--text-muted)' }}
+              >
+                <span style={{ width: 20, height: 20, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: on ? 'rgba(255,255,255,.22)' : '#efece6', color: on ? '#fff' : '#a8a59d' }}>
+                  {o.charAt(0).toUpperCase()}
+                </span>
+                {o}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
     if (f.kind === 'select') {
       return (
         <select style={inputStyle} value={v} onChange={(e) => set(e.target.value)}>
@@ -114,7 +138,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
     >
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {addFields.map((f) => (
-          <div key={f.key} style={{ gridColumn: f.key === 'name' ? '1 / -1' : 'auto' }}>
+          <div key={f.key} style={{ gridColumn: f.key === 'name' || f.kind === 'checks' ? '1 / -1' : 'auto' }}>
             <label style={labelStyle}>{f.label}</label>
             {renderField(f)}
           </div>
