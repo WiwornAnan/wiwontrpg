@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AddField, CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
@@ -184,7 +184,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
 
       <div style={{ marginTop: 14 }}>
         <label style={labelStyle}>รายละเอียด</label>
-        <textarea style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="อธิบายข้อมูลนี้…" />
+        <RichTextEditor initialHtml={editItem?.description ?? ''} onChange={setDescription} />
       </div>
 
       <div style={{ marginTop: 14 }}>
@@ -214,5 +214,86 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
 
       {error && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--danger)' }}>{error}</div>}
     </Modal>
+  );
+}
+
+// Toolbar colours (label used as the button tooltip).
+const RT_COLORS: [string, string][] = [
+  ['#15140f', 'ดำ'],
+  ['#b4513a', 'แดง'],
+  ['#2a6a9a', 'น้ำเงิน'],
+  ['#2f6b4f', 'เขียว'],
+  ['#5b3fa0', 'ม่วง'],
+  ['#b06a2a', 'ส้ม'],
+];
+
+// Lightweight rich-text editor for item descriptions: bold / italic /
+// divider / colour, backed by a contentEditable div. The produced HTML
+// (b, i, hr, span[style=color]) matches what the server sanitiser allows.
+function RichTextEditor({ initialHtml, onChange }: { initialHtml: string; onChange: (html: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = initialHtml || '';
+    // Only seed the DOM once per mount; the modal remounts per open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const sync = () => onChange(ref.current?.innerHTML ?? '');
+  const exec = (cmd: string, val?: string) => {
+    ref.current?.focus();
+    try {
+      document.execCommand('styleWithCSS', false, 'true');
+    } catch {
+      /* older browsers */
+    }
+    try {
+      document.execCommand(cmd, false, val);
+    } catch {
+      /* noop */
+    }
+    sync();
+  };
+  const btn: React.CSSProperties = {
+    height: 28,
+    minWidth: 28,
+    padding: '0 8px',
+    borderRadius: 6,
+    border: '1px solid var(--border-soft)',
+    background: '#fff',
+    cursor: 'pointer',
+    fontSize: 12.5,
+    color: 'var(--ink)',
+    lineHeight: 1,
+  };
+  // keep the text selection while clicking a toolbar button
+  const hold = (e: React.MouseEvent) => e.preventDefault();
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '7px 9px', background: '#faf9f7', border: '1px solid var(--border-soft)', borderBottom: 'none', borderRadius: '9px 9px 0 0' }}>
+        <button type="button" title="ตัวหนา" onMouseDown={hold} onClick={() => exec('bold')} style={{ ...btn, fontWeight: 800 }}>
+          B
+        </button>
+        <button type="button" title="ตัวเอียง" onMouseDown={hold} onClick={() => exec('italic')} style={{ ...btn, fontStyle: 'italic', fontWeight: 700 }}>
+          I
+        </button>
+        <button type="button" title="ใส่บรรทัดคั่น" onMouseDown={hold} onClick={() => exec('insertHTML', '<hr>')} style={{ ...btn, fontWeight: 700, fontSize: 11 }}>
+          — เส้นคั่น
+        </button>
+        <span style={{ width: 1, height: 20, background: 'var(--border-soft)', margin: '0 2px' }} />
+        <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>สี:</span>
+        {RT_COLORS.map(([c, label]) => (
+          <button key={c} type="button" title={label} onMouseDown={hold} onClick={() => exec('foreColor', c)} style={{ width: 22, height: 22, borderRadius: 6, cursor: 'pointer', border: '1.5px solid rgba(0,0,0,.12)', background: c }} />
+        ))}
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        onInput={sync}
+        data-placeholder="อธิบายข้อมูลนี้… (เลือกข้อความแล้วกดปุ่มด้านบนเพื่อจัดรูปแบบ)"
+        style={{ border: '1px solid var(--border-soft)', borderRadius: '0 0 9px 9px', padding: '11px 14px', fontSize: 13.5, outline: 'none', minHeight: 90, maxHeight: 240, overflowY: 'auto', lineHeight: 1.7 }}
+      />
+    </div>
   );
 }

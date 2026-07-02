@@ -117,3 +117,10 @@ a {
   border-top: 1px solid #cbc8c0;
   margin: 9px 0;
 }
+
+/* Placeholder for empty contentEditable rich-text editors. */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--placeholder);
+  pointer-events: none;
+}
