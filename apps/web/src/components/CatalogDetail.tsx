@@ -1,10 +1,22 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import type { CatalogListResult } from '../lib/catalogHooks';
+import { Modal } from './Modal';
 import { StarButton } from './StarButton';
+
+interface EngravedRef {
+  id: string;
+  name: string;
+}
+interface WeaponArtRef {
+  id: string;
+  name: string;
+  qty: number;
+}
 
 function fv(item: CatalogItem, key: string): string {
   if (key === 'source') return item.source;
@@ -127,6 +139,46 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     ...(item.iconUrl ? { backgroundImage: `url(${item.iconUrl})` } : { background: isMagicSpell ? '#ede7f6' : '#e7e5df' }),
   };
 
+  // ----- Ehen Organ / Core: Mana Slots, spell engraving, weapon arts -----
+  const patchFields = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => api.patch(`/catalog/${category}/item/${item.id}`, { fields: { ...item.fields, ...patch } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog', category] }),
+  });
+  const ehenOrgan = fv(item, 'ehenOrgan') === '1';
+  const ehenCore = fv(item, 'ehenCore') === '1';
+  const hasEhen = ehenOrgan || ehenCore;
+  const showEhen = category === 'equipment' || category === 'monster';
+  const slotCount = Math.max(0, parseInt(fv(item, 'manaSlot'), 10) || 0);
+  const engraved: EngravedRef[] = Array.isArray(item.fields.engravedSpells) ? (item.fields.engravedSpells as EngravedRef[]) : [];
+  const weaponArts: WeaponArtRef[] = Array.isArray(item.fields.weaponArts) ? (item.fields.weaponArts as WeaponArtRef[]) : [];
+  const ehenParen = ehenOrgan && ehenCore ? '(Organ + Core)' : ehenCore ? '(Core)' : '(Organ)';
+  const [drawer, setDrawer] = useState<null | 'engrave' | 'weaponArts'>(null);
+  const [pickQ, setPickQ] = useState('');
+
+  // Drawer data: magic spells to engrave, or features tagged "Weapon Arts".
+  const spellPick = useQuery({
+    queryKey: ['catalog', 'magic', 'pick-spell', pickQ],
+    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=magic&isFeature=false&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
+    enabled: drawer === 'engrave',
+  });
+  const artPick = useQuery({
+    queryKey: ['catalog', 'magic-feature', 'pick-art', pickQ],
+    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=magic-feature&isFeature=true&tag=${encodeURIComponent('Weapon Arts')}&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
+    enabled: drawer === 'weaponArts',
+  });
+
+  const addEngraved = (it: CatalogItem) => {
+    if (engraved.some((e) => e.id === it.id) || engraved.length >= slotCount) return;
+    patchFields.mutate({ engravedSpells: [...engraved, { id: it.id, name: it.name }] });
+  };
+  const removeEngraved = (id: string) => patchFields.mutate({ engravedSpells: engraved.filter((e) => e.id !== id) });
+  const addArt = (it: CatalogItem) => {
+    if (weaponArts.some((w) => w.id === it.id)) return;
+    patchFields.mutate({ weaponArts: [...weaponArts, { id: it.id, name: it.name, qty: 1 }] });
+  };
+  const setArtQty = (id: string, qty: number) => patchFields.mutate({ weaponArts: weaponArts.map((w) => (w.id === id ? { ...w, qty: Math.max(1, qty) } : w)) });
+  const removeArt = (id: string) => patchFields.mutate({ weaponArts: weaponArts.filter((w) => w.id !== id) });
+
   return (
     <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: 20, position: 'sticky', top: 96 }}>
       {item.approvedFromHomebrew && (
@@ -214,6 +266,107 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
+      {showEhen && (canEdit || hasEhen) && (
+        <div style={{ marginTop: 16 }}>
+          {canEdit && (
+            <>
+              <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>มีส่วนที่เป็น Ehen Organ / Ehen Core</div>
+              <div style={{ fontSize: 10.5, color: '#a8a59d', marginBottom: 8 }}>เลือกได้ถึงสองอย่าง</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: hasEhen ? 14 : 0 }}>
+                {([
+                  ['ehenOrgan', 'Ehen Organ', ehenOrgan],
+                  ['ehenCore', 'Ehen Core', ehenCore],
+                ] as const).map(([key, label, on]) => (
+                  <div key={key} onClick={() => patchFields.mutate({ [key]: on ? '' : '1' })} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 500 }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${on ? '#5b3fa0' : '#cbc8c0'}`, background: on ? '#5b3fa0' : '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 800 }}>{on ? '✓' : ''}</span>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {hasEhen && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 0 8px' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                  Mana Slot <span style={{ color: '#5b3fa0' }}>{ehenParen}</span>
+                </span>
+                <span style={{ fontSize: 11, color: '#8d8a82' }}>สลักไว้ {engraved.length} / {slotCount}</span>
+              </div>
+
+              {canEdit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11.5, color: '#8d8a82' }}>จำนวน Slot:</span>
+                  <input type="number" min={0} defaultValue={slotCount} onBlur={(e) => patchFields.mutate({ manaSlot: String(Math.max(0, parseInt(e.target.value, 10) || 0)) })} style={{ width: 64, border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 8px', fontSize: 13, textAlign: 'center', outline: 'none' }} />
+                </div>
+              )}
+
+              {slotCount > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {Array.from({ length: slotCount }).map((_, i) => (
+                    <div key={i} style={{ width: 26, height: 26, borderRadius: 6, border: '2px solid #d6c7f0', background: i < engraved.length ? '#7c5fc0' : '#fff' }} />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#a8a59d', marginBottom: 8 }}>ยังไม่ได้กำหนดจำนวน Slot — แก้ไขจำนวนได้ด้านบน</div>
+              )}
+
+              {engraved.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {engraved.map((e) => (
+                    <span key={e.id} style={{ fontSize: 11.5, background: '#f3eefb', border: '1px solid #d6c7f0', color: '#5b3fa0', borderRadius: 7, padding: '3px 6px 3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      ✦ {e.name}
+                      {canEdit && (
+                        <button onClick={() => removeEngraved(e.id)} style={{ border: 'none', background: 'none', color: '#9b86c8', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {weaponArts.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                  {weaponArts.map((w) => (
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fbf1e8', border: '1px solid #ecd6bf', borderRadius: 8, padding: '5px 9px' }}>
+                      <span style={{ flex: 1, color: '#b4602a', fontWeight: 600 }}>⚔ {w.name}</span>
+                      {canEdit ? (
+                        <input type="number" min={1} defaultValue={w.qty} onBlur={(e) => setArtQty(w.id, parseInt(e.target.value, 10) || 1)} style={{ width: 48, border: '1px solid #ecd6bf', borderRadius: 6, padding: '2px 6px', fontSize: 12, textAlign: 'center', outline: 'none' }} />
+                      ) : (
+                        <span style={{ color: '#b4602a', fontWeight: 700 }}>×{w.qty}</span>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => removeArt(w.id)} style={{ border: 'none', background: 'none', color: '#c79a6a', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canEdit && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button onClick={() => { setPickQ(''); setDrawer('engrave'); }} disabled={slotCount === 0} style={{ width: '100%', padding: 9, background: slotCount === 0 ? '#cbc8c0' : '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: slotCount === 0 ? 'not-allowed' : 'pointer' }}>✦ สลักเวทมนตร์ (Magic Engraving)</button>
+                  {isWeapon && (
+                    <button onClick={() => { setPickQ(''); setDrawer('weaponArts'); }} style={{ width: '100%', padding: 9, background: '#b4602a', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>⚔ กระบวนท่าประจำอาวุธ</button>
+                  )}
+                </div>
+              )}
+
+              {ehenCore && (
+                <div style={{ marginTop: 8 }}>
+                  {canEdit ? (
+                    <input defaultValue={fv(item, 'coreRecover')} onBlur={(e) => patchFields.mutate({ coreRecover: e.target.value })} placeholder="เช่น ฟื้นฟู 1 Slot ใน 2 นาที" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 10px', fontSize: 11.5, color: '#5b3fa0', outline: 'none' }} />
+                  ) : (
+                    fv(item, 'coreRecover') && <div style={{ fontSize: 11.5, color: '#5b3fa0' }}>({fv(item, 'coreRecover')})</div>
+                  )}
+                  <div style={{ fontSize: 10.5, color: '#a8a59d', marginTop: 3 }}>Ehen Core ฟื้นฟู Slot อัตโนมัติ (แก้ไขข้อความในวงเล็บได้)</div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {item.isHomebrew && (
         <>
           <div style={{ marginTop: 14, fontSize: 11.5, color: '#8d8a82' }}>
@@ -279,6 +432,61 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         <button onClick={() => navigate('/login')} style={{ marginTop: 14, width: '100%', padding: 9, background: '#faf9f7', border: '1px solid #e0ded7', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
           เข้าสู่ระบบเพื่อจัดการข้อมูล
         </button>
+      )}
+
+      {drawer === 'engrave' && (
+        <Modal open onClose={() => setDrawer(null)} width={440} title="✦ สลักเวทมนตร์ — เลือกเวท">
+          <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="ค้นหาเวท (ชื่อ / สำนัก / คีย์เวิร์ด)…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none', marginBottom: 8 }} />
+          <div style={{ fontSize: 11, color: '#8d8a82', marginBottom: 8 }}>สลักได้ {engraved.length} / {slotCount} ช่อง</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
+            {spellPick.isLoading && <div style={{ fontSize: 12, color: '#a8a59d' }}>กำลังโหลด…</div>}
+            {(spellPick.data?.items ?? []).map((sp) => {
+              const on = engraved.some((e) => e.id === sp.id);
+              const full = engraved.length >= slotCount && !on;
+              return (
+                <div key={sp.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, opacity: full ? 0.5 : 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{sp.name}</div>
+                    <div style={{ fontSize: 11, color: '#8d8a82' }}>{[String(sp.fields.school ?? ''), String(sp.fields.tag ?? '')].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {on ? (
+                    <button onClick={() => removeEngraved(sp.id)} style={{ padding: '5px 12px', background: '#f3eefb', color: '#5b3fa0', border: '1px solid #d6c7f0', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>เอาออก</button>
+                  ) : (
+                    <button disabled={full} onClick={() => addEngraved(sp)} style={{ padding: '5px 12px', background: full ? '#eee' : '#5b3fa0', color: full ? '#aaa' : '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: full ? 'not-allowed' : 'pointer', flex: 'none' }}>สลัก</button>
+                  )}
+                </div>
+              );
+            })}
+            {spellPick.data && spellPick.data.items.length === 0 && <div style={{ fontSize: 12, color: '#a8a59d' }}>ไม่พบเวทที่ค้นหา</div>}
+          </div>
+        </Modal>
+      )}
+
+      {drawer === 'weaponArts' && (
+        <Modal open onClose={() => setDrawer(null)} width={440} title="⚔ กระบวนท่าประจำอาวุธ — เลือก Feature">
+          <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="ค้นหากระบวนท่า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none', marginBottom: 8 }} />
+          <div style={{ fontSize: 11, color: '#8d8a82', marginBottom: 8 }}>แสดงเฉพาะ Feature ที่มีแท็ก “Weapon Arts”</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
+            {artPick.isLoading && <div style={{ fontSize: 12, color: '#a8a59d' }}>กำลังโหลด…</div>}
+            {(artPick.data?.items ?? []).map((ft) => {
+              const on = weaponArts.some((w) => w.id === ft.id);
+              return (
+                <div key={ft.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{ft.name}</div>
+                    <div style={{ fontSize: 11, color: '#8d8a82' }}>{[String(ft.fields.class ?? ''), String(ft.fields.mode ?? '')].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {on ? (
+                    <button onClick={() => removeArt(ft.id)} style={{ padding: '5px 12px', background: '#fbf1e8', color: '#b4602a', border: '1px solid #ecd6bf', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>เอาออก</button>
+                  ) : (
+                    <button onClick={() => addArt(ft)} style={{ padding: '5px 12px', background: '#b4602a', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>เพิ่ม</button>
+                  )}
+                </div>
+              );
+            })}
+            {artPick.data && artPick.data.items.length === 0 && <div style={{ fontSize: 12, color: '#a8a59d' }}>ยังไม่มี Feature ที่แท็ก “Weapon Arts”</div>}
+          </div>
+        </Modal>
       )}
     </div>
   );

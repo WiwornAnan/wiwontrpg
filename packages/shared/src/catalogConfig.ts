@@ -210,7 +210,7 @@ const MAGIC: CatalogConfig = {
     popularTags: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social'],
     filterFields: [
       { key: 'mode', label: 'รูปแบบ Feature', kind: 'checks', options: ['Active', 'Passive'] },
-      { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social'] },
+      { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social', 'Weapon Arts'] },
       { key: 'class', label: 'Class', any: 'Any Class', options: ['Vanguard', 'Defender', 'Sharpshooter', 'Caster', 'Support', 'Striker', 'Specialist'] },
       { key: 'rarity', label: 'Capacity', any: 'Any Capacity', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },
       { key: 'cost', label: 'Willpower (WP)', any: 'Any WP', options: ['0 WP', '1 WP', '2 WP', '3 WP', '4 WP', '5 WP'] },
@@ -222,15 +222,17 @@ const MAGIC: CatalogConfig = {
       { key: 'source', label: 'Sources', any: 'Any Source', options: ["Player's Handbook", 'GM Guide', 'Homebrew'] },
     ],
     addFields: [
-      { key: 'name', label: 'ชื่อ Feature', kind: 'text', placeholder: 'เช่น Iron Stance' },
-      { key: 'mode', label: 'รูปแบบ (Active / Passive)', kind: 'radio', options: ['Active', 'Passive'] },
+      { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
+      { key: 'mode', label: 'รูปแบบ Feature', kind: 'radio', options: ['Active', 'Passive'] },
+      { key: 'tag', label: 'Tags', kind: 'select', options: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social', 'Weapon Arts'] },
       { key: 'class', label: 'Class', kind: 'select', options: ['Vanguard', 'Defender', 'Sharpshooter', 'Caster', 'Support', 'Striker', 'Specialist'] },
-      { key: 'rarity', label: 'ระดับ', kind: 'select', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },
-      { key: 'tag', label: 'ประเภท', kind: 'select', options: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social'] },
-      { key: 'cost', label: 'Cost (WP)', kind: 'text', placeholder: 'เช่น 2 WP' },
-      { key: 'ql', label: 'Quality of Life (QL)', kind: 'text', placeholder: 'เช่น 2 QL' },
-      { key: 'knowledge', label: 'Knowledge Points', kind: 'text', placeholder: 'เช่น 1 KP' },
+      { key: 'rarity', label: 'Capacity', kind: 'select', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },
+      { key: 'cost', label: 'Willpower (WP)', kind: 'select', options: ['0 WP', '1 WP', '2 WP', '3 WP', '4 WP', '5 WP'] },
+      { key: 'ql', label: 'Quality of Life', kind: 'select', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
+      { key: 'knowledge', label: 'Knowledge Points', kind: 'select', options: ['1 KP', '2 KP', '3 KP', '4 KP', '5 KP'] },
+      { key: 'curiosity', label: 'Curiosity Point', kind: 'select', options: ['1 CP', '2 CP', '3 CP', '4 CP', '5 CP'] },
       { key: 'duration', label: 'Cooldown', kind: 'select', options: ['None', '1 turn', '1 scene', 'Once/day'] },
+      { key: 'requirements', label: 'Requirements', kind: 'select', options: ['None', 'Proficiency', 'Level 5+'] },
     ],
   },
 };
@@ -322,6 +324,6 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
     if (c.numKey) keys.add(c.numKey);
   }
   // Common extra keys used by seed data / rendering.
-  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding'].forEach((k) => keys.add(k));
+  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding', 'ehenOrgan', 'ehenCore', 'coreRecover', 'engravedSpells', 'weaponArts'].forEach((k) => keys.add(k));
   return [...keys];
 }
