@@ -20,6 +20,7 @@ import { uploadsRouter } from './routes/uploads.js';
 import { searchRouter } from './routes/search.js';
 import { announcementsRouter } from './routes/announcements.js';
 import { heroesRouter } from './routes/heroes.js';
+import { statsRouter } from './routes/stats.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -68,6 +69,7 @@ app.use('/api/uploads', uploadsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/announcements', announcementsRouter);
 app.use('/api/heroes', heroesRouter);
+app.use('/api/stats', statsRouter);
 
 // Central error handler.
 app.use(

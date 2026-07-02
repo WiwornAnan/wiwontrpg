@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { NAV_ITEMS, type Bookmark } from '@wiwonanant/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DOC_CATEGORY_LABELS, NAV_ITEMS, type Bookmark } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { useBookmarks, useComments, useLatest } from '../lib/hooks';
 import { api } from '../lib/api';
@@ -13,6 +13,13 @@ export function HomePage() {
   const { data: latest } = useLatest();
   const { user } = useAuth();
   const { data: bookmarks } = useBookmarks();
+  const [hero, setHero] = useState<'A' | 'B' | 'C'>('A');
+
+  const { data: catData } = useQuery({
+    queryKey: ['category-counts'],
+    queryFn: () => api.get<{ counts: Record<string, number> }>('/stats/categories'),
+  });
+  const catCounts = catData?.counts ?? {};
 
   const latestArticles = latest?.articles ?? [];
   const suggested = latestArticles.slice(0, 4);
@@ -30,27 +37,68 @@ export function HomePage() {
 
   return (
     <div className={styles.page}>
-      {/* HERO A — full black banner */}
-      <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--ink)', borderRadius: 18, padding: '54px 56px', minHeight: 300, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ position: 'absolute', right: -60, top: -60, width: 420, height: 420, background: 'radial-gradient(circle at 30% 30%,rgba(224,122,95,.55),transparent 62%)', filter: 'blur(10px)' }} />
-        <span style={{ color: '#9a978e', fontSize: 13, letterSpacing: '.02em', marginBottom: 14, position: 'relative' }}>
-          Welcome to Wiwon&#8202;Anant
-        </span>
-        <h1 style={{ margin: 0, color: '#fff', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 42, lineHeight: 1.12, letterSpacing: '-.01em', maxWidth: 760, position: 'relative' }}>
-          Welcome, visitors, to the ‘Wiwon Library,’ a repository of infinite volumes of ‘Golden Revelations.’
-        </h1>
-        <p style={{ color: '#b6b3aa', fontSize: 15, lineHeight: 1.65, maxWidth: 480, margin: '20px 0 0', position: 'relative' }}>
-          A comprehensive database of ever-changing raw data for ‘Wiwon&#8202;Anant’ — a TRPG crafted from the passion to give fantasy universes a more logical framework.
-        </p>
-        <div style={{ display: 'flex', gap: 10, marginTop: 26, position: 'relative' }}>
-          <Button variant="coral" onClick={() => navigate('/core-rules')}>
-            เริ่มสำรวจ Core Rules
-          </Button>
-          <Button variant="ghost" onClick={() => navigate('/wiwon')}>
-            เข้าสู่ Wiwon
-          </Button>
+      {/* hero variant switcher */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#8d8a82' }}>
+          <span style={{ letterSpacing: '.04em' }}>HERO LAYOUT</span>
+          <div style={{ display: 'flex', background: '#e7e5df', borderRadius: 8, padding: 3, gap: 2 }}>
+            {(['A', 'B', 'C'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setHero(v)}
+                style={{ padding: '4px 12px', borderRadius: 6, border: 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', background: hero === v ? '#fff' : 'transparent', color: hero === v ? '#15140f' : '#8d8a82' }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* HERO A — full black banner */}
+      {hero === 'A' && (
+        <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--ink)', borderRadius: 18, padding: '54px 56px', minHeight: 300, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', right: -60, top: -60, width: 420, height: 420, background: 'radial-gradient(circle at 30% 30%,rgba(224,122,95,.55),transparent 62%)', filter: 'blur(10px)' }} />
+          <span style={{ color: '#9a978e', fontSize: 13, letterSpacing: '.02em', marginBottom: 14, position: 'relative' }}>Welcome to Wiwon&#8202;Anant</span>
+          <h1 style={{ margin: 0, color: '#fff', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 42, lineHeight: 1.12, letterSpacing: '-.01em', maxWidth: 760, position: 'relative' }}>
+            Welcome, visitors, to the ‘Wiwon Library,’ a repository of infinite volumes of ‘Golden Revelations.’
+          </h1>
+          <p style={{ color: '#b6b3aa', fontSize: 15, lineHeight: 1.65, maxWidth: 480, margin: '20px 0 0', position: 'relative' }}>
+            A comprehensive database of ever-changing raw data for ‘Wiwon&#8202;Anant’ — a TRPG crafted from the passion to give fantasy universes a more logical framework.
+          </p>
+        </div>
+      )}
+
+      {/* HERO B — split with cover artwork */}
+      {hero === 'B' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 0, border: '1px solid #e4e2dc', borderRadius: 18, overflow: 'hidden', background: '#fff', minHeight: 300 }}>
+          <div style={{ padding: '50px 52px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <span style={{ fontSize: 11.5, letterSpacing: '.14em', color: '#e07a5f', fontWeight: 600 }}>THE GOLDEN REVELATIONS</span>
+            <h1 style={{ margin: '16px 0 0', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 46, lineHeight: 1.08, letterSpacing: '-.015em' }}>A repository of infinite volumes.</h1>
+            <p style={{ color: '#5f5c54', fontSize: 15, lineHeight: 1.65, margin: '18px 0 26px', maxWidth: 440 }}>สารานุกรมจักรวาล WiwonAnant — รวบรวมกฎ เนื้อเรื่อง และข้อมูลโลกทั้งหมดสำหรับผู้เล่นและ GM ไว้ในที่เดียว</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => navigate('/core-rules')} style={{ padding: '11px 22px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13.5, fontWeight: 500, cursor: 'pointer' }}>เริ่มสำรวจ Core Rules</button>
+              <button onClick={() => navigate('/wiwon')} style={{ padding: '11px 22px', background: '#fff', color: '#15140f', border: '1px solid #d9d7d0', borderRadius: 9, fontSize: 13.5, fontWeight: 500, cursor: 'pointer' }}>เข้าสู่ Wiwon</button>
+            </div>
+          </div>
+          <div style={{ background: '#f4d9d1', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #e4e2dc' }}>
+            <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: '#bb8276', letterSpacing: '.04em' }}>cover artwork</span>
+          </div>
+        </div>
+      )}
+
+      {/* HERO C — centered minimal */}
+      {hero === 'C' && (
+        <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 18, padding: '56px 40px', textAlign: 'center' }}>
+          <span style={{ fontSize: 11.5, letterSpacing: '.16em', color: '#a8a59d', fontWeight: 600 }}>WIWON · ANANT · ENCYCLOPEDIA</span>
+          <h1 style={{ margin: '18px auto 0', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 48, lineHeight: 1.1, letterSpacing: '-.015em', maxWidth: 720 }}>The Wiwon Library, a repository of infinite Golden Revelations.</h1>
+          <div style={{ maxWidth: 560, margin: '26px auto 0', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 12, padding: '6px 6px 6px 18px' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a8a59d" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+            <input placeholder="ค้นหากฎ ตัวละคร ไอเทม หรือเนื้อเรื่อง…" style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, padding: '8px 0' }} />
+            <button onClick={() => navigate('/core-rules')} style={{ padding: '9px 22px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>ค้นหา</button>
+          </div>
+        </div>
+      )}
 
       {/* suggested + trending */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 22, marginTop: 24 }}>
@@ -60,8 +108,8 @@ export function HomePage() {
               <span style={{ width: 9, height: 9, background: 'var(--coral)', borderRadius: '50%' }} />
               Suggested for you
             </h2>
-            <Link to="/core-rules" style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
-              ดูทั้งหมด →
+            <Link to="/wiwon" style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+              Wiwon all →
             </Link>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
@@ -73,11 +121,21 @@ export function HomePage() {
                 style={{ cursor: 'pointer', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-faint)' }}
               >
                 <div style={{ height: 104, background: '#f4d9d1', display: 'flex', alignItems: 'flex-end', padding: 8 }}>
-                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, color: '#bb8276' }}>{a.partSection.split(':')[0]}</span>
+                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, color: '#bb8276' }}>cover art</span>
                 </div>
                 <div style={{ padding: '11px 12px 13px' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{a.title}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 3 }}>บทความ</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 3 }}>{DOC_CATEGORY_LABELS[a.category]}</div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 9, fontSize: 11, color: '#5f5c54' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 11, height: 11, background: '#15140f', borderRadius: 2 }} />
+                      2.4K
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 11, height: 11, background: '#e07a5f', borderRadius: 2 }} />
+                      4.8
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -95,9 +153,13 @@ export function HomePage() {
               >
                 <span style={{ width: 26, height: 26, borderRadius: 7, background: '#efece6', flex: 'none' }} />
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{n.label}</span>
+                <span style={{ fontSize: 12, color: '#9a978e' }}>{catCounts[n.id] ?? 0} Articles</span>
               </Link>
             ))}
           </div>
+          <Link to="/wiwon" style={{ marginTop: 14, alignSelf: 'center', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+            See all →
+          </Link>
         </div>
       </div>
 
