@@ -7,7 +7,7 @@
 
 services:
   - type: web
-    name: wiwonanant
+    name: wiwontrpg
     runtime: node
     plan: free
     region: singapore # ใกล้ไทยที่สุด (latency ต่ำ)
