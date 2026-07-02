@@ -109,6 +109,61 @@ async function main() {
     console.log(`Seeded ${coreDocs.length} core-rules articles`);
   }
 
+  // ---- Wiwon covers + articles (seed once) ----
+  if ((await prisma.wiwonCover.count()) === 0) {
+    const vol1 = await prisma.wiwonCover.create({
+      data: {
+        name: 'Wiwon เล่มที่ 1',
+        updateDateLabel: '15/06/2569',
+        heroTitle: 'Cosmic Geography',
+        heroSubtitle: 'แผนที่จักรวาล Wiwon ครอบคลุมทวีปนับไม่ถ้วน แต่ละแห่งหล่อหลอมด้วยพลังอาคมที่ผันผวน.',
+        hasData: true,
+        orderIndex: 0,
+      },
+    });
+    const vol2 = await prisma.wiwonCover.create({
+      data: {
+        name: 'Wiwon เล่มที่ 2',
+        updateDateLabel: '18/06/2569',
+        heroTitle: 'Characters & Species',
+        heroSubtitle: 'สารบบเผ่าพันธุ์และวัฒนธรรมของสรรพชีวิตในจักรวาล Wiwon.',
+        hasData: true,
+        orderIndex: 1,
+      },
+    });
+    // empty cover
+    await prisma.wiwonCover.create({
+      data: { name: 'Wiwon เล่มที่ 3', updateDateLabel: '(เร็ว ๆ นี้)', hasData: false, orderIndex: 2 },
+    });
+
+    const wiwonDocs = [
+      { cover: vol1.id, part: 'World & Geography', title: 'The World Mapping & Continents', summary: 'ภาพรวมแผนที่โลกและทวีปหลักของ Wiwon.', body: 'จักรวาล Wiwon ประกอบด้วยทวีปมากมายที่เปลี่ยนแปลงตามพลังอาคม.\n\nนักผจญภัยต้องเรียนรู้สัญญาณของ Wiwon เพื่อนำทาง.' },
+      { cover: vol1.id, part: 'World & Geography', title: 'The Celestial Realms & Night Sky', summary: 'อาณาจักรสวรรค์และท้องฟ้ายามค่ำคืน.', body: 'เหนือผืนแผ่นดินคืออาณาจักรสวรรค์ที่เต็มไปด้วยความลี้ลับ.' },
+      { cover: vol2.id, part: 'Characters & Species', title: 'The Concept of Life in Wiwon-Anant', summary: 'แนวคิดเรื่องชีวิตในจักรวาล Wiwon-Anant.', body: 'ชีวิตในจักรวาลนี้มีรูปแบบหลากหลาย ตั้งแต่มนุษย์ไปจนถึงสิ่งมีชีวิตเหนือธรรมชาติ.' },
+    ];
+    let widx = 0;
+    for (const d of wiwonDocs) {
+      await prisma.article.create({
+        data: {
+          category: 'wiwon',
+          wiwonCoverId: d.cover,
+          partSection: d.part,
+          orderIndex: widx++,
+          title: d.title,
+          summary: d.summary,
+          bodyText: d.body,
+          notes: '[]',
+          tables: '[]',
+          images: '[]',
+          tags: JSON.stringify(['Wiwon', 'Lore']),
+          authorName: 'ทีมพัฒนา',
+          status: 'published',
+        },
+      });
+    }
+    console.log(`Seeded ${wiwonDocs.length} wiwon articles across covers`);
+  }
+
   // ---- one home comment (if none) ----
   if ((await prisma.comment.count()) === 0) {
     await prisma.comment.create({

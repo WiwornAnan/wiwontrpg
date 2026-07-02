@@ -11,6 +11,7 @@ import {
   type DocCategory,
   type ImageLayout,
   type StickyNote,
+  type WiwonCover,
 } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
@@ -25,6 +26,7 @@ type StatusFilter = 'all' | 'published' | 'draft';
 interface Draft {
   id?: string;
   category: DocCategory;
+  wiwonCoverId: string | null;
   partSection: string;
   title: string;
   summary: string;
@@ -42,6 +44,7 @@ interface Draft {
 
 const emptyDraft = (): Draft => ({
   category: 'core-rules',
+  wiwonCoverId: null,
   partSection: 'Contents',
   title: '',
   summary: '',
@@ -61,6 +64,7 @@ function toDraft(a: Article): Draft {
   return {
     id: a.id,
     category: a.category,
+    wiwonCoverId: a.wiwonCoverId,
     partSection: a.partSection,
     title: a.title,
     summary: a.summary,
@@ -98,6 +102,13 @@ export function ContentEditorPage() {
     enabled: isDev,
   });
   const allDocs = useMemo(() => data ?? [], [data]);
+
+  const { data: coversData } = useQuery({
+    queryKey: ['wiwon-covers'],
+    queryFn: () => api.get<{ covers: WiwonCover[] }>('/wiwon-covers'),
+    enabled: isDev,
+  });
+  const covers = coversData?.covers ?? [];
 
   // Open a doc for editing when ?id= is present.
   const editId = params.get('id');
@@ -226,6 +237,7 @@ export function ContentEditorPage() {
             setDraft={setDraft}
             tagInput={tagInput}
             setTagInput={setTagInput}
+            covers={covers}
           />
           <div style={{ display: 'flex', gap: 10, marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border-faint)' }}>
             <Button variant="ghost" onClick={() => save.mutate('draft')} disabled={save.isPending || !draft.title.trim()}>
@@ -276,11 +288,13 @@ function EditorForm({
   setDraft,
   tagInput,
   setTagInput,
+  covers,
 }: {
   draft: Draft;
   setDraft: React.Dispatch<React.SetStateAction<Draft>>;
   tagInput: string;
   setTagInput: (v: string) => void;
+  covers: WiwonCover[];
 }) {
   const [uploadingIcon, setUploadingIcon] = useState<'large' | 'small' | null>(null);
 
@@ -315,7 +329,14 @@ function EditorForm({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <label style={labelStyle}>หมวดหมู่ (หน้าปลายทาง)</label>
-          <select style={inputStyle} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as DocCategory })}>
+          <select
+            style={inputStyle}
+            value={draft.category}
+            onChange={(e) => {
+              const category = e.target.value as DocCategory;
+              setDraft({ ...draft, category, wiwonCoverId: category === 'wiwon' ? draft.wiwonCoverId : null });
+            }}
+          >
             {DOC_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {DOC_CATEGORY_LABELS[c]}
@@ -328,6 +349,20 @@ function EditorForm({
           <input style={inputStyle} value={draft.partSection} onChange={(e) => setDraft({ ...draft, partSection: e.target.value })} placeholder="เช่น Part 1: World & Lore" />
         </div>
       </div>
+
+      {draft.category === 'wiwon' && (
+        <div>
+          <label style={labelStyle}>อยู่ในปกเล่ม (Wiwon)</label>
+          <select style={inputStyle} value={draft.wiwonCoverId ?? ''} onChange={(e) => setDraft({ ...draft, wiwonCoverId: e.target.value || null })}>
+            <option value="">— ไม่ระบุเล่ม —</option>
+            {covers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <label style={labelStyle}>ชื่อบทความ</label>

@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { CoreRulesPage } from './pages/CoreRulesPage';
+import { WiwonPage } from './pages/WiwonPage';
 import { ArticleDetailPage } from './pages/ArticleDetailPage';
 import { ContentEditorPage } from './pages/ContentEditorPage';
 import { Placeholder } from './pages/Placeholder';
@@ -16,7 +17,7 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/core-rules" element={<CoreRulesPage />} />
           <Route path="/core-rules/:id" element={<ArticleDetailPage category="core-rules" />} />
-          <Route path="/wiwon" element={<Placeholder title="Wiwon" note="Phase 2" />} />
+          <Route path="/wiwon" element={<WiwonPage />} />
           <Route path="/wiwon/:id" element={<ArticleDetailPage category="wiwon" />} />
           <Route path="/characters" element={<Placeholder title="Characters" note="Phase 3" />} />
           <Route path="/characters/:id" element={<ArticleDetailPage category="characters" />} />

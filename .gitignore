@@ -18,3 +18,6 @@ apps/api/uploads/*
 
 # Vite
 apps/web/.vite/
+
+# scratch
+render-check.mjs

@@ -19,6 +19,8 @@ interface Props {
   heroSubtitle?: string;
   aboveGrid?: ReactNode; // e.g. Wiwon cover carousel
   emptyNote?: string;
+  hideHero?: boolean; // Wiwon renders its own cover-driven hero instead
+  paneTitle?: string; // reading-pane header label
 }
 
 interface Group {
@@ -26,7 +28,7 @@ interface Group {
   items: Article[];
 }
 
-export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote }: Props) {
+export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote, hideHero, paneTitle }: Props) {
   const { isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -95,7 +97,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
 
   return (
     <div className={styles.page}>
-      <HeroBanner category={category} title={heroTitle} subtitle={heroSubtitle} />
+      {!hideHero && <HeroBanner category={category} title={heroTitle} subtitle={heroSubtitle} />}
 
       {aboveGrid}
 
@@ -191,7 +193,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
         {selected ? (
           <div className={styles.pane}>
             <div className={styles.paneHead}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{heroTitle ?? meta.name}</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{paneTitle ?? heroTitle ?? meta.name}</span>
               <span style={{ fontSize: 12, color: '#9a978e' }}>Update: {new Date(selected.updatedAt).toLocaleDateString('th-TH')}</span>
             </div>
             <div style={{ padding: '22px 24px 24px' }}>
