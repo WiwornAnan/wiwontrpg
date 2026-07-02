@@ -2,7 +2,7 @@ name: Database Backup
 
 on:
   schedule:
-    - cron: '0 18 * * *' # ทุกวัน 01:00 (เวลาไทย)
+    - cron: '0 18 * * *'
   workflow_dispatch: {}
 
 concurrency:
@@ -25,9 +25,16 @@ jobs:
           fi
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          docker run --rm -e DATABASE_URL postgres:17 \
-            sh -c 'pg_dump "$DATABASE_URL" --no-owner --no-privileges --format=custom' \
-            > "backup-$STAMP.dump"
+          docker run --rm -e DATABASE_URL postgres:17 sh -c '
+            set -e
+            URL=$(printf "%s" "$DATABASE_URL" | sed "s/-pooler//")
+            case "$URL" in
+              *sslmode=*) : ;;
+              *\?*) URL="$URL&sslmode=require" ;;
+              *) URL="$URL?sslmode=require" ;;
+            esac
+            pg_dump "$URL" --no-owner --no-privileges --format=custom
+          ' > "backup-$STAMP.dump"
           ls -lh "backup-$STAMP.dump"
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
