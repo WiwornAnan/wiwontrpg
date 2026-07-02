@@ -58,6 +58,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const qc = useQueryClient();
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
   const isMagicSpell = category === 'magic' && !isFeature;
+  const isMagicFeature = category === 'magic' && isFeature;
 
   const canEdit = isDev || (!!user && item.isHomebrew && item.ownerUserId === user.id);
   const [descOpen, setDescOpen] = useState(false);
@@ -84,7 +85,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const stats = source.filterFields
     .filter((f) => {
       if (EXCLUDE_STAT.has(f.key)) return false;
-      if (isMagicSpell && MAGIC_EXCLUDE.has(f.key)) return false;
+      if ((isMagicSpell || isMagicFeature) && MAGIC_EXCLUDE.has(f.key)) return false;
       if (seen.has(f.key)) return false;
       seen.add(f.key);
       return true;
@@ -95,6 +96,12 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const keyStats = isMagicSpell
     ? [
         { label: 'Magic Slot', value: fv(item, 'cost') || '—', bg: '#fdece2', color: '#c1502a' },
+        { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
+        { label: 'Knowledge', value: fv(item, 'knowledge') || '—', bg: '#e5edfb', color: '#2a6fdb' },
+      ]
+    : isMagicFeature
+    ? [
+        { label: 'Willpower', value: fv(item, 'cost') || '—', bg: '#fbeae6', color: '#c0432a' },
         { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
         { label: 'Knowledge', value: fv(item, 'knowledge') || '—', bg: '#e5edfb', color: '#2a6fdb' },
       ]
