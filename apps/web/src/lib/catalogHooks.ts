@@ -9,6 +9,7 @@ export interface CatalogListResult {
   pageSize: number;
   popularTags: string[];
   stats: { total: number; official: number; homebrew: number };
+  statBoxes: { label: string; value: number | string }[];
 }
 
 export interface CatalogQuery {

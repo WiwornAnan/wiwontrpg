@@ -87,11 +87,33 @@ catalogRouter.get('/:category', async (req, res) => {
   const start = (page - 1) * CATALOG_PAGE_SIZE;
   const paged = items.slice(start, start + CATALOG_PAGE_SIZE);
 
-  // Live stats.
+  // Live stat boxes (top-right of the catalog), computed over the full scope set.
+  const all = rows.map(toCatalogItem);
+  const distinct = (key: string) => new Set(all.map((it) => String(it.fields[key] ?? '')).filter(Boolean)).size;
   const officialCount = rows.filter((r) => !r.isHomebrew).length;
+  let statBoxes: { label: string; value: number | string }[];
+  if (category === 'equipment') {
+    statBoxes = [
+      { label: 'Total Items', value: all.length },
+      { label: 'Categories Tags', value: distinct('tag') },
+      { label: 'Rarity', value: distinct('rarity') },
+    ];
+  } else if (category === 'magic') {
+    statBoxes = [
+      { label: isFeature ? 'Total Features' : 'Total Spells', value: all.length },
+      { label: isFeature ? 'Class' : 'Schools', value: distinct(isFeature ? 'class' : 'school') },
+      { label: isFeature ? 'Capacity' : 'Rarity', value: distinct('rarity') },
+    ];
+  } else {
+    statBoxes = [
+      { label: 'Total Entries', value: all.length },
+      { label: 'Types', value: distinct('type') },
+      { label: 'Danger Tiers', value: distinct('dr') },
+    ];
+  }
   const stats = { total: rows.length, official: officialCount, homebrew: rows.length - officialCount };
 
-  res.json({ items: paged, total, page, pageSize: CATALOG_PAGE_SIZE, popularTags, stats });
+  res.json({ items: paged, total, page, pageSize: CATALOG_PAGE_SIZE, popularTags, stats, statBoxes });
 });
 
 catalogRouter.get('/:category/item/:id', async (req, res) => {
