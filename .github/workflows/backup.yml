@@ -25,7 +25,7 @@ jobs:
           fi
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          docker run --rm -e DATABASE_URL postgres:17 sh -c '
+          docker run --rm -e DATABASE_URL postgres:18 sh -c '
             set -e
             URL=$(printf "%s" "$DATABASE_URL" | sed "s/-pooler//")
             case "$URL" in
