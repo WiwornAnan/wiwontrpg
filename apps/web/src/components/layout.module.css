@@ -1,0 +1,195 @@
+.page {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 32px 40px 80px;
+  animation: fadeIn 0.4s ease;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 24px;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--ink);
+  border-radius: var(--r-hero);
+  padding: 46px 48px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+}
+.heroGlow {
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(224, 122, 95, 0.3), transparent 65%);
+  pointer-events: none;
+}
+.heroTitle {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 32px;
+  letter-spacing: -0.01em;
+  position: relative;
+}
+.heroSub {
+  color: #c4c1b8;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+  max-width: 640px;
+  position: relative;
+}
+.heroEdit {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: rgba(42, 40, 34, 0.85);
+  border: 1px solid #3d3a32;
+  color: #e8e5dd;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.heroEdit:hover {
+  background: #3a382f;
+}
+
+/* two-column docs layout: part cards (left) + sticky reading pane (right) */
+.docGrid {
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  gap: 22px;
+  align-items: start;
+}
+.partCol {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.partCard {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.partHead {
+  background: var(--ink);
+  color: #fff;
+  padding: 13px 18px;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.partBody {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.docLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  padding: 3px 0;
+}
+.docLink:hover {
+  color: var(--coral);
+}
+.docLinkActive {
+  color: var(--coral);
+  font-weight: 600;
+}
+.pane {
+  position: sticky;
+  top: 96px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.paneHead {
+  background: var(--ink);
+  color: #fff;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.readMore {
+  margin-top: 18px;
+  width: 100%;
+  padding: 11px 18px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.readMore:hover {
+  background: var(--divider);
+}
+.addPart {
+  padding: 11px;
+  background: var(--coral-bg);
+  border: 1px dashed #e0c4ba;
+  color: var(--coral-ink);
+  border-radius: var(--r-lg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.addPart:hover {
+  background: #efe0db;
+}
+.draftBadge {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #b4844a;
+  border: 1px solid #e6cfa6;
+  background: #fdf6e8;
+  border-radius: 3px;
+  padding: 0 4px;
+  flex: none;
+}
+.tag {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: #edeae4;
+  border-radius: 20px;
+  color: var(--text-dim);
+}
+.footNote {
+  text-align: center;
+  color: var(--text-ghost);
+  font-size: 12px;
+  margin-top: 34px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}

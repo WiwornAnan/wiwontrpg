@@ -1,0 +1,82 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import session from 'express-session';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import { ENV } from './env.js';
+import { PrismaSessionStore } from './sessionStore.js';
+import { loadUser } from './middleware/auth.js';
+import { authRouter } from './routes/auth.js';
+import { articlesRouter } from './routes/articles.js';
+import { coversRouter } from './routes/covers.js';
+import { catalogRouter } from './routes/catalog.js';
+import { tagsRouter } from './routes/tags.js';
+import { prayRouter } from './routes/pray.js';
+import { creditsRouter } from './routes/credits.js';
+import { commentsRouter } from './routes/comments.js';
+import { bookmarksRouter } from './routes/bookmarks.js';
+import { uploadsRouter } from './routes/uploads.js';
+import { searchRouter } from './routes/search.js';
+import { announcementsRouter } from './routes/announcements.js';
+import { heroesRouter } from './routes/heroes.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const app = express();
+
+app.use(
+  cors({
+    origin: ENV.WEB_ORIGIN,
+    credentials: true,
+  }),
+);
+app.use(express.json({ limit: '12mb' }));
+app.use(cookieParser());
+app.use(
+  session({
+    name: 'wiwon.sid',
+    secret: ENV.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: new PrismaSessionStore(),
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: ENV.NODE_ENV === 'production',
+      maxAge: 1000 * 60 * 60 * 24 * 30,
+    },
+  }),
+);
+app.use(loadUser);
+
+// Static serving of locally-stored uploads.
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.use('/api/auth', authRouter);
+app.use('/api/articles', articlesRouter);
+app.use('/api/wiwon-covers', coversRouter);
+app.use('/api/catalog', catalogRouter);
+app.use('/api/tags', tagsRouter);
+app.use('/api/pray', prayRouter);
+app.use('/api/credits', creditsRouter);
+app.use('/api/comments', commentsRouter);
+app.use('/api/bookmarks', bookmarksRouter);
+app.use('/api/uploads', uploadsRouter);
+app.use('/api/search', searchRouter);
+app.use('/api/announcements', announcementsRouter);
+app.use('/api/heroes', heroesRouter);
+
+// Central error handler.
+app.use(
+  (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดภายในระบบ' });
+  },
+);
+
+app.listen(ENV.PORT, () => {
+  console.log(`[api] listening on http://localhost:${ENV.PORT}`);
+});

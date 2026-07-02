@@ -1,0 +1,200 @@
+// WiwonAnant data model. SQLite for local dev; swap `provider` to "postgresql" later.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String
+  displayName       String
+  role              String   @default("user") // 'user' | 'dev'
+  devCodeVerifiedAt DateTime?
+  creditBalance     Int      @default(0)
+  lastCrClaimAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  catalogItems CatalogItem[]
+  prayFrom     PrayMessage[] @relation("PrayFrom")
+  prayTo       PrayMessage[] @relation("PrayTo")
+  prayReplies  PrayReply[]
+  crLedger     CrLedgerEntry[]
+  comments     Comment[]
+  bookmarks    Bookmark[]
+}
+
+model Session {
+  sid       String   @id
+  data      String
+  expiresAt DateTime
+}
+
+model Article {
+  id           String   @id @default(cuid())
+  category     String // 'core-rules' | 'wiwon' | 'characters'
+  wiwonCoverId String?
+  partSection  String   @default("Contents")
+  orderIndex   Int      @default(0)
+  title        String
+  summary      String   @default("")
+  bodyText     String   @default("")
+  notes        String   @default("[]") // JSON StickyNote[]
+  tables       String   @default("[]") // JSON ArticleTable[]
+  images       String   @default("[]") // JSON ArticleImage[]
+  footnote     String?
+  authorName   String?
+  tags         String   @default("[]") // JSON string[]
+  iconLarge    String?
+  iconSmall    String?
+  status       String   @default("draft") // 'draft' | 'published'
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wiwonCover WiwonCover? @relation(fields: [wiwonCoverId], references: [id], onDelete: SetNull)
+  bookmarks  Bookmark[]
+
+  @@index([category, status])
+  @@index([wiwonCoverId])
+}
+
+model WiwonCover {
+  id              String   @id @default(cuid())
+  name            String
+  updateDateLabel String?
+  coverImageUrl   String?
+  heroTitle       String?
+  heroSubtitle    String?
+  heroImageUrl    String?
+  hasData         Boolean  @default(false)
+  orderIndex      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  articles Article[]
+}
+
+model CatalogItem {
+  id                  String   @id @default(cuid())
+  category            String // 'equipment' | 'magic' | 'monster'
+  isFeature           Boolean  @default(false)
+  name                String
+  subtitle            String?
+  fields              String   @default("{}") // JSON category-specific field bag
+  description         String   @default("")
+  tags                String   @default("[]") // JSON string[]
+  source              String   @default("Homebrew")
+  isHomebrew          Boolean  @default(false)
+  ownerUserId         String?
+  isOfficialAdded     Boolean  @default(false)
+  approvedFromHomebrew Boolean @default(false)
+  iconUrl             String?
+  // live trackers (nullable — only set when relevant to the category)
+  durabilityRemaining Int?
+  woundsRemaining     Int?
+  willpowerRemaining  Int?
+  scratchCurrent      Int?
+  ammoCurrent         Int?
+  manaUsed            Int?
+  nameCount           Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  owner        User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  prayMessages PrayMessage[]
+  bookmarks    Bookmark[]
+
+  @@index([category, isHomebrew])
+  @@index([ownerUserId])
+}
+
+model PrayMessage {
+  id             String   @id @default(cuid())
+  kind           String   @default("general") // 'general' | 'official-request'
+  catalogItemId  String?
+  fromUserId     String
+  toUserId       String?
+  subject        String   @default("")
+  body           String   @default("")
+  readByDev      Boolean  @default(false)
+  readByUser     Boolean  @default(false)
+  approved       Boolean  @default(false)
+  creditsAwarded Int?
+  createdAt      DateTime @default(now())
+
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  fromUser    User         @relation("PrayFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User?        @relation("PrayTo", fields: [toUserId], references: [id], onDelete: SetNull)
+  replies     PrayReply[]
+
+  @@index([toUserId])
+  @@index([fromUserId])
+}
+
+model PrayReply {
+  id            String   @id @default(cuid())
+  prayMessageId String
+  byUserId      String
+  isDev         Boolean  @default(false)
+  isNotify      Boolean  @default(false)
+  body          String
+  createdAt     DateTime @default(now())
+
+  prayMessage PrayMessage @relation(fields: [prayMessageId], references: [id], onDelete: Cascade)
+  byUser      User        @relation(fields: [byUserId], references: [id], onDelete: Cascade)
+}
+
+model CrLedgerEntry {
+  id               String   @id @default(cuid())
+  userId           String
+  amount           Int
+  reason           String // 'daily-claim' | 'official-approval'
+  refPrayMessageId String?
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id           String   @id @default(cuid())
+  authorUserId String
+  body         String
+  edited       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  author User @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+}
+
+model Bookmark {
+  id            String   @id @default(cuid())
+  userId        String
+  articleId     String?
+  catalogItemId String?
+  createdAt     DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article     Article?     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Generic key/value store for small dev-editable settings (e.g. per-category hero banners).
+model SiteSetting {
+  key       String   @id
+  value     String // JSON
+  updatedAt DateTime @updatedAt
+}
