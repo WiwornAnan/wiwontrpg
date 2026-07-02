@@ -1,11 +1,13 @@
 import type { FilterField } from '@wiwonanant/shared';
+import type { FieldTagMap } from '../lib/catalogHooks';
 
 interface Props {
   fields: FilterField[];
   filters: Record<string, string>;
   ranges: Record<string, { min?: string; max?: string }>;
-  extraOptions?: Record<string, string[]>;
-  hiddenOptions?: Record<string, string[]>;
+  fieldTags?: FieldTagMap;
+  canManage?: boolean;
+  onManage?: (field: FilterField) => void;
   onFilter: (key: string, value: string) => void;
   onRange: (key: string, bound: 'min' | 'max', value: string) => void;
   onClear: () => void;
@@ -13,7 +15,7 @@ interface Props {
 
 const selStyle: React.CSSProperties = { flex: 1, width: '100%', border: '1px solid #e0ded7', borderRadius: 8, padding: '9px 11px', fontSize: 13, background: '#faf9f7', outline: 'none', color: '#46443c' };
 
-export function AdvancedFilterPanel({ fields, filters, ranges, extraOptions, hiddenOptions, onFilter, onRange, onClear }: Props) {
+export function AdvancedFilterPanel({ fields, filters, ranges, fieldTags, canManage, onManage, onFilter, onRange, onClear }: Props) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: '22px 24px', marginBottom: 16, animation: 'fadeIn .25s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -48,14 +50,28 @@ export function AdvancedFilterPanel({ fields, filters, ranges, extraOptions, hid
                 })}
               </div>
             ) : (
-              <select value={filters[f.key] ?? ''} onChange={(e) => onFilter(f.key, e.target.value)} style={selStyle}>
-                <option value="">{f.any ?? 'ทั้งหมด'}</option>
-                {[...(f.options ?? []).filter((o) => !(hiddenOptions?.[f.key] ?? []).includes(o)), ...(extraOptions?.[f.key] ?? [])].map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <select value={filters[f.key] ?? ''} onChange={(e) => onFilter(f.key, e.target.value)} style={selStyle}>
+                  <option value="">{f.any ?? 'ทั้งหมด'}</option>
+                  {[
+                    ...(f.options ?? []).filter((o) => !(fieldTags?.[f.key]?.hidden ?? []).includes(o)),
+                    ...(fieldTags?.[f.key]?.custom ?? []),
+                  ].map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+                {canManage && (
+                  <button
+                    onClick={() => onManage?.(f)}
+                    title="เพิ่ม/ลบแท็ก"
+                    style={{ flex: 'none', width: 30, height: 30, border: '1px solid #e0c4ba', background: '#faf6f4', color: '#b4513a', borderRadius: 7, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
             )}
           </div>
         ))}

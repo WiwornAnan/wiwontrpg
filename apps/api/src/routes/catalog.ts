@@ -76,12 +76,20 @@ catalogRouter.get('/:category', async (req, res) => {
     }
   }
 
-  // Popular tags computed live from the (scope-filtered, pre-search) set.
-  const tagCounts = new Map<string, number>();
-  rows
-    .map(toCatalogItem)
-    .forEach((it) => it.tags.forEach((t) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)));
-  const popularTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([t]) => t);
+  // Popular tags: a dev-set override (SiteSetting) wins; otherwise computed live
+  // from the (scope-filtered, pre-search) set by frequency.
+  const popScope = isFeature ? `${category}-feature` : category;
+  const popOverride = await prisma.siteSetting.findUnique({ where: { key: `popTags:${popScope}` } });
+  let popularTags: string[];
+  if (popOverride) {
+    popularTags = JSON.parse(popOverride.value) as string[];
+  } else {
+    const tagCounts = new Map<string, number>();
+    rows
+      .map(toCatalogItem)
+      .forEach((it) => it.tags.forEach((t) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)));
+    popularTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([t]) => t);
+  }
 
   const total = items.length;
   const start = (page - 1) * CATALOG_PAGE_SIZE;

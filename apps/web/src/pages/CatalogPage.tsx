@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCatalogConfig, type CatalogCategory, type CatalogItem } from '@wiwonanant/shared';
+import { getCatalogConfig, type CatalogCategory, type CatalogItem, type FilterField } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
-import { useCatalog, useCatalogTags, type CatalogQuery } from '../lib/catalogHooks';
+import { useCatalog, useCatalogFieldTags, type CatalogQuery } from '../lib/catalogHooks';
 import { api } from '../lib/api';
 import { AdvancedFilterPanel } from '../components/AdvancedFilterPanel';
+import { ManageTagsModal, PopularTagsModal } from '../components/CatalogTagModals';
 import { CatalogDetail } from '../components/CatalogDetail';
 import { CatalogAddModal } from '../components/CatalogAddModal';
 import { Modal } from '../components/Modal';
@@ -25,14 +26,17 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<CatalogItem | null>(null);
   const [submitItem, setSubmitItem] = useState<CatalogItem | null>(null);
+  const [manageField, setManageField] = useState<FilterField | null>(null);
+  const [popEditOpen, setPopEditOpen] = useState(false);
   const qc = useQueryClient();
 
   const isFeature = query.isFeature;
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
+  const isDev = user?.role === 'dev';
 
   const { data, isLoading } = useCatalog(category, query);
-  const scopeName = isFeature ? `${category}-feature` : category;
-  const { data: customTags } = useCatalogTags(scopeName);
+  const catScope = isFeature ? `${category}-feature` : category;
+  const { data: fieldTags } = useCatalogFieldTags(catScope);
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
@@ -148,8 +152,9 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
           fields={source.filterFields}
           filters={query.filters}
           ranges={query.ranges}
-          extraOptions={{ tag: customTags?.custom ?? [] }}
-          hiddenOptions={{ tag: customTags?.hidden ?? [] }}
+          fieldTags={fieldTags}
+          canManage={isDev}
+          onManage={setManageField}
           onFilter={setFilter}
           onRange={setRange}
           onClear={() => setQuery((q) => ({ ...q, filters: {}, ranges: {}, page: 1 }))}
@@ -171,6 +176,14 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
             </button>
           );
         })}
+        {isDev && (
+          <button
+            onClick={() => setPopEditOpen(true)}
+            style={{ padding: '5px 11px', borderRadius: 20, fontSize: 11.5, cursor: 'pointer', border: '1px dashed #e0c4ba', background: '#faf6f4', color: '#b4513a', fontWeight: 600 }}
+          >
+            ✎ แก้ไข
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 22, alignItems: 'start' }}>
@@ -267,6 +280,20 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
 
       {addOpen && (
         <CatalogAddModal open={addOpen} onClose={() => { setAddOpen(false); setEditItem(null); }} category={category} cfg={cfg} isFeature={isFeature} editItem={editItem} />
+      )}
+
+      {manageField && (
+        <ManageTagsModal
+          field={manageField}
+          catScope={catScope}
+          custom={fieldTags?.[manageField.key]?.custom ?? []}
+          hidden={fieldTags?.[manageField.key]?.hidden ?? []}
+          onClose={() => setManageField(null)}
+        />
+      )}
+
+      {popEditOpen && (
+        <PopularTagsModal catScope={catScope} current={popular} onClose={() => setPopEditOpen(false)} />
       )}
 
       <Modal

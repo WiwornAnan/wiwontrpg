@@ -49,3 +49,13 @@ export function useCatalogTags(scope: string) {
     queryFn: () => api.get<{ custom: string[]; hidden: string[] }>(`/tags/${scope}`),
   });
 }
+
+export type FieldTagMap = Record<string, { custom: string[]; hidden: string[] }>;
+
+// All dev-managed custom/hidden tags for every field of a catalog scope, at once.
+export function useCatalogFieldTags(catScope: string) {
+  return useQuery({
+    queryKey: ['catalog-fieldtags', catScope],
+    queryFn: () => api.get<FieldTagMap>(`/tags/bulk/${catScope}`),
+  });
+}

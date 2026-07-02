@@ -5,9 +5,48 @@ import { requireDev } from '../middleware/auth.js';
 
 export const tagsRouter = Router();
 
-// GET /:scope — dev-added custom tags + hidden built-ins for a catalog scope
-// (e.g. 'equipment', 'magic', 'magic-feature', 'monster'). Frontend merges these
-// with the built-in options from the shared config.
+// GET /bulk/:catScope — all custom/hidden tags for every field of a catalog scope,
+// grouped by field key. Per-field scopes are stored as `${catScope}:${fieldKey}`.
+tagsRouter.get('/bulk/:catScope', async (req, res) => {
+  const catScope = req.params.catScope;
+  const rows = await prisma.tag.findMany({ where: { scope: { startsWith: `${catScope}:` } } });
+  const out: Record<string, { custom: string[]; hidden: string[] }> = {};
+  for (const r of rows) {
+    const fieldKey = r.scope.slice(catScope.length + 1);
+    if (!fieldKey) continue;
+    const e = (out[fieldKey] ??= { custom: [], hidden: [] });
+    if (r.hiddenBuiltin) e.hidden.push(r.label);
+    else if (r.isCustom) e.custom.push(r.label);
+  }
+  res.json(out);
+});
+
+// GET /popular/:catScope — the dev-set Popular Tags override for a scope ([] = auto).
+tagsRouter.get('/popular/:catScope', async (req, res) => {
+  const row = await prisma.siteSetting.findUnique({ where: { key: `popTags:${req.params.catScope}` } });
+  res.json({ tags: row ? (JSON.parse(row.value) as string[]) : [] });
+});
+
+// POST /popular — dev saves a Popular Tags override (empty list → back to auto).
+tagsRouter.post('/popular', requireDev, async (req, res) => {
+  const parsed = z.object({ scope: z.string().min(1), tags: z.array(z.string()) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const key = `popTags:${parsed.data.scope}`;
+  const clean = parsed.data.tags.map((t) => t.trim()).filter(Boolean);
+  if (clean.length === 0) {
+    await prisma.siteSetting.deleteMany({ where: { key } });
+  } else {
+    const value = JSON.stringify(clean);
+    await prisma.siteSetting.upsert({ where: { key }, update: { value }, create: { key, value } });
+  }
+  res.json({ ok: true });
+});
+
+// GET /:scope — dev-added custom tags + hidden built-ins for a single field scope
+// (e.g. 'magic:rarity'). Frontend merges these with the built-in config options.
 tagsRouter.get('/:scope', async (req, res) => {
   const rows = await prisma.tag.findMany({ where: { scope: req.params.scope } });
   res.json({
