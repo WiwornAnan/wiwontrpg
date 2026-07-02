@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { CoreRulesPage } from './pages/CoreRulesPage';
 import { WiwonPage } from './pages/WiwonPage';
+import { CharactersPage } from './pages/CharactersPage';
 import { ArticleDetailPage } from './pages/ArticleDetailPage';
 import { ContentEditorPage } from './pages/ContentEditorPage';
 import { Placeholder } from './pages/Placeholder';
@@ -19,7 +20,7 @@ export function App() {
           <Route path="/core-rules/:id" element={<ArticleDetailPage category="core-rules" />} />
           <Route path="/wiwon" element={<WiwonPage />} />
           <Route path="/wiwon/:id" element={<ArticleDetailPage category="wiwon" />} />
-          <Route path="/characters" element={<Placeholder title="Characters" note="Phase 3" />} />
+          <Route path="/characters" element={<CharactersPage />} />
           <Route path="/characters/:id" element={<ArticleDetailPage category="characters" />} />
           <Route path="/magic" element={<Placeholder title="Magic & Feature" note="Phase 4" />} />
           <Route path="/equipment" element={<Placeholder title="Equipment & Items" note="Phase 4" />} />

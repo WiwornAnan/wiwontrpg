@@ -164,6 +164,35 @@ async function main() {
     console.log(`Seeded ${wiwonDocs.length} wiwon articles across covers`);
   }
 
+  // ---- Characters articles (seed once) ----
+  if ((await prisma.article.count({ where: { category: 'characters' } })) === 0) {
+    const charDocs = [
+      { part: 'Character Foundations', title: 'Primary Attributes', summary: 'คุณลักษณะพื้นฐานหกประการที่นิยามความสามารถของตัวละครทุกตัว.', body: 'คุณลักษณะพื้นฐานครอบคลุมพละกำลัง ความคล่องแคล่ว ความอดทน ไปจนถึงเสน่ห์.\n\nแต่ละค่ากำหนดขนาดลูกเต๋าที่ใช้ในการทดสอบทักษะที่เกี่ยวข้อง.' },
+      { part: 'Character Foundations', title: 'Specialized Skills', summary: 'ทักษะเฉพาะทางที่ตัวละครฝึกฝนจนเชี่ยวชาญ.', body: 'ทักษะเฉพาะทางแบ่งเป็นหลายหมวด แต่ละหมวดผูกกับคุณลักษณะพื้นฐานหนึ่งอย่าง.' },
+      { part: 'Species & Heritage', title: 'Playable Species', summary: 'เผ่าพันธุ์ที่ผู้เล่นสามารถเลือกสร้างตัวละครได้.', body: 'จักรวาล Wiwon เต็มไปด้วยเผ่าพันธุ์หลากหลาย แต่ละเผ่ามีคุณลักษณะและวัฒนธรรมเฉพาะตัว.' },
+    ];
+    let cidx = 0;
+    for (const d of charDocs) {
+      await prisma.article.create({
+        data: {
+          category: 'characters',
+          partSection: d.part,
+          orderIndex: cidx++,
+          title: d.title,
+          summary: d.summary,
+          bodyText: d.body,
+          notes: '[]',
+          tables: '[]',
+          images: '[]',
+          tags: JSON.stringify(['Character', 'Attributes']),
+          authorName: 'ทีมพัฒนา',
+          status: 'published',
+        },
+      });
+    }
+    console.log(`Seeded ${charDocs.length} characters articles`);
+  }
+
   // ---- one home comment (if none) ----
   if ((await prisma.comment.count()) === 0) {
     await prisma.comment.create({
