@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -181,15 +181,21 @@ export function ContentEditorPage() {
 
   return (
     <div className={styles.page}>
-      <h1 style={{ margin: '0 0 20px', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 30 }}>Content Editor</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 30 }}>Content Editor</h1>
+          <p style={{ margin: '6px 0 0', fontSize: 13.5, color: 'var(--text-dim)' }}>จัดการบทความและข้อมูลในสารานุกรม WiwonAnant</p>
+        </div>
+        <button onClick={newDoc} style={{ padding: '11px 20px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+          + บทความใหม่
+        </button>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 22, alignItems: 'start' }}>
         {/* doc list */}
         <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-faint)' }}>
-            <Button variant="coral" style={{ width: '100%' }} onClick={newDoc}>
-              + เขียนบทความใหม่
-            </Button>
-            <div style={{ display: 'flex', gap: 4, marginTop: 12, background: 'var(--surface-sunken)', borderRadius: 8, padding: 3 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>บทความทั้งหมด ({allDocs.length})</div>
+            <div style={{ display: 'flex', gap: 4, background: 'var(--surface-sunken)', borderRadius: 8, padding: 3 }}>
               {(['all', 'published', 'draft'] as StatusFilter[]).map((s) => (
                 <button
                   key={s}
@@ -297,6 +303,7 @@ function EditorForm({
   covers: WiwonCover[];
 }) {
   const [uploadingIcon, setUploadingIcon] = useState<'large' | 'small' | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const paraCount = draft.bodyText.split(/\n\s*\n/).filter((p) => p.trim()).length;
   const posOptions = Array.from({ length: paraCount + 1 }, (_, i) => i);
@@ -385,12 +392,17 @@ function EditorForm({
       </div>
 
       <div>
-        <label style={labelStyle}>เนื้อหา (แยกย่อหน้าด้วยการเว้นบรรทัดว่าง · ใช้ **ตัวหนา** ได้)</label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>เนื้อหา (รายละเอียด)</label>
+          <span style={{ fontSize: 11.5, color: 'var(--text-ghost)' }}>เลือกข้อความก่อน แล้วกดปุ่มจัดรูปแบบ</span>
+        </div>
+        <MarkdownToolbar textareaRef={bodyRef} value={draft.bodyText} onChange={(v) => setDraft({ ...draft, bodyText: v })} onAddNote={() => setDraft((d) => ({ ...d, notes: [...d.notes, { id: uid(), text: '', afterParagraph: paraCount }] }))} onAddTable={() => setDraft((d) => ({ ...d, tables: [...d.tables, { id: uid(), headCells: ['หัวข้อ 1', 'หัวข้อ 2'], rows: [['', '']], afterParagraph: paraCount }] }))} />
         <textarea
-          style={{ ...inputStyle, minHeight: 160, resize: 'vertical', lineHeight: 1.7 }}
+          ref={bodyRef}
+          style={{ ...inputStyle, minHeight: 180, resize: 'vertical', lineHeight: 1.7, borderRadius: '0 0 9px 9px', borderTop: 'none' }}
           value={draft.bodyText}
           onChange={(e) => setDraft({ ...draft, bodyText: e.target.value })}
-          placeholder="พิมพ์เนื้อหาที่นี่…"
+          placeholder="พิมพ์เนื้อหาบทความ…"
         />
       </div>
 
@@ -427,16 +439,6 @@ function EditorForm({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* sticky notes + tables */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Button variant="ghost" style={{ fontSize: 12.5 }} onClick={() => setDraft((d) => ({ ...d, notes: [...d.notes, { id: uid(), text: '', afterParagraph: paraCount }] }))}>
-          📌 แปะป้ายหมายเหตุ
-        </Button>
-        <Button variant="ghost" style={{ fontSize: 12.5 }} onClick={() => setDraft((d) => ({ ...d, tables: [...d.tables, { id: uid(), headCells: ['หัวข้อ 1', 'หัวข้อ 2'], rows: [['', '']], afterParagraph: paraCount }] }))}>
-          ▦ เพิ่มตาราง
-        </Button>
       </div>
 
       {draft.notes.map((n) => (
@@ -575,3 +577,69 @@ function TableEditor({ table, onChange, onRemove }: { table: ArticleTable; onCha
 }
 
 const miniAction: React.CSSProperties = { background: 'var(--surface-sunken)', border: '1px solid var(--border-faint)', borderRadius: 6, fontSize: 11, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-muted)' };
+
+// Markdown toolbar that wraps/prefixes the current selection in the body textarea.
+function MarkdownToolbar({
+  textareaRef,
+  value,
+  onChange,
+  onAddNote,
+  onAddTable,
+}: {
+  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  value: string;
+  onChange: (v: string) => void;
+  onAddNote: () => void;
+  onAddTable: () => void;
+}) {
+  function apply(kind: string) {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const sel = value.slice(start, end) || 'ข้อความ';
+    const wrap = (a: string, b = a) => value.slice(0, start) + a + sel + b + value.slice(end);
+    const prefixLine = (pre: string) => {
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      return value.slice(0, lineStart) + pre + value.slice(lineStart);
+    };
+    let next = value;
+    if (kind === 'b') next = wrap('**');
+    else if (kind === 'i') next = wrap('*');
+    else if (kind === 's') next = wrap('~~');
+    else if (kind === 'h1') next = prefixLine('# ');
+    else if (kind === 'h2') next = prefixLine('## ');
+    else if (kind === 'quote') next = prefixLine('> ');
+    else if (kind === 'ul') next = prefixLine('- ');
+    else if (kind === 'ol') next = prefixLine('1. ');
+    else if (kind === 'hr') next = value.slice(0, start) + '\n\n---\n\n' + value.slice(end);
+    else if (kind === 'link') next = value.slice(0, start) + `[${sel}](https://)` + value.slice(end);
+    onChange(next);
+    requestAnimationFrame(() => ta.focus());
+  }
+  const btn: React.CSSProperties = { minWidth: 30, height: 30, padding: '0 8px', border: '1px solid var(--border-soft)', background: '#fff', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: 'var(--text-muted)' };
+  const tools: [string, React.ReactNode][] = [
+    ['b', <b>B</b>],
+    ['i', <i>I</i>],
+    ['s', <s>S</s>],
+    ['h1', 'H1'],
+    ['h2', 'H2'],
+    ['quote', '“'],
+    ['ul', '•'],
+    ['ol', '1.'],
+    ['hr', '—'],
+    ['link', '🔗'],
+  ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', border: '1px solid var(--border-soft)', borderRadius: '9px 9px 0 0', padding: 8, background: 'var(--surface-alt)' }}>
+      {tools.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => apply(k)} style={btn}>
+          {label}
+        </button>
+      ))}
+      <span style={{ flex: 1 }} />
+      <button type="button" onClick={onAddNote} style={{ ...btn, minWidth: 'auto', color: '#b4844a', borderColor: '#e6cfa6', background: '#fdf6e8' }}>📌 แปะป้าย</button>
+      <button type="button" onClick={onAddTable} style={{ ...btn, minWidth: 'auto' }}>▦ เพิ่มตาราง</button>
+    </div>
+  );
+}
