@@ -69,16 +69,8 @@ export function LoginPage() {
             เข้าสู่ระบบเพื่อบันทึกความคืบหน้า ติดตามบทความ และ (สำหรับผู้พัฒนา) แก้ไขเนื้อหาสารานุกรมได้โดยตรง
           </p>
         </div>
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 11, color: '#7d7a72', letterSpacing: '.08em' }}>บัญชีทดลอง — กดเพื่อกรอกอัตโนมัติ</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => { setMode('login'); setRole('user'); setEmail('player@wiwonanant.local'); setPassword('playerpass'); }}
-              style={{ flex: 1, padding: 9, background: '#2a2822', border: '1px solid #3d3a32', color: '#d4d1c9', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
-            >
-              ผู้เล่น / GM
-            </button>
-          </div>
+        <div style={{ position: 'relative', fontSize: 11.5, color: '#7d7a72', letterSpacing: '.04em', lineHeight: 1.7 }}>
+          ยังไม่มีบัญชี? กด “สมัครสมาชิก” เพื่อเริ่มต้นใช้งานได้ฟรี
         </div>
       </div>
 
