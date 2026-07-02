@@ -13,6 +13,23 @@ function fv(item: CatalogItem, key: string): string {
   return v === undefined || v === null ? '' : String(v);
 }
 
+// Coin denominations for equipment cost (platinum / gold / silver / copper).
+const COIN_TIERS: { key: string; label: string; abbr: string; color: string }[] = [
+  { key: 'platinum', label: 'Platinum', abbr: 'pp', color: '#7fb3c4' },
+  { key: 'gold', label: 'Gold', abbr: 'gp', color: '#cd9b3d' },
+  { key: 'silver', label: 'Silver', abbr: 'sp', color: '#9aa0a6' },
+  { key: 'copper', label: 'Copper', abbr: 'cp', color: '#c0744a' },
+];
+
+// Turn [....] tokens in a description into bold dark badges (e.g. [3RR+4]).
+function renderBadges(html: string): string {
+  return html.replace(
+    /\[([^[\]\n]{1,40})\]/g,
+    (_m, inner: string) =>
+      `<span style="display:inline-flex;align-items:center;gap:4px;background:#15140f;color:#fff;font-weight:700;border-radius:6px;padding:1px 8px;font-size:.92em;white-space:nowrap">🎲 ${inner}</span>`,
+  );
+}
+
 interface Props {
   item: CatalogItem;
   cfg: CatalogConfig;
@@ -40,6 +57,17 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     mutationFn: () => api.delete(`/catalog/${category}/item/${item.id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog', category] }),
   });
+
+  // Equipment coin cost (pp/gp/sp/cp), stored under fields.costCoins.
+  const [coins, setCoins] = useState<Record<string, number>>(() => {
+    const c = item.fields.costCoins;
+    return c && typeof c === 'object' ? { ...(c as Record<string, number>) } : {};
+  });
+  const saveCoins = useMutation({
+    mutationFn: (next: Record<string, number>) => api.patch(`/catalog/${category}/item/${item.id}`, { fields: { ...item.fields, costCoins: next } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog', category] }),
+  });
+  const hasCoins = COIN_TIERS.some((t) => (coins[t.key] ?? 0) > 0);
 
   // 2-column stat list derived from filterFields (matches the reference).
   const seen = new Set<string>();
@@ -140,6 +168,35 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       </div>
 
+      {category === 'equipment' && (canEdit || hasCoins) && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>ราคา (เหรียญ)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {COIN_TIERS.map((t) => (
+              <div key={t.key} style={{ border: '1px solid #ece9e3', borderRadius: 10, padding: '8px 6px', textAlign: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 5 }}>
+                  <span style={{ width: 13, height: 13, borderRadius: '50%', background: t.color, display: 'inline-block' }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#8d8a82' }}>{t.abbr}</span>
+                </div>
+                {canEdit ? (
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={coins[t.key] ?? 0}
+                    onChange={(e) => setCoins((c) => ({ ...c, [t.key]: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                    onBlur={() => saveCoins.mutate(coins)}
+                    style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '5px 4px', textAlign: 'center', fontSize: 14, fontWeight: 700, outline: 'none' }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{coins[t.key] ?? 0}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {item.isHomebrew && (
         <>
           <div style={{ marginTop: 14, fontSize: 11.5, color: '#8d8a82' }}>
@@ -166,7 +223,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       <div
         className="rt-html"
         style={{ fontSize: 12.5, lineHeight: 1.8, color: '#46443c', margin: 0, ...(descLong && !descOpen ? { maxHeight: 92, overflow: 'hidden', maskImage: 'linear-gradient(#000 60%,transparent)' } : {}) }}
-        dangerouslySetInnerHTML={{ __html: descText || '<span style="color:#a8a59d">— ไม่มีคำอธิบาย —</span>' }}
+        dangerouslySetInnerHTML={{ __html: descText ? renderBadges(descText) : '<span style="color:#a8a59d">— ไม่มีคำอธิบาย —</span>' }}
       />
       {descLong && (
         <button onClick={() => setDescOpen((o) => !o)} style={{ marginTop: 8, background: 'none', border: 'none', color: '#5b3fa0', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>

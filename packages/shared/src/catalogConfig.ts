@@ -112,15 +112,18 @@ const EQUIPMENT: CatalogConfig = {
     { key: 'source', label: 'Sources', any: 'Any Tag', options: ["Player's Handbook", 'Arcane Compendium', 'GM Guide', 'Homebrew'] },
   ],
   addFields: [
-    { key: 'name', label: 'ชื่อไอเทม', kind: 'text', placeholder: 'เช่น Ember Shortblade' },
-    { key: 'tag', label: 'ประเภท', kind: 'select', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket'] },
-    { key: 'equipType', label: 'ลักษณะการใช้งาน', kind: 'select', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)', '—'] },
-    { key: 'rarity', label: 'ความหายาก', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
-    { key: 'cost', label: 'ราคา', kind: 'text', placeholder: 'เช่น 75 Cr.' },
-    { key: 'weight', label: 'น้ำหนัก', kind: 'text', placeholder: 'เช่น 0.9 kg' },
-    { key: 'material', label: 'วัสดุ', kind: 'select', options: ['Wood', 'Metal', 'Cloth', 'Leather', 'Crystal', 'Bone'] },
-    { key: 'dmgBonus', label: 'ดาเมจ + (เฉพาะอาวุธ)', kind: 'text', placeholder: 'เช่น 5' },
-    { key: 'manaSlot', label: 'จำนวน Mana Slot', kind: 'text', placeholder: 'เช่น 2' },
+    { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
+    { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket'] },
+    { key: 'equipType', label: 'Usage Type', kind: 'select', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
+    { key: 'availability', label: 'Availability', kind: 'select', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
+    { key: 'cost', label: 'Cost', kind: 'text', placeholder: 'เช่น 2 Cr.' },
+    { key: 'material', label: 'Materials', kind: 'select', options: ['Wood', 'Metal', 'Cloth', 'Leather', 'Crystal', 'Bone'] },
+    { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
+    { key: 'professionalLevel', label: 'Professional Level', kind: 'select', options: ['Amateur', 'Journeyman', 'Expert', 'Master'] },
+    { key: 'damage', label: 'Damage', kind: 'select', options: ['Piercing', 'Slashing', 'Bludgeoning', 'None'] },
+    { key: 'weight', label: 'Weight', kind: 'text', placeholder: 'เช่น 2 Kg' },
+    { key: 'requirements', label: 'Requirements', kind: 'select', options: ['None', 'Strength', 'Dexterity', 'Proficiency'] },
+    { key: 'wielding', label: 'Wielding', kind: 'select', options: ['One-Handed', 'Two-Handed', 'Worn', 'None'] },
   ],
 };
 
@@ -134,7 +137,7 @@ const MAGIC: CatalogConfig = {
   tagColor: '#5b3fa0',
   hasFeature: true,
   statLabels: ['Total Spells', 'Schools', 'Casting Level', 'Rarity', 'Last Updated'],
-  popularTags: ['Fire', 'Water', 'Arcane', 'Air', 'Void', 'Earth', 'Evocation', 'Abjuration', 'Illusion', 'Necromancy', 'Conjuration', 'Divination'],
+  popularTags: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'],
   columns: [
     { key: 'name', label: 'Name', grow: '1.6', sort: 'str' },
     { key: 'school', label: 'School', grow: '1', sort: 'str' },
@@ -157,8 +160,8 @@ const MAGIC: CatalogConfig = {
   ],
   subtitleKey: 'school',
   filterFields: [
-    { key: 'tag', label: 'Color of Ehen', any: 'Any Color', options: ['Fire', 'Water', 'Earth', 'Air', 'Arcane', 'Void'] },
-    { key: 'school', label: 'School', any: 'Any School', options: ['Evocation', 'Abjuration', 'Illusion', 'Conjuration', 'Divination', 'Necromancy'] },
+    { key: 'tag', label: 'Color of Ehen', any: 'Any Color', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
+    { key: 'school', label: 'School', any: 'Any School', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
     { key: 'castLevel', label: 'Casting Level', any: 'Any Level', options: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Rarity', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', any: 'Any Slot', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
@@ -171,8 +174,8 @@ const MAGIC: CatalogConfig = {
   ],
   addFields: [
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
-    { key: 'tag', label: 'Color of Ehen', kind: 'select', options: ['Fire', 'Water', 'Earth', 'Air', 'Arcane', 'Void'] },
-    { key: 'school', label: 'School', kind: 'select', options: ['Evocation', 'Abjuration', 'Illusion', 'Conjuration', 'Divination', 'Necromancy'] },
+    { key: 'tag', label: 'Color of Ehen', kind: 'select', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
+    { key: 'school', label: 'School', kind: 'select', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
     { key: 'castLevel', label: 'Casting Level', kind: 'select', options: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'] },
     { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', kind: 'select', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
@@ -319,6 +322,6 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
     if (c.numKey) keys.add(c.numKey);
   }
   // Common extra keys used by seed data / rendering.
-  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size'].forEach((k) => keys.add(k));
+  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding'].forEach((k) => keys.add(k));
   return [...keys];
 }

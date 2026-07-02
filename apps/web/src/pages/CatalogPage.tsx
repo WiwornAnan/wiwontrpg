@@ -189,7 +189,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 22, alignItems: 'start' }}>
         {/* detail (left) */}
         {selected ? (
-          <CatalogDetail item={selected} cfg={cfg} category={category} isFeature={isFeature} onEdit={(it) => { setEditItem(it); setAddOpen(true); }} onSubmitOfficial={setSubmitItem} />
+          <CatalogDetail key={selected.id} item={selected} cfg={cfg} category={category} isFeature={isFeature} onEdit={(it) => { setEditItem(it); setAddOpen(true); }} onSubmitOfficial={setSubmitItem} />
         ) : (
           <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: '50px 24px', textAlign: 'center', color: '#a8a59d', fontSize: 13, position: 'sticky', top: 96 }}>
             เลือกรายการเพื่อดูรายละเอียด
