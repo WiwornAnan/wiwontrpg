@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Header } from './components/Header';
+import { DiceRoller } from './components/DiceRoller';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { CoreRulesPage } from './pages/CoreRulesPage';
@@ -12,6 +14,7 @@ import { ContentEditorPage } from './pages/ContentEditorPage';
 import { Placeholder } from './pages/Placeholder';
 
 export function App() {
+  const [diceOpen, setDiceOpen] = useState(false);
   return (
     <>
       <Header />
@@ -33,6 +36,16 @@ export function App() {
           <Route path="*" element={<Placeholder title="ไม่พบหน้านี้" note="404" />} />
         </Routes>
       </main>
+
+      <button
+        onClick={() => setDiceOpen(true)}
+        title="ทอยลูกเต๋า (Dice Astrolabe)"
+        aria-label="เปิดหน้าต่างทอยลูกเต๋า"
+        style={{ position: 'fixed', right: 22, bottom: 22, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 26, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        🎲
+      </button>
+      <DiceRoller open={diceOpen} onClose={() => setDiceOpen(false)} />
     </>
   );
 }
