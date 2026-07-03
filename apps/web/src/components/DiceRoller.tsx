@@ -309,6 +309,14 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
   if (!open) return null;
 
   const modeTag = (m: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
+  // Total colour: gold for lucky outcomes (Fortuity 10, or a matching triple 2–8),
+  // red for the ominous ones (Fortuity 1, or triple 1), otherwise neutral.
+  const totalColor = (e: LogEntry) => {
+    const triple = e.ego === e.ambient && e.ambient === e.fortuity;
+    if ((triple && e.ego === 1) || e.fortuity === 1) return '#f0554a';
+    if ((triple && e.ego >= 2 && e.ego <= 8) || e.fortuity === 10) return '#f0c76a';
+    return '#e8e6dc';
+  };
 
   return createPortal(
     <div
@@ -364,15 +372,20 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
               <div style={{ fontSize: 13, color: '#7a7a72', padding: '12px 0' }}>ยังไม่มีการทอย — กดปุ่มหรือลากวงล้อ</div>
             ) : (
               log.map((e) => (
-                <div key={e.id} style={{ borderBottom: '1px solid #1e1e25', paddingBottom: 8 }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12.5, alignItems: 'center' }}>
-                    <span style={{ color: '#e05a5a', fontWeight: 700 }}>Ego {e.ego}<span style={{ color: '#7a7a72', fontWeight: 400 }}> d{e.egoFaces}{modeTag(e.egoMode)}</span></span>
-                    <span style={{ color: '#4fb99f', fontWeight: 700 }}>Amb {e.ambient}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.ambientMode)}</span></span>
-                    <span style={{ color: '#f0c76a', fontWeight: 700 }}>For {e.fortuity}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.fortuityMode)}</span></span>
-                    <span style={{ color: '#fff', fontWeight: 800, marginLeft: 'auto' }}>รวม {e.total ?? e.ego + e.ambient + e.fortuity}</span>
+                <div key={e.id} style={{ borderBottom: '1px solid #1e1e25', paddingBottom: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'center' }}>
+                      <span style={{ color: '#e05a5a', fontWeight: 700 }}>Ego {e.ego}<span style={{ color: '#7a7a72', fontWeight: 400 }}> d{e.egoFaces}{modeTag(e.egoMode)}</span></span>
+                      <span style={{ color: '#4fb99f', fontWeight: 700 }}>Amb {e.ambient}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.ambientMode)}</span></span>
+                      <span style={{ color: '#f0c76a', fontWeight: 700 }}>For {e.fortuity}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.fortuityMode)}</span></span>
+                    </div>
+                    {e.label && <div style={{ fontSize: 11.5, color: '#cfcfcf', marginTop: 4 }}>📝 {e.label}</div>}
+                    {e.special && <div style={{ fontSize: 11.5, color: '#f7dca0', marginTop: 4 }}>✦ {e.special}</div>}
                   </div>
-                  {e.label && <div style={{ fontSize: 11.5, color: '#cfcfcf', marginTop: 3 }}>📝 {e.label}</div>}
-                  {e.special && <div style={{ fontSize: 11.5, color: '#f7dca0', marginTop: 3 }}>✦ {e.special}</div>}
+                  <div style={{ flex: 'none', textAlign: 'center', background: '#1c1e12', border: `1px solid ${totalColor(e)}55`, borderRadius: 12, padding: '6px 14px', minWidth: 64 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#a8a8a0', letterSpacing: '.08em' }}>รวม</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: totalColor(e), lineHeight: 1 }}>{e.total ?? e.ego + e.ambient + e.fortuity}</div>
+                  </div>
                 </div>
               ))
             )}
