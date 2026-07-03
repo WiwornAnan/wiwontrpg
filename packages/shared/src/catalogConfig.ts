@@ -333,12 +333,12 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
 // plus a modifier that grows with the Knowledge Points it demands. Kept here so
 // the same formula backs the detail display (and any future server-side use).
 export const MAGIC_BASE_TN: Record<string, number> = {
-  'Root Magic': 11,
-  'Basic Magic': 13,
-  'Advanced Magic': 17,
-  'High Magic': 20,
-  'Ritual Magic': 22,
-  'Grand Magic': 17,
+  'Root Magic': 9,
+  'Basic Magic': 11,
+  'Advanced Magic': 15,
+  'High Magic': 18,
+  'Ritual Magic': 20,
+  'Grand Magic': 15,
 };
 
 // KP → TN modifier, by range: 8–20 → +0, 21–70 → +2, 71+ → +3.
