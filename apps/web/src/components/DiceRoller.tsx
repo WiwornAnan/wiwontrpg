@@ -215,7 +215,7 @@ function specialLabel(ego,amb,fort){
   return '';
 }
 function emitRoll(ego,amb,fort,manual){
-  window.dispatchEvent(new CustomEvent('wiwon-dice',{detail:{ego:ego,ambient:amb,fortuity:fort,egoFaces:state.egoFaces,egoMode:state.egoMode,ambientMode:state.ambientMode,fortuityMode:state.fortuityMode,special:specialLabel(ego,amb,fort),manual:!!manual}}));
+  window.dispatchEvent(new CustomEvent('wiwon-dice',{detail:{ego:ego,ambient:amb,fortuity:fort,total:ego+amb+fort,egoFaces:state.egoFaces,egoMode:state.egoMode,ambientMode:state.ambientMode,fortuityMode:state.fortuityMode,special:specialLabel(ego,amb,fort),manual:!!manual}}));
 }
 var state={egoFaces:20,egoMode:"normal",ambientMode:"normal",fortuityMode:"normal",egoTurn:0,ambientTurn:0,fortuityTurn:0,topOrbit:0,topSpin:0,bottomOrbit:0,bottomSpin:0};
 var MARKER_R={ego:133,ambient:85,fortuity:38};
@@ -255,12 +255,14 @@ interface LogEntry {
   ego: number;
   ambient: number;
   fortuity: number;
+  total: number;
   egoFaces: number;
   egoMode: string;
   ambientMode: string;
   fortuityMode: string;
   special: string;
   manual: boolean;
+  label?: string;
 }
 
 export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -268,6 +270,8 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
   const seqRef = useRef(0);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [dropped, setDropped] = useState(false);
+  const [pending, setPending] = useState<Omit<LogEntry, 'id'> | null>(null);
+  const [manualLabel, setManualLabel] = useState('ตั้งค่าด้วยมือ');
 
   useEffect(() => {
     if (!open) return;
@@ -280,7 +284,13 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
 
     const onDice = (e: Event) => {
       const d = (e as CustomEvent).detail as Omit<LogEntry, 'id'>;
-      setLog((prev) => [{ id: ++seqRef.current, ...d }, ...prev].slice(0, 40));
+      if (d.manual) {
+        // Manual set: hold it so the player can label it before it hits the LOG.
+        setManualLabel('ตั้งค่าด้วยมือ');
+        setPending(d);
+      } else {
+        setLog((prev) => [{ id: ++seqRef.current, ...d }, ...prev].slice(0, 40));
+      }
     };
     window.addEventListener('wiwon-dice', onDice);
 
@@ -292,6 +302,7 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
       cancelAnimationFrame(raf);
       host.innerHTML = '';
       setDropped(false);
+      setPending(null);
     };
   }, [open]);
 
@@ -320,6 +331,34 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
           {log.length > 0 && (
             <button onClick={() => setLog([])} style={{ background: 'none', border: '1px solid #2c2c34', color: '#a8a8a0', borderRadius: 7, fontSize: 11, padding: '3px 10px', cursor: 'pointer', marginBottom: 8 }}>ล้าง LOG</button>
           )}
+          {pending && (
+            <div style={{ background: '#161a10', border: '1px solid #3a4028', borderRadius: 11, padding: '10px 12px', marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>ตั้งค่าด้วยมือ · รวม {pending.total}</div>
+              <div style={{ fontSize: 12, color: '#a8a8a0', marginBottom: 8 }}>
+                <span style={{ color: '#e05a5a' }}>Ego {pending.ego}</span> · <span style={{ color: '#4fb99f' }}>Amb {pending.ambient}</span> · <span style={{ color: '#f0c76a' }}>For {pending.fortuity}</span>
+              </div>
+              <input
+                value={manualLabel}
+                onChange={(e) => setManualLabel(e.target.value)}
+                placeholder="ข้อความสำหรับ Log…"
+                style={{ width: '100%', boxSizing: 'border-box', background: '#0f1118', border: '1px solid #2c2c34', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, color: '#eee', outline: 'none', marginBottom: 8 }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    setLog((prev) => [{ id: ++seqRef.current, ...pending, label: manualLabel.trim() || 'ตั้งค่าด้วยมือ' }, ...prev].slice(0, 40));
+                    setPending(null);
+                  }}
+                  style={{ flex: 1, background: '#3f6b4f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600, padding: '7px 0', cursor: 'pointer' }}
+                >
+                  เพิ่มลง Log
+                </button>
+                <button onClick={() => setPending(null)} style={{ background: 'none', border: '1px solid #2c2c34', color: '#a8a8a0', borderRadius: 7, fontSize: 12.5, padding: '7px 12px', cursor: 'pointer' }}>
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
           <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {log.length === 0 ? (
               <div style={{ fontSize: 13, color: '#7a7a72', padding: '12px 0' }}>ยังไม่มีการทอย — กดปุ่มหรือลากวงล้อ</div>
@@ -330,8 +369,9 @@ export function DiceRoller({ open, onClose }: { open: boolean; onClose: () => vo
                     <span style={{ color: '#e05a5a', fontWeight: 700 }}>Ego {e.ego}<span style={{ color: '#7a7a72', fontWeight: 400 }}> d{e.egoFaces}{modeTag(e.egoMode)}</span></span>
                     <span style={{ color: '#4fb99f', fontWeight: 700 }}>Amb {e.ambient}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.ambientMode)}</span></span>
                     <span style={{ color: '#f0c76a', fontWeight: 700 }}>For {e.fortuity}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{modeTag(e.fortuityMode)}</span></span>
-                    {e.manual && <span style={{ fontSize: 10, color: '#7a7a72' }}>(มือ)</span>}
+                    <span style={{ color: '#fff', fontWeight: 800, marginLeft: 'auto' }}>รวม {e.total ?? e.ego + e.ambient + e.fortuity}</span>
                   </div>
+                  {e.label && <div style={{ fontSize: 11.5, color: '#cfcfcf', marginTop: 3 }}>📝 {e.label}</div>}
                   {e.special && <div style={{ fontSize: 11.5, color: '#f7dca0', marginTop: 3 }}>✦ {e.special}</div>}
                 </div>
               ))
