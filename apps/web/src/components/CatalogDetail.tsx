@@ -249,17 +249,6 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {isMagicFeature && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, flex: 'none' }}>จำนวนการใช้งาน</span>
-          {canEdit ? (
-            <input defaultValue={fv(item, 'uses')} onBlur={(e) => patchFields.mutate({ uses: e.target.value.trim() })} placeholder="เช่น 3 ครั้ง/ฉาก" style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 10px', fontSize: 13, outline: 'none' }} />
-          ) : (
-            <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>{fv(item, 'uses') || '—'}</span>
-          )}
-        </div>
-      )}
-
       <div style={{ display: 'flex', gap: 14, marginTop: 14 }}>
         <div style={boxStyle} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -460,6 +449,30 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </button>
       )}
 
+      {isMagicFeature && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>จำนวนการใช้งาน</div>
+          {canEdit ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f5f1fb', border: '1px solid #e3d9f2', borderRadius: 11, padding: '12px 14px' }}>
+              <input type="number" min={0} defaultValue={fv(item, 'uses')} onBlur={(e) => patchFields.mutate({ uses: e.target.value.trim() })} placeholder="0" style={{ width: 60, border: '1px solid #d6c7f0', borderRadius: 8, padding: '7px 8px', fontSize: 18, fontWeight: 800, textAlign: 'center', color: '#5b3fa0', outline: 'none' }} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#5b3fa0', flex: 'none' }}>ครั้ง /</span>
+              <select defaultValue={fv(item, 'usesPer') || 'วัน'} onChange={(e) => patchFields.mutate({ usesPer: e.target.value })} style={{ flex: 1, border: '1px solid #d6c7f0', borderRadius: 8, padding: '9px 10px', fontSize: 14, fontWeight: 600, color: '#5b3fa0', background: '#fff', outline: 'none' }}>
+                {['วัน', 'ฉาก', 'เทิร์น', 'รอบ', 'การต่อสู้', 'ชั่วโมง', 'ถาวร'].map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, background: '#f5f1fb', border: '1px solid #e3d9f2', borderRadius: 11, padding: '12px 18px' }}>
+              <span style={{ fontSize: 26, fontWeight: 800, color: '#5b3fa0', lineHeight: 1 }}>{fv(item, 'uses') || '—'}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#5b3fa0' }}>ครั้ง / {fv(item, 'usesPer') || 'วัน'}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {isWeapon && (
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#15140f', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 13px', fontSize: 14, fontWeight: 700 }}>
@@ -561,7 +574,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 return meta ? <div style={{ fontSize: 12, color: '#8d8a82', marginTop: 2 }}>{meta}</div> : null;
               })()}
               {popupDetail.data.item.fields.uses ? (
-                <div style={{ fontSize: 12.5, marginTop: 8 }}>จำนวนการใช้งาน: <b>{String(popupDetail.data.item.fields.uses)}</b></div>
+                <div style={{ fontSize: 12.5, marginTop: 8 }}>จำนวนการใช้งาน: <b>{String(popupDetail.data.item.fields.uses)} ครั้ง / {String(popupDetail.data.item.fields.usesPer ?? 'วัน')}</b></div>
               ) : null}
               <div className="rt-html" style={{ fontSize: 12.5, lineHeight: 1.8, color: '#46443c', marginTop: 10 }} dangerouslySetInnerHTML={{ __html: popupDetail.data.item.description ? renderBadges(popupDetail.data.item.description) : '<span style="color:#a8a59d">— ไม่มีคำอธิบาย —</span>' }} />
             </div>

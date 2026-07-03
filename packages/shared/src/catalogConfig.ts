@@ -324,6 +324,6 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
     if (c.numKey) keys.add(c.numKey);
   }
   // Common extra keys used by seed data / rendering.
-  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding', 'ehenOrgan', 'ehenCore', 'coreRecover', 'engravedSpells', 'weaponArts', 'uses', 'engraveMax'].forEach((k) => keys.add(k));
+  ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding', 'ehenOrgan', 'ehenCore', 'coreRecover', 'engravedSpells', 'weaponArts', 'uses', 'usesPer', 'engraveMax'].forEach((k) => keys.add(k));
   return [...keys];
 }
