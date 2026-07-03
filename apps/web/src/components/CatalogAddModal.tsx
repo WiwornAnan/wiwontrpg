@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AddField, CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
-import { useCatalogFieldTags } from '../lib/catalogHooks';
+import { mergeFieldOptions, useCatalogFieldTags } from '../lib/catalogHooks';
 import { Modal } from './Modal';
 import { Button, inputStyle, labelStyle } from './ui';
 
@@ -28,11 +28,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
   // built-ins (minus hidden) + custom. Lets Tags management flow into this form.
   const catScope = isFeature ? `${category}-feature` : category;
   const { data: fieldTags } = useCatalogFieldTags(catScope);
-  const optsFor = (f: AddField): string[] => {
-    const t = fieldTags?.[f.key];
-    const hidden = new Set(t?.hidden ?? []);
-    return [...(f.options || []).filter((o) => !hidden.has(o)), ...(t?.custom ?? [])];
-  };
+  const optsFor = (f: AddField): string[] => mergeFieldOptions(f.options ?? [], fieldTags?.[f.key]);
 
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};

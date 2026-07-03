@@ -49,14 +49,31 @@ export function useCatalog(category: CatalogCategory, query: CatalogQuery) {
   });
 }
 
+export interface FieldTags {
+  custom: string[];
+  hidden: string[];
+  order?: string[];
+}
+
 export function useCatalogTags(scope: string) {
   return useQuery({
     queryKey: ['catalog-tags', scope],
-    queryFn: () => api.get<{ custom: string[]; hidden: string[] }>(`/tags/${scope}`),
+    queryFn: () => api.get<FieldTags>(`/tags/${scope}`),
   });
 }
 
-export type FieldTagMap = Record<string, { custom: string[]; hidden: string[] }>;
+export type FieldTagMap = Record<string, FieldTags>;
+
+// Merge built-in options with dev-managed tags: drop hidden built-ins, append
+// custom tags, then apply the saved display order (labels not listed go last).
+export function mergeFieldOptions(builtins: string[], t?: FieldTags): string[] {
+  const hidden = new Set(t?.hidden ?? []);
+  const base = [...builtins.filter((o) => !hidden.has(o)), ...(t?.custom ?? [])];
+  const order = t?.order ?? [];
+  if (order.length === 0) return base;
+  const rank = new Map(order.map((o, i) => [o, i] as const));
+  return base.slice().sort((a, b) => (rank.get(a) ?? 9999) - (rank.get(b) ?? 9999));
+}
 
 // All dev-managed custom/hidden tags for every field of a catalog scope, at once.
 export function useCatalogFieldTags(catScope: string) {

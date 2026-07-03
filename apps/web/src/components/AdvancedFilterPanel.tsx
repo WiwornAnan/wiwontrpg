@@ -1,5 +1,5 @@
 import type { FilterField } from '@wiwonanant/shared';
-import type { FieldTagMap } from '../lib/catalogHooks';
+import { mergeFieldOptions, type FieldTagMap } from '../lib/catalogHooks';
 
 interface Props {
   fields: FilterField[];
@@ -53,10 +53,7 @@ export function AdvancedFilterPanel({ fields, filters, ranges, fieldTags, canMan
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <select value={filters[f.key] ?? ''} onChange={(e) => onFilter(f.key, e.target.value)} style={selStyle}>
                   <option value="">{f.any ?? 'ทั้งหมด'}</option>
-                  {[
-                    ...(f.options ?? []).filter((o) => !(fieldTags?.[f.key]?.hidden ?? []).includes(o)),
-                    ...(fieldTags?.[f.key]?.custom ?? []),
-                  ].map((o) => (
+                  {mergeFieldOptions(f.options ?? [], fieldTags?.[f.key]).map((o) => (
                     <option key={o} value={o}>
                       {o}
                     </option>

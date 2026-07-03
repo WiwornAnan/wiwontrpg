@@ -300,6 +300,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
           catScope={catScope}
           custom={fieldTags?.[manageField.key]?.custom ?? []}
           hidden={fieldTags?.[manageField.key]?.hidden ?? []}
+          order={fieldTags?.[manageField.key]?.order ?? []}
           onClose={() => setManageField(null)}
         />
       )}
