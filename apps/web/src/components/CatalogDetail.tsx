@@ -168,12 +168,12 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   // Drawer data: magic spells to engrave, or features tagged "Weapon Arts".
   const spellPick = useQuery({
     queryKey: ['catalog', 'magic', 'pick-spell', pickQ],
-    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=magic&isFeature=false&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
+    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=all&isFeature=false&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
     enabled: drawer === 'engrave',
   });
   const artPick = useQuery({
     queryKey: ['catalog', 'magic-feature', 'pick-art', pickQ],
-    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=magic-feature&isFeature=true&tag=${encodeURIComponent('Weapon Arts')}&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
+    queryFn: () => api.get<CatalogListResult>(`/catalog/magic?scope=all&isFeature=true&tag=${encodeURIComponent('Weapon Arts')}&page=1${pickQ ? `&q=${encodeURIComponent(pickQ)}` : ''}`),
     enabled: drawer === 'weaponArts',
   });
 
@@ -351,31 +351,8 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 </div>
               )}
 
-              {weaponArts.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                  {weaponArts.map((w) => (
-                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fbf1e8', border: '1px solid #ecd6bf', borderRadius: 8, padding: '5px 9px' }}>
-                      <span style={{ flex: 1, color: '#b4602a', fontWeight: 600 }}>⚔ {w.name}</span>
-                      {canEdit ? (
-                        <input type="number" min={1} defaultValue={w.qty} onBlur={(e) => setArtQty(w.id, parseInt(e.target.value, 10) || 1)} style={{ width: 48, border: '1px solid #ecd6bf', borderRadius: 6, padding: '2px 6px', fontSize: 12, textAlign: 'center', outline: 'none' }} />
-                      ) : (
-                        <span style={{ color: '#b4602a', fontWeight: 700 }}>×{w.qty}</span>
-                      )}
-                      {canEdit && (
-                        <button onClick={() => removeArt(w.id)} style={{ border: 'none', background: 'none', color: '#c79a6a', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {canEdit && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <button onClick={() => { setPickQ(''); setDrawer('engrave'); }} disabled={slotCount === 0} style={{ width: '100%', padding: 9, background: slotCount === 0 ? '#cbc8c0' : '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: slotCount === 0 ? 'not-allowed' : 'pointer' }}>✦ สลักเวทมนตร์ (Magic Engraving)</button>
-                  {isWeapon && (
-                    <button onClick={() => { setPickQ(''); setDrawer('weaponArts'); }} style={{ width: '100%', padding: 9, background: '#b4602a', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>⚔ กระบวนท่าประจำอาวุธ</button>
-                  )}
-                </div>
+                <button onClick={() => { setPickQ(''); setDrawer('engrave'); }} disabled={slotCount === 0} style={{ width: '100%', padding: 9, background: slotCount === 0 ? '#cbc8c0' : '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: slotCount === 0 ? 'not-allowed' : 'pointer' }}>✦ สลักเวทมนตร์ (Magic Engraving)</button>
               )}
 
               {ehenCore && (
@@ -389,6 +366,32 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {category === 'equipment' && isWeapon && (canEdit || weaponArts.length > 0) && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>กระบวนท่าประจำอาวุธ (Weapon Arts)</div>
+          {weaponArts.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {weaponArts.map((w) => (
+                <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fbf1e8', border: '1px solid #ecd6bf', borderRadius: 8, padding: '5px 9px' }}>
+                  <span style={{ flex: 1, color: '#b4602a', fontWeight: 600 }}>⚔ {w.name}</span>
+                  {canEdit ? (
+                    <input type="number" min={1} defaultValue={w.qty} onBlur={(e) => setArtQty(w.id, parseInt(e.target.value, 10) || 1)} style={{ width: 48, border: '1px solid #ecd6bf', borderRadius: 6, padding: '2px 6px', fontSize: 12, textAlign: 'center', outline: 'none' }} />
+                  ) : (
+                    <span style={{ color: '#b4602a', fontWeight: 700 }}>×{w.qty}</span>
+                  )}
+                  {canEdit && (
+                    <button onClick={() => removeArt(w.id)} style={{ border: 'none', background: 'none', color: '#c79a6a', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {canEdit && (
+            <button onClick={() => { setPickQ(''); setDrawer('weaponArts'); }} style={{ width: '100%', padding: 9, background: '#b4602a', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>⚔ เพิ่มกระบวนท่าประจำอาวุธ</button>
           )}
         </div>
       )}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   open: boolean;
@@ -11,7 +12,7 @@ interface Props {
 
 export function Modal({ open, onClose, title, children, width = 520, footer }: Props) {
   if (!open) return null;
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -62,6 +63,7 @@ export function Modal({ open, onClose, title, children, width = 520, footer }: P
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
