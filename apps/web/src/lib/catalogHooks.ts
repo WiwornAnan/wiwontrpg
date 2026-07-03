@@ -19,6 +19,8 @@ export interface CatalogQuery {
   page: number;
   filters: Record<string, string>;
   ranges: Record<string, { min?: string; max?: string }>;
+  sortKey: string;
+  sortDir: 'asc' | 'desc';
 }
 
 export function buildCatalogParams(query: CatalogQuery): string {
@@ -27,6 +29,10 @@ export function buildCatalogParams(query: CatalogQuery): string {
   p.set('isFeature', String(query.isFeature));
   p.set('page', String(query.page));
   if (query.q) p.set('q', query.q);
+  if (query.sortKey) {
+    p.set('sort', query.sortKey);
+    p.set('dir', query.sortDir);
+  }
   for (const [k, v] of Object.entries(query.filters)) if (v) p.set(k, v);
   for (const [k, r] of Object.entries(query.ranges)) {
     if (r.min) p.set(`${k}_min`, r.min);

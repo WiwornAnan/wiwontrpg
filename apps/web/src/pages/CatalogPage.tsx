@@ -13,7 +13,7 @@ import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 
-const emptyQuery = (): CatalogQuery => ({ scope: 'all', isFeature: false, q: '', page: 1, filters: {}, ranges: {} });
+const emptyQuery = (): CatalogQuery => ({ scope: 'all', isFeature: false, q: '', page: 1, filters: {}, ranges: {}, sortKey: '', sortDir: 'asc' });
 
 export function CatalogPage({ category }: { category: CatalogCategory }) {
   const { user } = useAuth();
@@ -215,9 +215,20 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: listGrid, gap: 0, padding: '12px 22px', borderBottom: '1px solid #ece9e3', fontSize: 11.5, color: '#8d8a82', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>
             <span>No.</span>
-            {columns.map((c) => (
-              <span key={c.key}>{c.label}</span>
-            ))}
+            {columns.map((c) => {
+              const sortable = !!c.sort;
+              const active = query.sortKey === c.key;
+              return (
+                <span
+                  key={c.key}
+                  onClick={sortable ? () => patchQuery({ sortKey: c.key, sortDir: active && query.sortDir === 'asc' ? 'desc' : 'asc', page: 1 }) : undefined}
+                  style={{ cursor: sortable ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 4, color: active ? '#15140f' : undefined, userSelect: 'none' }}
+                >
+                  {c.label}
+                  {sortable && <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (query.sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>}
+                </span>
+              );
+            })}
           </div>
 
           {isLoading && <div style={{ padding: 40, textAlign: 'center', color: '#a8a59d', fontSize: 13 }}>กำลังโหลด…</div>}

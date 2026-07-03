@@ -47,10 +47,16 @@ catalogRouter.get('/:category', async (req, res) => {
   const rows = await prisma.catalogItem.findMany({ where, include: { owner: true }, orderBy: { createdAt: 'asc' } });
   let items = rows.map(toCatalogItem);
 
-  // Full text on name + tags.
+  // Full-text: name, description, source, tags, and any displayed field value.
   if (search) {
+    const strip = (s: string) => s.replace(/<[^>]+>/g, ' ').toLowerCase();
     items = items.filter(
-      (it) => it.name.toLowerCase().includes(search) || it.tags.some((t) => t.toLowerCase().includes(search)),
+      (it) =>
+        it.name.toLowerCase().includes(search) ||
+        strip(it.description ?? '').includes(search) ||
+        it.source.toLowerCase().includes(search) ||
+        it.tags.some((t) => t.toLowerCase().includes(search)) ||
+        Object.values(it.fields).some((v) => typeof v !== 'object' && String(v ?? '').toLowerCase().includes(search)),
     );
   }
 
@@ -89,6 +95,31 @@ catalogRouter.get('/:category', async (req, res) => {
       .map(toCatalogItem)
       .forEach((it) => it.tags.forEach((t) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)));
     popularTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([t]) => t);
+  }
+
+  // Column sort (server-side so it orders the whole set, not just one page).
+  const sortKey = (req.query.sort as string) || '';
+  if (sortKey) {
+    const sortDir = (req.query.dir as string) === 'desc' ? -1 : 1;
+    const col = source.columns.find((c) => c.key === sortKey);
+    const kind = col?.sort ?? 'str';
+    const RARITY = ['poor', 'common', 'uncommon', 'rare', 'legendary'];
+    const rarityRank = (v: unknown) => {
+      const i = RARITY.indexOf(String(v ?? '').toLowerCase());
+      return i < 0 ? RARITY.length : i;
+    };
+    const numOf = (it: CatalogItem) => {
+      const raw = it.fields[col?.numKey ?? sortKey] ?? fieldValue(it, sortKey);
+      const n = parseFloat(String(raw ?? '').replace(/[^\d.-]/g, ''));
+      return Number.isNaN(n) ? -Infinity : n;
+    };
+    items = items.slice().sort((a, b) => {
+      let cmp: number;
+      if (kind === 'num') cmp = numOf(a) - numOf(b);
+      else if (kind === 'rarity') cmp = rarityRank(fieldValue(a, sortKey)) - rarityRank(fieldValue(b, sortKey));
+      else cmp = String(fieldValue(a, sortKey) ?? '').localeCompare(String(fieldValue(b, sortKey) ?? ''), 'th');
+      return cmp * sortDir;
+    });
   }
 
   const total = items.length;

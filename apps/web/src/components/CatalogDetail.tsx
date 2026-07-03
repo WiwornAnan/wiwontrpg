@@ -219,6 +219,19 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
             {item.isHomebrew && (
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', color: '#e07a5f', border: '1px solid #f0cabd', borderRadius: 5, padding: '2px 7px' }}>HOMEBREW</span>
             )}
+            {(() => {
+              const r = fv(item, 'rarity');
+              if (!r) return null;
+              const map: Record<string, [string, string]> = {
+                Poor: ['#eeeeee', '#7a7a72'],
+                Common: ['#eef2ee', '#5f7a5f'],
+                Uncommon: ['#e6f4ea', '#2f7d4f'],
+                Rare: ['#e5edfb', '#2a5fbd'],
+                Legendary: ['#f3ecfb', '#7a3fb0'],
+              };
+              const [bg, color] = map[r] ?? ['#efece6', '#8d8a82'];
+              return <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: bg, color }}>{r}</span>;
+            })()}
           </div>
           <div style={{ fontSize: 12.5, color: '#8d8a82', marginTop: 3 }}>
             {fv(item, cfg.subtitleKey) || item.source}
