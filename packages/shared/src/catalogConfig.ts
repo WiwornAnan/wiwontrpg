@@ -166,7 +166,7 @@ const MAGIC: CatalogConfig = {
     { key: 'rarity', label: 'Rarity', any: 'Any Rarity', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', any: 'Any Slot', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
     { key: 'ql', label: 'Quality of Life', any: 'Any QL', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
-    { key: 'knowledge', label: 'Knowledge Points', any: 'Any KP', options: ['1 KP', '2 KP', '3 KP', '4 KP', '5 KP'] },
+    { key: 'knowledge', label: 'Knowledge Points', any: 'Any KP', options: ['8 KP', '13 KP', '15 KP', '20 KP', '30 KP', '40 KP', '70 KP', '80 KP', '100 KP', '120 KP'] },
     { key: 'range', label: 'Range', any: 'Any Range', options: ['Self', 'Touch', '9 m', '18 m', '30 m'] },
     { key: 'duration', label: 'Duration', any: 'Any Duration', options: ['Instant', '1 min', '10 min', '1 hr', 'Concentration'] },
     { key: 'components', label: 'Components', any: 'Any Component', options: ['Verbal', 'Somatic', 'Material', 'Ehen Device', 'Willpower', 'Condition'] },
@@ -180,7 +180,7 @@ const MAGIC: CatalogConfig = {
     { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', kind: 'select', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
     { key: 'ql', label: 'Quality of Life', kind: 'select', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
-    { key: 'knowledge', label: 'Knowledge Points', kind: 'select', options: ['1 KP', '2 KP', '3 KP', '4 KP', '5 KP'] },
+    { key: 'knowledge', label: 'Knowledge Points', kind: 'select', options: ['8 KP', '13 KP', '15 KP', '20 KP', '30 KP', '40 KP', '70 KP', '80 KP', '100 KP', '120 KP'] },
     { key: 'range', label: 'Range', kind: 'select', options: ['Self', 'Touch', '9 m', '18 m', '30 m'] },
     { key: 'duration', label: 'Duration', kind: 'select', options: ['Instant', '1 min', '10 min', '1 hr', 'Concentration'] },
     { key: 'components', label: 'Components', kind: 'checks', options: ['Verbal', 'Somatic', 'Material', 'Ehen Device', 'Willpower', 'Condition'] },
@@ -326,4 +326,37 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
   // Common extra keys used by seed data / rendering.
   ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding', 'ehenOrgan', 'ehenCore', 'coreRecover', 'engravedSpells', 'weaponArts', 'uses', 'usesPer', 'engraveMax'].forEach((k) => keys.add(k));
   return [...keys];
+}
+
+// ---- Magic spell Target Number (TN) ---------------------------------------
+// A spell's casting TN is derived, never stored: a base set by its Casting Level
+// plus a modifier that grows with the Knowledge Points it demands. Kept here so
+// the same formula backs the detail display (and any future server-side use).
+export const MAGIC_BASE_TN: Record<string, number> = {
+  'Root Magic': 9,
+  'Basic Magic': 11,
+  'Advanced Magic': 15,
+  'High Magic': 18,
+  'Ritual Magic': 20,
+  'Grand Magic': 15,
+};
+
+// KP → TN modifier, by range: 8–20 → +0, 21–70 → +2, 71+ → +3.
+export function magicKpModifier(kp: number): number {
+  if (!Number.isFinite(kp) || kp <= 20) return 0;
+  if (kp <= 70) return 2;
+  return 3;
+}
+
+// Returns { base, mod, tn } for a spell, or null when the Casting Level is
+// unknown (e.g. features, which have no casting level and therefore no TN).
+export function computeMagicTN(
+  castLevel: string | undefined,
+  kpValue: string | number | undefined,
+): { base: number; mod: number; tn: number } | null {
+  const base = castLevel ? MAGIC_BASE_TN[castLevel] : undefined;
+  if (base == null) return null;
+  const kp = typeof kpValue === 'number' ? kpValue : parseInt(String(kpValue ?? ''), 10);
+  const mod = magicKpModifier(kp);
+  return { base, mod, tn: base + mod };
 }
