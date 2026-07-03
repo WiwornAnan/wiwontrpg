@@ -237,7 +237,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               return <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: bg, color }}>{r}</span>;
             })()}
             {magicTN && (
-              <span title="Target Number (TN)" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0' }}>TN {magicTN.tn}</span>
+              <span title={`Target Number\nพื้นฐาน ${magicTN.base} (${fv(item, 'castLevel') || '—'}) + ${magicTN.mod} (Knowledge Points) = ${magicTN.tn}`} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0', cursor: 'help' }}>TN {magicTN.tn}</span>
             )}
           </div>
           <div style={{ fontSize: 12.5, color: '#8d8a82', marginTop: 3 }}>
