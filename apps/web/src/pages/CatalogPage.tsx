@@ -241,6 +241,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
                   if (c.key === 'source') v = it.source;
                   else if (c.key === 'tag') v = String(it.fields.tag ?? it.tags[0] ?? '—');
                   else if (c.key === 'school') v = String(it.fields.school ?? '—').replace(/\s*school\s*$/i, '').trim() || '—';
+                  else if (c.key === 'cost') v = String(it.fields.cost ?? '—').replace(/A particle of Ehen/gi, 'P.E');
                   else v = String(it.fields[c.key] ?? '—');
                   return (
                     <span key={c.key} style={{ color: '#6b6860', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>

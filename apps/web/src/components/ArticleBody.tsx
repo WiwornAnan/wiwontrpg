@@ -38,7 +38,13 @@ function renderParagraph(para: string, key: number): ReactNode {
     return <ul key={key} style={{ margin: '10px 0', paddingLeft: 22 }}>{lines.map((l, i) => <li key={i} style={{ marginBottom: 4 }}>{renderInline(l.trim().slice(2))}</li>)}</ul>;
   if (lines.every((l) => /^\d+\. /.test(l.trim())))
     return <ol key={key} style={{ margin: '10px 0', paddingLeft: 22 }}>{lines.map((l, i) => <li key={i} style={{ marginBottom: 4 }}>{renderInline(l.trim().replace(/^\d+\.\s/, ''))}</li>)}</ol>;
-  return <p key={key} style={{ margin: '0 0 14px' }}>{renderInline(para)}</p>;
+  const indentMatch = para.match(/^[\t ]+/);
+  const indentEm = indentMatch ? Math.min(6, indentMatch[0].replace(/\t/g, '    ').length) * 0.5 : 0;
+  return (
+    <p key={key} style={{ margin: '0 0 14px', textIndent: indentEm ? `${indentEm}em` : undefined }}>
+      {renderInline(para.replace(/^[\t ]+/, ''))}
+    </p>
+  );
 }
 
 function ImageBlock({ img }: { img: ArticleImage }) {
@@ -113,7 +119,7 @@ function NoteBlock({ note }: { note: StickyNote }) {
 
 /** Renders body prose with images/tables/notes interleaved at their `afterParagraph` index. */
 export function ArticleBody({ article }: { article: Article }) {
-  const paragraphs = article.bodyText.split(/\n\s*\n/).map((p) => p.trim());
+  const paragraphs = article.bodyText.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ''));
 
   const imagesByPara = new Map<number, ArticleImage[]>();
   for (const img of [...article.images].sort((a, b) => a.order - b.order)) {
@@ -156,7 +162,7 @@ export function ArticleBody({ article }: { article: Article }) {
       {blocksAt(0)}
       {paragraphs.map((para, i) => (
         <Fragment key={i}>
-          {para && renderParagraph(para, i)}
+          {para.trim() && renderParagraph(para, i)}
           {blocksAt(i + 1)}
         </Fragment>
       ))}

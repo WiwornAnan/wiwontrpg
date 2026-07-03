@@ -402,7 +402,19 @@ function EditorForm({
           style={{ ...inputStyle, minHeight: 180, resize: 'vertical', lineHeight: 1.7, borderRadius: '0 0 9px 9px', borderTop: 'none' }}
           value={draft.bodyText}
           onChange={(e) => setDraft({ ...draft, bodyText: e.target.value })}
-          placeholder="พิมพ์เนื้อหาบทความ…"
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const ta = e.currentTarget;
+              const { selectionStart: s, selectionEnd: en } = ta;
+              const next = draft.bodyText.slice(0, s) + '\t' + draft.bodyText.slice(en);
+              setDraft({ ...draft, bodyText: next });
+              requestAnimationFrame(() => {
+                ta.selectionStart = ta.selectionEnd = s + 1;
+              });
+            }
+          }}
+          placeholder="พิมพ์เนื้อหาบทความ… (กด Tab เพื่อย่อหน้า)"
         />
       </div>
 

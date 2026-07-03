@@ -109,7 +109,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
   const keyStats = isMagicSpell
     ? [
-        { label: 'Magic Slot', value: fv(item, 'cost') || '—', bg: '#fdece2', color: '#c1502a' },
+        { label: 'Magic Slot', value: (fv(item, 'cost') || '—').replace(/A particle of Ehen/gi, 'P.E'), bg: '#fdece2', color: '#c1502a' },
         { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
         { label: 'Knowledge', value: fv(item, 'knowledge') || '—', bg: '#e5edfb', color: '#2a6fdb' },
       ]

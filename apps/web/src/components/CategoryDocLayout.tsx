@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useArticles } from '../lib/hooks';
 import { api } from '../lib/api';
 import { CATEGORY_META } from '../lib/categoryConfig';
+import { ArticleBody } from './ArticleBody';
 import { HeroBanner } from './HeroBanner';
 import { StarButton } from './StarButton';
 import { Modal } from './Modal';
@@ -235,9 +236,9 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
                   {selected.summary}
                 </p>
               )}
-              <p style={{ fontSize: 13.5, lineHeight: 1.75, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', margin: 0, maxHeight: 220, overflow: 'hidden' }}>
-                {selected.bodyText}
-              </p>
+              <div style={{ maxHeight: 220, overflow: 'hidden', fontSize: 13.5 }}>
+                <ArticleBody article={selected} />
+              </div>
               {selected.authorName && (
                 <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-faint)', marginTop: 14 }}>
                   เขียนโดย <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{selected.authorName}</span>

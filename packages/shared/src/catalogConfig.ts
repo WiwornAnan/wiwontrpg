@@ -137,7 +137,7 @@ const MAGIC: CatalogConfig = {
   tagColor: '#5b3fa0',
   hasFeature: true,
   statLabels: ['Total Spells', 'Schools', 'Casting Level', 'Rarity', 'Last Updated'],
-  popularTags: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'],
+  popularTags: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Cyan', 'Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation', 'Transformation'],
   columns: [
     { key: 'name', label: 'Name', grow: '1.6', sort: 'str' },
     { key: 'school', label: 'School', grow: '1', sort: 'str' },
@@ -160,8 +160,8 @@ const MAGIC: CatalogConfig = {
   ],
   subtitleKey: 'school',
   filterFields: [
-    { key: 'tag', label: 'Color of Ehen', any: 'Any Color', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
-    { key: 'school', label: 'School', any: 'Any School', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
+    { key: 'tag', label: 'Color of Ehen', any: 'Any Color', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Cyan'] },
+    { key: 'school', label: 'School', any: 'Any School', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation', 'Transformation'] },
     { key: 'castLevel', label: 'Casting Level', any: 'Any Level', options: ['Root Magic', 'Basic Magic', 'Advanced Magic', 'High Magic', 'Ritual Magic', 'Grand Magic'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Rarity', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', any: 'Any Slot', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
@@ -174,8 +174,8 @@ const MAGIC: CatalogConfig = {
   ],
   addFields: [
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
-    { key: 'tag', label: 'Color of Ehen', kind: 'select', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black'] },
-    { key: 'school', label: 'School', kind: 'select', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation'] },
+    { key: 'tag', label: 'Color of Ehen', kind: 'select', options: ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Cyan'] },
+    { key: 'school', label: 'School', kind: 'select', options: ['Manipulation', 'Restoration', 'Distortion', 'Perception', 'Suppression', 'Manifestation', 'Transformation'] },
     { key: 'castLevel', label: 'Casting Level', kind: 'select', options: ['Root Magic', 'Basic Magic', 'Advanced Magic', 'High Magic', 'Ritual Magic', 'Grand Magic'] },
     { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'cost', label: 'Magic Slot', kind: 'select', options: ['1 Slot', '2 Slot', '3 Slot', '4 Slot', '5 Slot'] },
