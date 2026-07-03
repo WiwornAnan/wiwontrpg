@@ -237,7 +237,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               return <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: bg, color }}>{r}</span>;
             })()}
             {magicTN && (
-              <span title={`Target Number — ตั้งจาก ${fv(item, 'castLevel')} (พื้นฐาน ${magicTN.base})${magicTN.mod ? ` + ${magicTN.mod} จาก Knowledge Points` : ''}`} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0' }}>TN {magicTN.tn}</span>
+              <span title="Target Number (TN)" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0' }}>TN {magicTN.tn}</span>
             )}
           </div>
           <div style={{ fontSize: 12.5, color: '#8d8a82', marginTop: 3 }}>
@@ -255,19 +255,6 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
           <button onClick={() => del.mutate()} style={{ flex: 1, padding: 7, background: '#fff', color: '#b4513a', border: '1px solid #f0d3cb', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ลบข้อมูล
           </button>
-        </div>
-      )}
-
-      {magicTN && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 16, padding: '12px 16px', borderRadius: 12, background: 'linear-gradient(135deg,#1c1a14,#2a2416)', border: '1px solid #4a4636' }}>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', color: '#cbbf99' }}>TARGET NUMBER</div>
-            <div style={{ fontSize: 11, color: '#a49a7c', marginTop: 2 }}>
-              {fv(item, 'castLevel') || '—'} · พื้นฐาน {magicTN.base}
-              {magicTN.mod > 0 ? ` + ${magicTN.mod} (KP)` : ' + 0'}
-            </div>
-          </div>
-          <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: '#f7dca0' }}>{magicTN.tn}</div>
         </div>
       )}
 
