@@ -337,19 +337,19 @@ function domListToMd(el: MdNode, depth: number, out: string[]): void {
   }
 }
 
-// Editor DOM (root element) → markdown document, inverse of markdownToHtml.
-// Block elements each become their own paragraph; consecutive bare text/inline
-// nodes at the root (as a freshly-typed or select-all-deleted editor produces)
-// are grouped into a single paragraph so their formatting survives.
-export function htmlToMarkdown(root: MdNode): string {
-  const blocks: string[] = [];
+// Walk a container's children into markdown blocks. Block elements each become
+// their own block; consecutive bare text/inline nodes are grouped into one
+// paragraph so their formatting survives. Recurses into P/DIV wrappers so a
+// list nested inside one (as contentEditable and pastes produce) still
+// serialises as a real list instead of being flattened into a run-on line.
+function serializeBlocks(container: MdNode, blocks: string[]): void {
   let buf = '';
   const flush = () => {
     const t = buf.replace(/\s+$/, '');
     if (t.trim()) blocks.push(t);
     buf = '';
   };
-  const kids = root.childNodes;
+  const kids = container.childNodes;
   for (let i = 0; i < kids.length; i++) {
     const node = kids[i];
     if (node.nodeType === TEXT_NODE) {
@@ -361,48 +361,36 @@ export function htmlToMarkdown(root: MdNode): string {
     if (tag === 'HR') {
       flush();
       blocks.push('---');
-      continue;
-    }
-    if (tag === 'H1') {
+    } else if (tag === 'H1') {
       flush();
       const md = childrenToMd(node).trim();
       if (md) blocks.push('# ' + md);
-      continue;
-    }
-    if (tag === 'H2' || tag === 'H3') {
+    } else if (tag === 'H2' || tag === 'H3') {
       flush();
       const md = childrenToMd(node).trim();
       if (md) blocks.push('## ' + md);
-      continue;
-    }
-    if (tag === 'BLOCKQUOTE') {
+    } else if (tag === 'BLOCKQUOTE') {
       flush();
       const md = childrenToMd(node).trim();
-      if (md)
-        blocks.push(
-          md
-            .split('\n')
-            .map((l) => '> ' + l)
-            .join('\n'),
-        );
-      continue;
-    }
-    if (tag === 'UL' || tag === 'OL') {
+      if (md) blocks.push(md.split('\n').map((l) => '> ' + l).join('\n'));
+    } else if (tag === 'UL' || tag === 'OL') {
       flush();
       const out: string[] = [];
       domListToMd(node, 0, out);
       if (out.length) blocks.push(out.join('\n'));
-      continue;
-    }
-    if (tag === 'P' || tag === 'DIV') {
+    } else if (tag === 'P' || tag === 'DIV') {
       flush();
-      const md = childrenToMd(node).replace(/\s+$/, '');
-      if (md.trim()) blocks.push(md);
-      continue;
+      serializeBlocks(node, blocks);
+    } else {
+      buf += inlineNodeToMd(node); // inline (B/EM/S/A/SPAN…) → paragraph buffer
     }
-    // inline element at the root (B/EM/S/A/SPAN…) — keep it in the paragraph buffer
-    buf += inlineNodeToMd(node);
   }
   flush();
+}
+
+// Editor DOM (root element) → markdown document, inverse of markdownToHtml.
+export function htmlToMarkdown(root: MdNode): string {
+  const blocks: string[] = [];
+  serializeBlocks(root, blocks);
   return blocks.join('\n\n');
 }
