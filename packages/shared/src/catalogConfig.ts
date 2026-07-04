@@ -214,7 +214,7 @@ const MAGIC: CatalogConfig = {
       { key: 'rarity', label: 'Capacity', any: 'Any Capacity', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },
       { key: 'cost', label: 'Willpower (WP)', any: 'Any WP', options: ['0 WP', '1 WP', '2 WP', '3 WP', '4 WP', '5 WP'] },
       { key: 'ql', label: 'Quality of Life', any: 'Any QL', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
-      { key: 'curiosity', label: 'Curiosity Point', any: 'Any CP', options: ['1 CP', '2 CP', '3 CP', '4 CP', '5 CP'] },
+      { key: 'curiosity', label: 'Curiosity Point', any: 'Any CP', options: ['8 CP', '13 CP', '15 CP', '20 CP', '30 CP', '40 CP', '70 CP', '80 CP', '100 CP', '120 CP'] },
       { key: 'duration', label: 'Cooldown', any: 'Any Cooldown', options: ['None', '1 turn', '1 scene', 'Once/day'] },
       { key: 'requirements', label: 'Requirements', any: 'Any Requirement', options: ['None', 'Proficiency', 'Level 5+'] },
       { key: 'source', label: 'Sources', any: 'Any Source', options: ["Player's Handbook", 'GM Guide', 'Homebrew'] },
@@ -227,7 +227,7 @@ const MAGIC: CatalogConfig = {
       { key: 'rarity', label: 'Capacity', kind: 'select', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },
       { key: 'cost', label: 'Willpower (WP)', kind: 'select', options: ['0 WP', '1 WP', '2 WP', '3 WP', '4 WP', '5 WP'] },
       { key: 'ql', label: 'Quality of Life', kind: 'select', options: ['0 QL', '1 QL', '2 QL', '3 QL', '4 QL', '5 QL', '6 QL'] },
-      { key: 'curiosity', label: 'Curiosity Point', kind: 'select', options: ['1 CP', '2 CP', '3 CP', '4 CP', '5 CP'] },
+      { key: 'curiosity', label: 'Curiosity Point', kind: 'select', options: ['8 CP', '13 CP', '15 CP', '20 CP', '30 CP', '40 CP', '70 CP', '80 CP', '100 CP', '120 CP'] },
       { key: 'duration', label: 'Cooldown', kind: 'select', options: ['None', '1 turn', '1 scene', 'Once/day'] },
       { key: 'requirements', label: 'Requirements', kind: 'select', options: ['None', 'Proficiency', 'Level 5+'] },
     ],
@@ -361,22 +361,15 @@ export function computeMagicTN(
 // ---- Feature Target Number (TN) -------------------------------------------
 // A Feature is checked on d8 + d8 + d10 (sum 3–26, mean ~14.5). Its TN is a base
 // set by Capacity — centred on that curve so no tier is trivial or impossible —
-// plus a modifier from Curiosity Point. Base success before the modifier:
-// Common 12 ≈ 75% · Uncommon 14 ≈ 59% · Rare 16 ≈ 41% · Legendary 18 ≈ 26%.
+// plus a Curiosity Point modifier that uses the same scale/ranges as a spell's
+// Knowledge Points (8–20 → +0, 21–70 → +2, 71+ → +3). Base success before the
+// modifier: Common 12 ≈ 75% · Uncommon 14 ≈ 59% · Rare 16 ≈ 41% · Legendary 18 ≈ 26%.
 export const FEATURE_BASE_TN: Record<string, number> = {
   Common: 12,
   Uncommon: 14,
   Rare: 16,
   Legendary: 18,
 };
-
-// Curiosity Point → TN modifier (kept gentle for the d8+d8+d10 range):
-// 1–2 CP → +0, 3–4 CP → +1, 5+ CP → +2.
-export function curiosityModifier(cp: number): number {
-  if (!Number.isFinite(cp) || cp <= 2) return 0;
-  if (cp <= 4) return 1;
-  return 2;
-}
 
 // Returns { base, mod, tn } for a feature, or null when the Capacity is unknown.
 export function computeFeatureTN(
@@ -386,6 +379,6 @@ export function computeFeatureTN(
   const base = capacity ? FEATURE_BASE_TN[capacity] : undefined;
   if (base == null) return null;
   const cp = typeof curiosityValue === 'number' ? curiosityValue : parseInt(String(curiosityValue ?? ''), 10);
-  const mod = curiosityModifier(cp);
+  const mod = magicKpModifier(cp); // same ranges as Knowledge Points
   return { base, mod, tn: base + mod };
 }
