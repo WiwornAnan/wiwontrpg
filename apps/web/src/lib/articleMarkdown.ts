@@ -104,6 +104,87 @@ export function markdownToHtml(md: string): string {
     .join('');
 }
 
+// Google Docs / Word often emit list nesting NOT as real nested <ul>/<ol> but
+// as a flat run of sibling lists whose <li>s carry the depth in `aria-level`
+// (or a margin-left indent). Rebuild those runs into genuinely nested lists so
+// the hierarchy survives once styles are stripped. Real nested lists pass
+// through unchanged (their DOM depth already gives the level).
+function renestPastedLists(root: Node): void {
+  const isList = (n: Node) => n.nodeType === 1 && ((n as HTMLElement).tagName === 'UL' || (n as HTMLElement).tagName === 'OL');
+  // Depth-first: fix runs inside non-list containers first.
+  Array.from(root.childNodes).forEach((n) => {
+    if (n.nodeType === 1 && !isList(n)) renestPastedLists(n);
+  });
+  // Group consecutive sibling lists (whitespace between is allowed) into runs.
+  const runs: HTMLElement[][] = [];
+  let cur: HTMLElement[] | null = null;
+  Array.from(root.childNodes).forEach((n) => {
+    if (isList(n)) {
+      if (!cur) { cur = []; runs.push(cur); }
+      cur.push(n as HTMLElement);
+    } else if (n.nodeType === 3 && !(n.nodeValue ?? '').trim()) {
+      /* whitespace — keep the run open */
+    } else {
+      cur = null;
+    }
+  });
+
+  const levelOf = (li: HTMLElement, base: number): number => {
+    const aria = parseInt(li.getAttribute('aria-level') ?? '0', 10);
+    if (aria > 0) return aria - 1;
+    const m = /margin-left:\s*([\d.]+)\s*(px|pt|em)/.exec((li.getAttribute('style') ?? '').toLowerCase());
+    if (m) return Math.min(6, Math.round(parseFloat(m[1]) / (m[2] === 'em' ? 2 : 36)));
+    return base;
+  };
+  interface Flat { level: number; ordered: boolean; nodes: Node[] }
+  const collect = (list: HTMLElement, base: number, acc: Flat[]) => {
+    const ordered = list.tagName === 'OL';
+    Array.from(list.children).forEach((li) => {
+      if (li.tagName !== 'LI') return;
+      const level = Math.max(base, levelOf(li as HTMLElement, base));
+      const nodes: Node[] = [];
+      const nested: HTMLElement[] = [];
+      Array.from(li.childNodes).forEach((c) => {
+        if (isList(c)) nested.push(c as HTMLElement);
+        else nodes.push(c);
+      });
+      acc.push({ level, ordered, nodes });
+      nested.forEach((nl) => collect(nl, level + 1, acc));
+    });
+  };
+  const buildFrom = (acc: Flat[]): HTMLElement | null => {
+    if (!acc.length) return null;
+    let i = 0;
+    const rec = (level: number): HTMLElement => {
+      let ordered = false;
+      let typed = false;
+      const items: HTMLElement[] = [];
+      while (i < acc.length && acc[i].level === level) {
+        const it = acc[i];
+        if (!typed) { ordered = it.ordered; typed = true; }
+        i++;
+        const li = document.createElement('li');
+        it.nodes.forEach((c) => li.appendChild(c.cloneNode(true)));
+        if (i < acc.length && acc[i].level === level + 1) li.appendChild(rec(level + 1));
+        items.push(li);
+      }
+      const listEl = document.createElement(ordered ? 'ol' : 'ul');
+      items.forEach((li) => listEl.appendChild(li));
+      return listEl;
+    };
+    return rec(acc[0].level);
+  };
+
+  runs.forEach((run) => {
+    const acc: Flat[] = [];
+    run.forEach((list) => collect(list, 0, acc));
+    const rebuilt = buildFrom(acc);
+    if (!rebuilt) return;
+    root.insertBefore(rebuilt, run[0]);
+    run.forEach((list) => { if (list.parentNode === root) root.removeChild(list); });
+  });
+}
+
 // Clean HTML pasted from other apps (Google Docs, Word, web pages…) down to the
 // small tag set the editor understands, dropping every inline style so the
 // pasted text takes on the editor's own font instead of the source's. Bold /
@@ -168,6 +249,7 @@ export function sanitizePastedHtml(html: string): string {
   };
   const src = document.createElement('template');
   src.innerHTML = html;
+  renestPastedLists(src.content); // rebuild flat aria-level/margin lists into real nesting
   const dst = document.createElement('div');
   walk(src.content, dst);
   return dst.innerHTML;
@@ -227,29 +309,31 @@ function inlineNodeToMd(node: MdNode): string {
   }
 }
 
-function liChildren(el: MdNode): MdNode[] {
-  const kids = el.children ?? el.childNodes;
-  const out: MdNode[] = [];
-  for (let i = 0; i < kids.length; i++) if (kids[i].tagName === 'LI') out.push(kids[i]);
-  return out;
-}
-
-// Serialise a <ul>/<ol> (with any nested lists) to indented markdown lines.
+// Serialise a <ul>/<ol> to indented markdown lines. Handles both proper nesting
+// (a nested list inside an <li>) and the stray nested list some browsers create
+// on indent (a <ul>/<ol> sitting directly inside the parent list).
 function domListToMd(el: MdNode, depth: number, out: string[]): void {
   const ordered = el.tagName === 'OL';
   let n = 1;
-  for (const li of liChildren(el)) {
-    let inline = '';
-    const nested: MdNode[] = [];
-    const kids = li.childNodes;
-    for (let j = 0; j < kids.length; j++) {
-      const c = kids[j];
-      if (c.nodeType === ELEMENT_NODE && (c.tagName === 'UL' || c.tagName === 'OL')) nested.push(c);
-      else inline += inlineNodeToMd(c);
+  const kids = el.childNodes;
+  for (let i = 0; i < kids.length; i++) {
+    const child = kids[i];
+    const t = child.tagName;
+    if (t === 'LI') {
+      let inline = '';
+      const nested: MdNode[] = [];
+      const lk = child.childNodes;
+      for (let j = 0; j < lk.length; j++) {
+        const c = lk[j];
+        if (c.tagName === 'UL' || c.tagName === 'OL') nested.push(c);
+        else inline += inlineNodeToMd(c);
+      }
+      out.push('  '.repeat(depth) + (ordered ? `${n}.` : '-') + ' ' + inline.trim());
+      n++;
+      for (const nl of nested) domListToMd(nl, depth + 1, out);
+    } else if (t === 'UL' || t === 'OL') {
+      domListToMd(child, depth + 1, out); // stray nested list → belongs to the item above
     }
-    out.push('  '.repeat(depth) + (ordered ? `${n}.` : '-') + ' ' + inline.trim());
-    n++;
-    for (const nl of nested) domListToMd(nl, depth + 1, out);
   }
 }
 
