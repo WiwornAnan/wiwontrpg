@@ -383,7 +383,7 @@ function EditorForm({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <label style={{ ...labelStyle, marginBottom: 0 }}>เนื้อหา (รายละเอียด)</label>
-          <span style={{ fontSize: 11.5, color: 'var(--text-ghost)' }}>ใช้เส้นคั่น ▦ ตาราง · 📌 ป้าย · 🖼 รูป เพื่อแทรกลงในเนื้อหา</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-ghost)' }}>วางเมาส์ที่ช่องว่างระหว่างบล็อก (＋) เพื่อแทรก ▦ ตาราง · 📌 ป้าย · 🖼 รูป</span>
         </div>
         <ArticleDocEditor
           model={{ bodyText: draft.bodyText, images: draft.images, tables: draft.tables, notes: draft.notes }}

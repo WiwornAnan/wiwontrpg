@@ -67,6 +67,7 @@ export function ArticleDocEditor({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <style>{DOC_CSS}</style>
       <InsertBar onTable={() => insertAt(0, mkTable())} onNote={() => insertAt(0, mkNote())} onImage={(f) => addImageAt(0, f)} />
       {segs.map((seg, i) => (
         <Fragment key={seg.type === 'text' ? `t${seg.run}` : `${seg.type}-${seg.id}`}>
@@ -78,19 +79,32 @@ export function ArticleDocEditor({
   );
 }
 
-const insBtn: React.CSSProperties = { border: '1px solid var(--border-faint)', background: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', padding: '2px 11px', cursor: 'pointer', lineHeight: 1.6 };
+// A quiet seam between blocks: just a faint "+" until you hover it, then the
+// insert options fade in over a hairline — so the page stays clean.
+const DOC_CSS = `
+.wiwon-ins{position:relative;display:flex;align-items:center;justify-content:center;height:20px}
+.wiwon-ins::before{content:"";position:absolute;left:6px;right:6px;top:50%;height:1px;background:var(--border-faint);opacity:0;transition:opacity .14s;pointer-events:none}
+.wiwon-ins:hover::before{opacity:1}
+.wiwon-ins-dot{color:var(--border);font-size:15px;line-height:1;opacity:.6;transition:opacity .14s;user-select:none;pointer-events:none}
+.wiwon-ins:hover .wiwon-ins-dot{display:none}
+.wiwon-ins-inner{display:none;gap:6px;position:relative;background:var(--surface,#fff);padding:0 8px}
+.wiwon-ins:hover .wiwon-ins-inner{display:flex}
+.wiwon-ins-btn{border:1px solid var(--border-faint);background:#fff;border-radius:20px;font-size:11px;font-weight:600;color:var(--text-faint);padding:3px 11px;cursor:pointer;line-height:1.5;display:inline-flex;align-items:center}
+.wiwon-ins-btn:hover{color:var(--coral-ink,#b4513a);border-color:#e6cfa6;background:#fdf6f2}
+`;
 
 function InsertBar({ onTable, onNote, onImage }: { onTable: () => void; onNote: () => void; onImage: (f: File) => void }) {
   return (
-    <div style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '5px 0' }}>
-      <span style={{ flex: 1, height: 1, background: 'var(--border-faint)' }} />
-      <button type="button" title="แทรกตารางตรงนี้" onClick={onTable} style={insBtn}>▦ ตาราง</button>
-      <button type="button" title="แทรกป้ายหมายเหตุตรงนี้" onClick={onNote} style={insBtn}>📌 ป้าย</button>
-      <label style={{ ...insBtn, display: 'inline-flex' }} title="แทรกรูปตรงนี้">
-        🖼 รูป
-        <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && onImage(e.target.files[0])} />
-      </label>
-      <span style={{ flex: 1, height: 1, background: 'var(--border-faint)' }} />
+    <div className="wiwon-ins">
+      <span className="wiwon-ins-dot" aria-hidden>＋</span>
+      <div className="wiwon-ins-inner">
+        <button type="button" className="wiwon-ins-btn" title="แทรกตารางตรงนี้" onClick={onTable}>▦ ตาราง</button>
+        <button type="button" className="wiwon-ins-btn" title="แทรกป้ายหมายเหตุตรงนี้" onClick={onNote}>📌 ป้าย</button>
+        <label className="wiwon-ins-btn" title="แทรกรูปตรงนี้">
+          🖼 รูป
+          <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && onImage(e.target.files[0])} />
+        </label>
+      </div>
     </div>
   );
 }
@@ -105,10 +119,12 @@ function NoteCard({ note, onChange, onRemove }: { note: StickyNote; onChange: (t
         placeholder="ข้อความหมายเหตุ (แปะป้าย)…"
         style={{ flex: 1, minHeight: 44, resize: 'vertical', border: 'none', background: 'transparent', outline: 'none', fontSize: 13.5, lineHeight: 1.7, color: '#3a3527' }}
       />
-      <button onClick={onRemove} title="ลบป้าย" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>×</button>
+      <button onClick={onRemove} title="ลบป้ายนี้" style={delBtn}>✕ ลบป้าย</button>
     </div>
   );
 }
+
+const delBtn: React.CSSProperties = { flex: 'none', background: '#fff', border: '1px solid #f0d3cb', color: 'var(--danger)', borderRadius: 7, fontSize: 11, fontWeight: 600, padding: '4px 9px', cursor: 'pointer', whiteSpace: 'nowrap' };
 
 function ImageCard({ image, onLayout, onRemove }: { image: ArticleImage; onLayout: (l: ImageLayout) => void; onRemove: () => void }) {
   return (
@@ -120,7 +136,7 @@ function ImageCard({ image, onLayout, onRemove }: { image: ArticleImage; onLayou
         <option value="right">ลอยขวา</option>
       </select>
       <span style={{ flex: 1 }} />
-      <button onClick={onRemove} title="ลบรูป" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>×</button>
+      <button onClick={onRemove} title="ลบรูปนี้" style={delBtn}>✕ ลบรูป</button>
     </div>
   );
 }
