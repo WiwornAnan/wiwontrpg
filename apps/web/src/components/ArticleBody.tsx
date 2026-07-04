@@ -52,9 +52,17 @@ function renderParagraph(para: string, key: number): ReactNode {
   if (isListBlock(trimmed)) return renderList(parseNestedList(trimmed), key);
   const indentMatch = para.match(/^[\t ]+/);
   const indentEm = indentMatch ? Math.min(6, indentMatch[0].replace(/\t/g, '    ').length) * 0.5 : 0;
+  // Soft line breaks inside a paragraph (single newlines, as the editor shows via
+  // white-space:pre-wrap) must render as <br>, not collapse to spaces.
+  const lines = para.replace(/^[\t ]+/, '').split('\n');
   return (
     <p key={key} style={{ margin: '0 0 14px', textIndent: indentEm ? `${indentEm}em` : undefined }}>
-      {renderInline(para.replace(/^[\t ]+/, ''))}
+      {lines.map((line, i) => (
+        <Fragment key={i}>
+          {i > 0 && <br />}
+          {renderInline(line)}
+        </Fragment>
+      ))}
     </p>
   );
 }
