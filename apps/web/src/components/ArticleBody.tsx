@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import type { Article, ArticleImage, ArticleTable, StickyNote } from '@wiwonanant/shared';
+import { isListBlock, parseNestedList, type ListNode } from '../lib/articleMarkdown';
 
 // Render lightweight inline markdown safely (no HTML injection):
 // **bold**, *italic*, ~~strike~~, [text](url).
@@ -26,6 +27,21 @@ function renderInline(text: string): ReactNode[] {
   return parts;
 }
 
+// Render a (possibly nested) list tree to real <ul>/<ol> elements.
+function renderList(node: ListNode, key: number): ReactNode {
+  const Tag = node.ordered ? 'ol' : 'ul';
+  return (
+    <Tag key={key} style={{ margin: '10px 0', paddingLeft: 24 }}>
+      {node.items.map((it, i) => (
+        <li key={i} style={{ marginBottom: 4 }}>
+          {renderInline(it.content)}
+          {it.children && renderList(it.children, i)}
+        </li>
+      ))}
+    </Tag>
+  );
+}
+
 // Render a single paragraph, honoring block markdown (#, ##, >, -, 1., ---).
 function renderParagraph(para: string, key: number): ReactNode {
   const trimmed = para.trim();
@@ -33,11 +49,7 @@ function renderParagraph(para: string, key: number): ReactNode {
   if (trimmed.startsWith('## ')) return <h3 key={key} style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 22, margin: '20px 0 10px' }}>{renderInline(trimmed.slice(3))}</h3>;
   if (trimmed.startsWith('# ')) return <h2 key={key} style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 27, margin: '22px 0 12px' }}>{renderInline(trimmed.slice(2))}</h2>;
   if (trimmed.startsWith('> ')) return <blockquote key={key} style={{ borderLeft: '3px solid #e0ded7', paddingLeft: 14, margin: '14px 0', color: '#5f5c54', fontStyle: 'italic' }}>{renderInline(trimmed.slice(2))}</blockquote>;
-  const lines = trimmed.split('\n');
-  if (lines.every((l) => /^[-*] /.test(l.trim())))
-    return <ul key={key} style={{ margin: '10px 0', paddingLeft: 22 }}>{lines.map((l, i) => <li key={i} style={{ marginBottom: 4 }}>{renderInline(l.trim().slice(2))}</li>)}</ul>;
-  if (lines.every((l) => /^\d+\. /.test(l.trim())))
-    return <ol key={key} style={{ margin: '10px 0', paddingLeft: 22 }}>{lines.map((l, i) => <li key={i} style={{ marginBottom: 4 }}>{renderInline(l.trim().replace(/^\d+\.\s/, ''))}</li>)}</ol>;
+  if (isListBlock(trimmed)) return renderList(parseNestedList(trimmed), key);
   const indentMatch = para.match(/^[\t ]+/);
   const indentEm = indentMatch ? Math.min(6, indentMatch[0].replace(/\t/g, '    ').length) * 0.5 : 0;
   return (

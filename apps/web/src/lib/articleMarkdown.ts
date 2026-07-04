@@ -32,6 +32,57 @@ export function inlineMdToHtml(text: string): string {
   return out || '<br>';
 }
 
+// ---- Nested lists ---------------------------------------------------------
+// A list is one block; nesting is expressed by 2 spaces of indent per level,
+// e.g.  "1. top\n  - sub\n    - deep". Shared by the renderer and the editor.
+export interface ListNode {
+  ordered: boolean;
+  items: { content: string; children: ListNode | null }[];
+}
+
+const listLineRe = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
+
+export function isListBlock(block: string): boolean {
+  const lines = block.split('\n').filter((l) => l.trim());
+  return lines.length > 0 && lines.every((l) => listLineRe.test(l));
+}
+
+export function parseNestedList(block: string): ListNode {
+  const lines = block.split('\n').filter((l) => l.trim());
+  const depthOf = (l: string) => Math.floor((l.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '  ').length / 2);
+  let i = 0;
+  const build = (depth: number): ListNode => {
+    const items: ListNode['items'] = [];
+    let ordered = false;
+    let typed = false;
+    while (i < lines.length) {
+      const d = depthOf(lines[i]);
+      if (d < depth) break;
+      if (d > depth) {
+        const child = build(depth + 1);
+        if (items.length) items[items.length - 1].children = child;
+        continue;
+      }
+      const m = listLineRe.exec(lines[i]);
+      if (!m) break;
+      if (!typed) {
+        ordered = /\d/.test(m[2]);
+        typed = true;
+      }
+      items.push({ content: m[3], children: null });
+      i++;
+    }
+    return { ordered, items };
+  };
+  return build(0);
+}
+
+function listNodeToHtml(node: ListNode): string {
+  const tag = node.ordered ? 'ol' : 'ul';
+  const items = node.items.map((it) => `<li>${inlineMdToHtml(it.content)}${it.children ? listNodeToHtml(it.children) : ''}</li>`).join('');
+  return `<${tag}>${items}</${tag}>`;
+}
+
 // Markdown document → HTML for seeding the editor. Blocks are the same
 // blank-line-separated units the renderer and paragraph counter use.
 export function markdownToHtml(md: string): string {
@@ -44,11 +95,7 @@ export function markdownToHtml(md: string): string {
       if (t.startsWith('## ')) return `<h2>${inlineMdToHtml(t.slice(3))}</h2>`;
       if (t.startsWith('# ')) return `<h1>${inlineMdToHtml(t.slice(2))}</h1>`;
       if (t.startsWith('> ')) return `<blockquote>${inlineMdToHtml(t.replace(/^> ?/gm, ''))}</blockquote>`;
-      const lines = t.split('\n');
-      if (lines.every((l) => /^[-*] /.test(l.trim())))
-        return `<ul>${lines.map((l) => `<li>${inlineMdToHtml(l.trim().slice(2))}</li>`).join('')}</ul>`;
-      if (lines.every((l) => /^\d+\. /.test(l.trim())))
-        return `<ol>${lines.map((l) => `<li>${inlineMdToHtml(l.trim().replace(/^\d+\.\s/, ''))}</li>`).join('')}</ol>`;
+      if (isListBlock(t)) return listNodeToHtml(parseNestedList(t));
       // Plain paragraph — keep any leading indent as literal text (the editor
       // uses white-space:pre-wrap so it shows, and serialises straight back).
       const indent = block.match(/^[\t ]+/)?.[0] ?? '';
@@ -187,6 +234,25 @@ function liChildren(el: MdNode): MdNode[] {
   return out;
 }
 
+// Serialise a <ul>/<ol> (with any nested lists) to indented markdown lines.
+function domListToMd(el: MdNode, depth: number, out: string[]): void {
+  const ordered = el.tagName === 'OL';
+  let n = 1;
+  for (const li of liChildren(el)) {
+    let inline = '';
+    const nested: MdNode[] = [];
+    const kids = li.childNodes;
+    for (let j = 0; j < kids.length; j++) {
+      const c = kids[j];
+      if (c.nodeType === ELEMENT_NODE && (c.tagName === 'UL' || c.tagName === 'OL')) nested.push(c);
+      else inline += inlineNodeToMd(c);
+    }
+    out.push('  '.repeat(depth) + (ordered ? `${n}.` : '-') + ' ' + inline.trim());
+    n++;
+    for (const nl of nested) domListToMd(nl, depth + 1, out);
+  }
+}
+
 // Editor DOM (root element) → markdown document, inverse of markdownToHtml.
 // Block elements each become their own paragraph; consecutive bare text/inline
 // nodes at the root (as a freshly-typed or select-all-deleted editor produces)
@@ -237,16 +303,11 @@ export function htmlToMarkdown(root: MdNode): string {
         );
       continue;
     }
-    if (tag === 'UL') {
+    if (tag === 'UL' || tag === 'OL') {
       flush();
-      const items = liChildren(node).map((li) => '- ' + childrenToMd(li).trim());
-      if (items.length) blocks.push(items.join('\n'));
-      continue;
-    }
-    if (tag === 'OL') {
-      flush();
-      const items = liChildren(node).map((li, i2) => `${i2 + 1}. ` + childrenToMd(li).trim());
-      if (items.length) blocks.push(items.join('\n'));
+      const out: string[] = [];
+      domListToMd(node, 0, out);
+      if (out.length) blocks.push(out.join('\n'));
       continue;
     }
     if (tag === 'P' || tag === 'DIV') {
