@@ -9,18 +9,15 @@ import {
   type ArticleImage,
   type ArticleTable,
   type DocCategory,
-  type ImageLayout,
   type StickyNote,
   type WiwonCover,
 } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
 import { Modal } from '../components/Modal';
-import { RichBodyEditor } from '../components/RichBodyEditor';
+import { ArticleDocEditor } from '../components/ArticleDocEditor';
 import { Button, inputStyle, labelStyle } from '../components/ui';
 import styles from '../components/layout.module.css';
-
-const uid = () => Math.random().toString(36).slice(2, 10);
 
 type StatusFilter = 'all' | 'published' | 'draft';
 
@@ -313,22 +310,6 @@ function EditorForm({
 }) {
   const [uploadingIcon, setUploadingIcon] = useState<'large' | 'small' | null>(null);
 
-  const paraCount = draft.bodyText.split(/\n\s*\n/).filter((p) => p.trim()).length;
-  const posOptions = Array.from({ length: paraCount + 1 }, (_, i) => i);
-
-  async function addImage(file: File) {
-    const url = await uploadImage(file);
-    setDraft((d) => ({
-      ...d,
-      images: [...d.images, { id: uid(), url, layout: 'full', afterParagraph: 0, order: d.images.length }],
-    }));
-  }
-  function updateImage(id: string, patch: Partial<ArticleImage>) {
-    setDraft((d) => ({ ...d, images: d.images.map((im) => (im.id === id ? { ...im, ...patch } : im)) }));
-  }
-  function removeImage(id: string) {
-    setDraft((d) => ({ ...d, images: d.images.filter((im) => im.id !== id) }));
-  }
   async function setIcon(kind: 'large' | 'small', file: File) {
     setUploadingIcon(kind);
     try {
@@ -400,67 +381,16 @@ function EditorForm({
       </div>
 
       <div>
-        <label style={labelStyle}>เนื้อหา (รายละเอียด)</label>
-        <RichBodyEditor
-          value={draft.bodyText}
-          onChange={(v) => setDraft((d) => ({ ...d, bodyText: v }))}
-          onAddNote={() => setDraft((d) => ({ ...d, notes: [...d.notes, { id: uid(), text: '', afterParagraph: paraCount }] }))}
-          onAddTable={() => setDraft((d) => ({ ...d, tables: [...d.tables, { id: uid(), headCells: ['หัวข้อ 1', 'หัวข้อ 2'], rows: [['', '']], afterParagraph: paraCount }] }))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>เนื้อหา (รายละเอียด)</label>
+          <span style={{ fontSize: 11.5, color: 'var(--text-ghost)' }}>ใช้เส้นคั่น ▦ ตาราง · 📌 ป้าย · 🖼 รูป เพื่อแทรกลงในเนื้อหา</span>
+        </div>
+        <ArticleDocEditor
+          model={{ bodyText: draft.bodyText, images: draft.images, tables: draft.tables, notes: draft.notes }}
+          onChange={(m) => setDraft((d) => ({ ...d, bodyText: m.bodyText, images: m.images, tables: m.tables, notes: m.notes }))}
+          uploadImage={uploadImage}
         />
       </div>
-
-      {/* images */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <label style={{ ...labelStyle, marginBottom: 0 }}>ภาพประกอบเนื้อหา (ใส่ได้หลายรูป)</label>
-          <label style={{ ...inputStyle, width: 'auto', cursor: 'pointer', padding: '6px 12px', fontSize: 12 }}>
-            + เพิ่มรูป
-            <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && addImage(e.target.files[0])} />
-          </label>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-          {draft.images.map((im) => (
-            <div key={im.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid var(--border-faint)', borderRadius: 10, padding: 8 }}>
-              <img src={im.url} alt="" style={{ width: 54, height: 40, objectFit: 'cover', borderRadius: 6 }} />
-              <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-                <select value={im.layout} onChange={(e) => updateImage(im.id, { layout: e.target.value as ImageLayout })} style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }}>
-                  <option value="full">เต็มกว้าง</option>
-                  <option value="left">ลอยซ้าย</option>
-                  <option value="right">ลอยขวา</option>
-                </select>
-                <select value={im.afterParagraph} onChange={(e) => updateImage(im.id, { afterParagraph: Number(e.target.value) })} style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }}>
-                  {posOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p === 0 ? 'ก่อนเนื้อหา' : `หลังย่อหน้าที่ ${p}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button onClick={() => removeImage(im.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {draft.notes.map((n) => (
-        <div key={n.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <textarea
-            value={n.text}
-            onChange={(e) => setDraft((d) => ({ ...d, notes: d.notes.map((x) => (x.id === n.id ? { ...x, text: e.target.value } : x)) }))}
-            placeholder="ข้อความหมายเหตุ…"
-            style={{ ...inputStyle, minHeight: 44, resize: 'vertical', background: '#fffdf3', borderColor: '#ecdfa8' }}
-          />
-          <button onClick={() => setDraft((d) => ({ ...d, notes: d.notes.filter((x) => x.id !== n.id) }))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>
-            ×
-          </button>
-        </div>
-      ))}
-
-      {draft.tables.map((t) => (
-        <TableEditor key={t.id} table={t} onChange={(nt) => setDraft((d) => ({ ...d, tables: d.tables.map((x) => (x.id === t.id ? nt : x)) }))} onRemove={() => setDraft((d) => ({ ...d, tables: d.tables.filter((x) => x.id !== t.id) }))} />
-      ))}
 
       {/* tags */}
       <div>
@@ -529,55 +459,3 @@ function IconField({ label, url, uploading, onPick, onClear }: { label: string; 
     </div>
   );
 }
-
-function TableEditor({ table, onChange, onRemove }: { table: ArticleTable; onChange: (t: ArticleTable) => void; onRemove: () => void }) {
-  function setHead(i: number, v: string) {
-    onChange({ ...table, headCells: table.headCells.map((h, idx) => (idx === i ? v : h)) });
-  }
-  function setCell(ri: number, ci: number, v: string) {
-    onChange({ ...table, rows: table.rows.map((r, idx) => (idx === ri ? r.map((c, cidx) => (cidx === ci ? v : c)) : r)) });
-  }
-  function addRow() {
-    onChange({ ...table, rows: [...table.rows, table.headCells.map(() => '')] });
-  }
-  function addCol() {
-    onChange({ ...table, headCells: [...table.headCells, `หัวข้อ ${table.headCells.length + 1}`], rows: table.rows.map((r) => [...r, '']) });
-  }
-  return (
-    <div style={{ border: '1px solid var(--border-faint)', borderRadius: 10, padding: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>ตาราง</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={addCol} style={miniAction}>+ คอลัมน์</button>
-          <button onClick={addRow} style={miniAction}>+ แถว</button>
-          <button onClick={onRemove} style={{ ...miniAction, color: 'var(--danger)' }}>ลบตาราง</button>
-        </div>
-      </div>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
-        <thead>
-          <tr>
-            {table.headCells.map((h, i) => (
-              <th key={i} style={{ border: '1px solid var(--border)', padding: 2 }}>
-                <input value={h} onChange={(e) => setHead(i, e.target.value)} style={{ border: 'none', width: '100%', padding: 5, fontWeight: 600, background: 'var(--surface-sunken)', outline: 'none' }} />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((r, ri) => (
-            <tr key={ri}>
-              {r.map((c, ci) => (
-                <td key={ci} style={{ border: '1px solid var(--border)', padding: 2 }}>
-                  <input value={c} onChange={(e) => setCell(ri, ci, e.target.value)} style={{ border: 'none', width: '100%', padding: 5, outline: 'none' }} />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-const miniAction: React.CSSProperties = { background: 'var(--surface-sunken)', border: '1px solid var(--border-faint)', borderRadius: 6, fontSize: 11, padding: '4px 8px', cursor: 'pointer', color: 'var(--text-muted)' };
-

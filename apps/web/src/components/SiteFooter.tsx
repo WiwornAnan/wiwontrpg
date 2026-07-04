@@ -3,6 +3,7 @@ import { useState } from 'react';
 // Bank transfer donation (Kasikornbank / กสิกรไทย).
 const BANK_LABEL = 'ธ.กสิกรไทย (KBank)';
 const ACCOUNT_NO = '173-8-15647-8';
+const ACCOUNT_NAME = 'Nut Charoenngamwongwan';
 
 // A quiet site footer — it sits at the very bottom of every page so it never
 // competes with the content — but the little "support" card is given a soft
@@ -32,6 +33,7 @@ export function SiteFooter() {
           <div style={{ lineHeight: 1.5 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b4513a' }}>ร่วมสนับสนุนการพัฒนา</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>เลี้ยงกาแฟผู้พัฒนาสักแก้ว เพื่อให้ WiwonAnant เดินหน้าต่อ 💛</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 3 }}>ชื่อบัญชี {ACCOUNT_NAME}</div>
           </div>
           <button
             onClick={copy}
