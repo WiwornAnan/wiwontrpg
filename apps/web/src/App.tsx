@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Header } from './components/Header';
+import { SiteFooter } from './components/SiteFooter';
 import { DiceRoller } from './components/DiceRoller';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
@@ -36,6 +37,7 @@ export function App() {
           <Route path="*" element={<Placeholder title="ไม่พบหน้านี้" note="404" />} />
         </Routes>
       </main>
+      <SiteFooter />
 
       <button
         onClick={() => setDiceOpen(true)}

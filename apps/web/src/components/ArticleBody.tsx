@@ -30,8 +30,8 @@ function renderInline(text: string): ReactNode[] {
 function renderParagraph(para: string, key: number): ReactNode {
   const trimmed = para.trim();
   if (/^---+$/.test(trimmed)) return <hr key={key} style={{ border: 'none', borderTop: '1px solid #cbc8c0', margin: '18px 0' }} />;
-  if (trimmed.startsWith('## ')) return <h3 key={key} style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22, margin: '20px 0 10px' }}>{renderInline(trimmed.slice(3))}</h3>;
-  if (trimmed.startsWith('# ')) return <h2 key={key} style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 27, margin: '22px 0 12px' }}>{renderInline(trimmed.slice(2))}</h2>;
+  if (trimmed.startsWith('## ')) return <h3 key={key} style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 22, margin: '20px 0 10px' }}>{renderInline(trimmed.slice(3))}</h3>;
+  if (trimmed.startsWith('# ')) return <h2 key={key} style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 27, margin: '22px 0 12px' }}>{renderInline(trimmed.slice(2))}</h2>;
   if (trimmed.startsWith('> ')) return <blockquote key={key} style={{ borderLeft: '3px solid #e0ded7', paddingLeft: 14, margin: '14px 0', color: '#5f5c54', fontStyle: 'italic' }}>{renderInline(trimmed.slice(2))}</blockquote>;
   const lines = trimmed.split('\n');
   if (lines.every((l) => /^[-*] /.test(l.trim())))

@@ -128,6 +128,14 @@ export function ContentEditorPage() {
       arr.push(d);
       map.set(d.category, arr);
     });
+    // Order each category as a reader would expect: by Part number, then the
+    // manual orderIndex within a Part (title as a final tie-breaker).
+    const partNo = (s: string) => {
+      const m = /\d+/.exec(s ?? '');
+      return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
+    };
+    for (const arr of map.values())
+      arr.sort((a, b) => partNo(a.partSection) - partNo(b.partSection) || a.orderIndex - b.orderIndex || a.title.localeCompare(b.title, 'th'));
     return [...map.entries()];
   }, [allDocs, statusFilter]);
 
