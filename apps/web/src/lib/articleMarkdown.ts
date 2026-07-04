@@ -57,6 +57,75 @@ export function markdownToHtml(md: string): string {
     .join('');
 }
 
+// Clean HTML pasted from other apps (Google Docs, Word, web pages…) down to the
+// small tag set the editor understands, dropping every inline style so the
+// pasted text takes on the editor's own font instead of the source's. Bold /
+// italic / strike expressed only through styles (as Google Docs does) are
+// recovered into real tags. Runs in the browser only (uses `document`).
+export function sanitizePastedHtml(html: string): string {
+  // Inline emphasis tags — but Google Docs uses <b style="font-weight:normal">
+  // as a *non*-bold wrapper, so honour a style that negates the emphasis.
+  const INLINE: Record<string, string> = { B: 'STRONG', STRONG: 'STRONG', I: 'EM', EM: 'EM', S: 'S', STRIKE: 'S', DEL: 'S' };
+  const BLOCK: Record<string, string> = {
+    H1: 'H1', H2: 'H2', H3: 'H2', H4: 'H2', H5: 'H2', H6: 'H2',
+    P: 'P', DIV: 'P', UL: 'UL', OL: 'OL', LI: 'LI', BLOCKQUOTE: 'BLOCKQUOTE', A: 'A', BR: 'BR',
+  };
+  const negated = (tag: string, s: string): boolean =>
+    (tag === 'B' || tag === 'STRONG') ? /font-weight:\s*(normal|[1-4]00)/.test(s)
+      : (tag === 'I' || tag === 'EM') ? /font-style:\s*normal/.test(s)
+      : false;
+  const styleWrap = (s: string): string | null => {
+    if (/font-weight:\s*(bold|[6-9]00)/.test(s)) return 'STRONG';
+    if (/font-style:\s*italic/.test(s)) return 'EM';
+    if (/line-through/.test(s)) return 'S';
+    return null;
+  };
+  const walk = (node: Node, out: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) {
+        out.appendChild(document.createTextNode(child.nodeValue ?? ''));
+        return;
+      }
+      if (child.nodeType !== 1) return;
+      const el = child as HTMLElement;
+      const tag = el.tagName;
+      const style = (el.getAttribute('style') ?? '').toLowerCase();
+      if (INLINE[tag]) {
+        if (negated(tag, style)) walk(el, out); // e.g. GDocs' non-bold <b> → unwrap
+        else {
+          const ne = document.createElement(INLINE[tag]);
+          walk(el, ne);
+          out.appendChild(ne);
+        }
+        return;
+      }
+      if (BLOCK[tag]) {
+        const ne = document.createElement(BLOCK[tag]);
+        if (BLOCK[tag] === 'A') {
+          const href = el.getAttribute('href');
+          if (href) ne.setAttribute('href', href);
+        }
+        walk(el, ne);
+        out.appendChild(ne);
+        return;
+      }
+      const wrap = styleWrap(style);
+      if (wrap) {
+        const ne = document.createElement(wrap);
+        walk(el, ne);
+        out.appendChild(ne);
+      } else {
+        walk(el, out); // unknown tag (span, font, b-wrapper…) → unwrap
+      }
+    });
+  };
+  const src = document.createElement('template');
+  src.innerHTML = html;
+  const dst = document.createElement('div');
+  walk(src.content, dst);
+  return dst.innerHTML;
+}
+
 // Minimal shape of the DOM nodes we read — lets this be unit-tested with plain
 // objects and keeps the walker independent of a real document.
 export interface MdNode {
