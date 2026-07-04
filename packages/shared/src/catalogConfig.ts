@@ -357,3 +357,35 @@ export function computeMagicTN(
   const mod = magicKpModifier(kp);
   return { base, mod, tn: base + mod };
 }
+
+// ---- Feature Target Number (TN) -------------------------------------------
+// A Feature is checked on d8 + d8 + d10 (sum 3–26, mean ~14.5). Its TN is a base
+// set by Capacity — centred on that curve so no tier is trivial or impossible —
+// plus a modifier from Curiosity Point. Base success before the modifier:
+// Common 12 ≈ 75% · Uncommon 14 ≈ 59% · Rare 16 ≈ 41% · Legendary 18 ≈ 26%.
+export const FEATURE_BASE_TN: Record<string, number> = {
+  Common: 12,
+  Uncommon: 14,
+  Rare: 16,
+  Legendary: 18,
+};
+
+// Curiosity Point → TN modifier (kept gentle for the d8+d8+d10 range):
+// 1–2 CP → +0, 3–4 CP → +1, 5+ CP → +2.
+export function curiosityModifier(cp: number): number {
+  if (!Number.isFinite(cp) || cp <= 2) return 0;
+  if (cp <= 4) return 1;
+  return 2;
+}
+
+// Returns { base, mod, tn } for a feature, or null when the Capacity is unknown.
+export function computeFeatureTN(
+  capacity: string | undefined,
+  curiosityValue: string | number | undefined,
+): { base: number; mod: number; tn: number } | null {
+  const base = capacity ? FEATURE_BASE_TN[capacity] : undefined;
+  if (base == null) return null;
+  const cp = typeof curiosityValue === 'number' ? curiosityValue : parseInt(String(curiosityValue ?? ''), 10);
+  const mod = curiosityModifier(cp);
+  return { base, mod, tn: base + mod };
+}

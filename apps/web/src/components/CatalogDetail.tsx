@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
-import { computeMagicTN } from '@wiwonanant/shared';
+import { computeFeatureTN, computeMagicTN } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import type { CatalogListResult } from '../lib/catalogHooks';
@@ -122,8 +122,15 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       ]
     : [];
 
-  // Spell casting TN — derived from Casting Level (base) + Knowledge Points (mod).
-  const magicTN = isMagicSpell ? computeMagicTN(fv(item, 'castLevel'), fv(item, 'knowledge')) : null;
+  // Casting TN — spells: Casting Level + Knowledge Points; features: Capacity +
+  // Curiosity Point (checked on d8+d8+d10).
+  const magicTN = isMagicSpell
+    ? computeMagicTN(fv(item, 'castLevel'), fv(item, 'knowledge'))
+    : isMagicFeature
+    ? computeFeatureTN(fv(item, 'rarity'), fv(item, 'curiosity'))
+    : null;
+  const tnBaseLabel = isMagicFeature ? fv(item, 'rarity') : fv(item, 'castLevel');
+  const tnModLabel = isMagicFeature ? 'Curiosity Point' : 'Knowledge Points';
 
   const cost = fv(item, 'cost');
   const isWeapon = category === 'equipment' && /weapon|อาวุธ/i.test(fv(item, 'equipType') + ' ' + fv(item, 'tag'));
@@ -237,7 +244,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               return <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: bg, color }}>{r}</span>;
             })()}
             {magicTN && (
-              <span title={`Target Number\nพื้นฐาน ${magicTN.base} (${fv(item, 'castLevel') || '—'}) + ${magicTN.mod} (Knowledge Points) = ${magicTN.tn}`} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0', cursor: 'help' }}>TN {magicTN.tn}</span>
+              <span title={`Target Number\nพื้นฐาน ${magicTN.base} (${tnBaseLabel || '—'}) + ${magicTN.mod} (${tnModLabel}) = ${magicTN.tn}`} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', borderRadius: 5, padding: '2px 8px', background: '#15140f', color: '#f7dca0', cursor: 'help' }}>TN {magicTN.tn}</span>
             )}
           </div>
           <div style={{ fontSize: 12.5, color: '#8d8a82', marginTop: 3 }}>
