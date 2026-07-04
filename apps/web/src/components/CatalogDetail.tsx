@@ -65,7 +65,7 @@ interface Props {
 }
 
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
-const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'cost']);
+const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
 export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial }: Props) {
   const { user, isDev } = useAuth();
@@ -118,7 +118,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     ? [
         { label: 'Willpower', value: fv(item, 'cost') || '—', bg: '#fbeae6', color: '#c0432a' },
         { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
-        { label: 'Knowledge', value: fv(item, 'knowledge') || '—', bg: '#e5edfb', color: '#2a6fdb' },
+        { label: 'Curiosity Point', value: fv(item, 'curiosity') || '—', bg: '#e5edfb', color: '#2a6fdb' },
       ]
     : [];
 
