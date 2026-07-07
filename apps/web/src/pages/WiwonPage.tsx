@@ -79,6 +79,34 @@ export function WiwonPage() {
           )}
         </div>
       )}
+      {covers.length > 1 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 12, color: '#8d8a82', fontWeight: 600, marginBottom: 9 }}>สลับไปวิวรณ์เล่มอื่น</div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
+            {covers.map((c) => {
+              const active = c.id === selectedId;
+              return (
+                <div key={c.id} onClick={() => openBook(c.id)} style={{ flex: 'none', width: 82, cursor: 'pointer', textAlign: 'center' }}>
+                  <div
+                    style={{
+                      width: 82,
+                      height: 106,
+                      borderRadius: 9,
+                      border: active ? '2px solid var(--coral)' : '1px solid var(--border)',
+                      background: c.coverImageUrl
+                        ? `center/cover url(${c.coverImageUrl})`
+                        : c.hasData
+                          ? 'linear-gradient(160deg,#f4d9d1,#e7b6a7)'
+                          : 'var(--surface-sunken)',
+                    }}
+                  />
+                  <div style={{ fontSize: 10.5, fontWeight: 600, marginTop: 5, lineHeight: 1.25, color: active ? '#15140f' : '#6b6860', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 
