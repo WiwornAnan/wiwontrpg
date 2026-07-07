@@ -30,6 +30,26 @@ interface Group {
   items: Article[];
 }
 
+const ROMAN: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+
+// Pull the numeral out of a "PART VI — …" / "PART 6" heading so Part cards can
+// be ordered by their number instead of by whichever articles were added last.
+// Returns null for un-numbered sections (e.g. "Appendix"), which then keep
+// their original position after the numbered parts.
+function partNumber(section: string): number | null {
+  const m = section.match(/\bPART\s+(\d+|[IVXLCDM]+)\b/i);
+  if (!m) return null;
+  const token = m[1].toUpperCase();
+  if (/^\d+$/.test(token)) return parseInt(token, 10);
+  let total = 0;
+  for (let i = 0; i < token.length; i++) {
+    const cur = ROMAN[token[i]];
+    const next = ROMAN[token[i + 1]];
+    total += next && cur < next ? -cur : cur;
+  }
+  return total;
+}
+
 export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote, hideHero, hideTagSearch, paneTitle }: Props) {
   const { isDev } = useAuth();
   const navigate = useNavigate();
@@ -60,7 +80,22 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
       arr.push(a);
       map.set(key, arr);
     }
-    return [...map.entries()].map(([section, items]) => ({ section, items }));
+    // `filtered` is already in orderIndex order, so Map insertion order is the
+    // natural fallback. Then float numbered PARTs into numeric order, keeping
+    // un-numbered sections after them in their existing order.
+    const entries = [...map.entries()].map(([section, items], seq) => ({
+      section,
+      items,
+      seq,
+      num: partNumber(section),
+    }));
+    entries.sort((a, b) => {
+      if (a.num != null && b.num != null) return a.num - b.num || a.seq - b.seq;
+      if (a.num != null) return -1;
+      if (b.num != null) return 1;
+      return a.seq - b.seq;
+    });
+    return entries.map(({ section, items }) => ({ section, items }));
   }, [filtered]);
 
   const allTags = useMemo(() => {
