@@ -155,6 +155,60 @@ articlesRouter.patch('/:id', requireDev, async (req, res) => {
   res.json({ article: toArticle(row) });
 });
 
+// Reorder a whole Part group up/down. Rewrites orderIndex so every Part's
+// articles form a contiguous block, in the dev-chosen order (each article's
+// position within its Part is preserved).
+articlesRouter.patch('/parts/reorder', requireDev, async (req, res) => {
+  const category = typeof req.body?.category === 'string' ? req.body.category : undefined;
+  const coverId = typeof req.body?.coverId === 'string' ? req.body.coverId : undefined;
+  const section = typeof req.body?.section === 'string' ? req.body.section : undefined;
+  const dir = req.body?.direction === 'up' ? 'up' : 'down';
+  if (!category || !section) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const where: Record<string, unknown> = { category };
+  if (coverId) where.wiwonCoverId = coverId;
+  const rows = await prisma.article.findMany({
+    where,
+    orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
+  });
+  // Match the client's group key (null/empty partSection shows as "Contents").
+  const keyOf = (a: (typeof rows)[number]) => a.partSection || 'Contents';
+
+  const order: string[] = [];
+  const byKey = new Map<string, typeof rows>();
+  for (const a of rows) {
+    const k = keyOf(a);
+    if (!byKey.has(k)) {
+      byKey.set(k, []);
+      order.push(k);
+    }
+    byKey.get(k)!.push(a);
+  }
+
+  const i = order.indexOf(section);
+  const j = dir === 'up' ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= order.length) {
+    res.json({ ok: true });
+    return;
+  }
+  [order[i], order[j]] = [order[j], order[i]];
+
+  const updates = [];
+  let idx = 0;
+  for (const k of order) {
+    for (const a of byKey.get(k) ?? []) {
+      if (a.orderIndex !== idx) {
+        updates.push(prisma.article.update({ where: { id: a.id }, data: { orderIndex: idx } }));
+      }
+      idx++;
+    }
+  }
+  if (updates.length) await prisma.$transaction(updates);
+  res.json({ ok: true });
+});
+
 // Reorder within a part group: move up/down by swapping orderIndex with neighbor.
 articlesRouter.patch('/:id/order', requireDev, async (req, res) => {
   const dir = req.body?.direction === 'up' ? 'up' : 'down';
