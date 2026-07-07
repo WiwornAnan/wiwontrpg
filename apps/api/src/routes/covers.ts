@@ -22,6 +22,7 @@ coversRouter.get('/', async (req, res) => {
 
 const coverInput = z.object({
   name: z.string().min(1, 'กรุณากรอกชื่อเล่ม'),
+  setName: z.string().nullable().optional(),
   updateDateLabel: z.string().nullable().optional(),
   coverImageUrl: z.string().nullable().optional(),
   heroTitle: z.string().nullable().optional(),
@@ -40,6 +41,7 @@ coversRouter.post('/', requireDev, async (req, res) => {
   const row = await prisma.wiwonCover.create({
     data: {
       name: parsed.data.name,
+      setName: parsed.data.setName ?? null,
       updateDateLabel: parsed.data.updateDateLabel ?? null,
       coverImageUrl: parsed.data.coverImageUrl ?? null,
       heroTitle: parsed.data.heroTitle ?? null,

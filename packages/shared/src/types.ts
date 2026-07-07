@@ -59,6 +59,7 @@ export interface Article {
 export interface WiwonCover {
   id: string;
   name: string;
+  setName: string | null;
   updateDateLabel: string | null;
   coverImageUrl: string | null;
   heroTitle: string | null;

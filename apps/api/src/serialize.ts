@@ -76,6 +76,7 @@ export function toCover(c: PCover): WiwonCover {
   return {
     id: c.id,
     name: c.name,
+    setName: c.setName,
     updateDateLabel: c.updateDateLabel,
     coverImageUrl: c.coverImageUrl,
     heroTitle: c.heroTitle,
