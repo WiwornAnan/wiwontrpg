@@ -10,6 +10,11 @@ import { Button, inputStyle, labelStyle } from '../components/ui';
 import { CATEGORY_META } from '../lib/categoryConfig';
 import layout from '../components/layout.module.css';
 
+// A full-width wooden plank drawn at the foot of every 212px book row, so the
+// shelf spans the whole width no matter how few books sit on it.
+const SHELF_PLANK =
+  'repeating-linear-gradient(to bottom,transparent 0,transparent 150px,#a4713f 150px,#a4713f 152px,#7a4a2c 152px,#5c3a1e 165px,rgba(60,40,20,.16) 165px,rgba(60,40,20,0) 172px,transparent 172px,transparent 212px)';
+
 export function WiwonPage() {
   const { isDev } = useAuth();
   const qc = useQueryClient();
@@ -168,12 +173,12 @@ function Bookshelf({
         <p style={{ margin: '8px 0 0', color: '#8d8a82', fontSize: 14 }}>เลือกวิวรณ์ที่ต้องการเปิดอ่าน</p>
       </div>
 
-      {/* A wooden bookcase: books stand upright on continuous shelf planks. */}
-      <div style={{ borderRadius: 16, border: '1px solid #cdb79a', background: 'linear-gradient(#efe7d9,#e6dbc8)', boxShadow: 'inset 0 2px 12px rgba(90,60,30,.09)', padding: '26px 16px 12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(126px, 1fr))', columnGap: 0, rowGap: 26 }}>
+      {/* A wooden bookcase: books stand upright on a full-width shelf plank. */}
+      <div style={{ borderRadius: 16, border: '1px solid #cdb79a', background: 'linear-gradient(#efe7d9,#e6dbc8)', boxShadow: 'inset 0 2px 12px rgba(90,60,30,.09)', padding: '24px 18px' }}>
+        {/* the plank runs the full row width via the repeating background */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, backgroundImage: SHELF_PLANK }}>
           {covers.map((c) => (
-            <div key={c.id} onClick={() => onOpen(c.id)} style={{ cursor: 'pointer', padding: '0 12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              {/* book cover, standing on the shelf */}
+            <div key={c.id} onClick={() => onOpen(c.id)} style={{ width: 130, height: 212, boxSizing: 'border-box', padding: '0 13px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
               <div
                 style={{
                   position: 'relative',
@@ -182,7 +187,7 @@ function Bookshelf({
                   height: 150,
                   borderRadius: '4px 7px 7px 4px',
                   border: '1px solid rgba(0,0,0,.14)',
-                  boxShadow: '0 12px 10px -8px rgba(70,45,20,.5)',
+                  boxShadow: '0 13px 11px -8px rgba(70,45,20,.5)',
                   background: c.coverImageUrl
                     ? `center/cover url(${c.coverImageUrl})`
                     : c.hasData
@@ -204,21 +209,18 @@ function Bookshelf({
                   <span style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', fontSize: 11, color: '#8d8378', background: 'rgba(255,255,255,.72)', borderRadius: 5, padding: '2px 9px', whiteSpace: 'nowrap' }}>ว่าง</span>
                 )}
               </div>
-              {/* wooden plank — spans the full cell so neighbours join into one shelf */}
-              <div style={{ width: 'calc(100% + 24px)', marginLeft: -12, marginRight: -12, height: 14, background: 'linear-gradient(#8a5a34,#5c3a1e)', borderTop: '2px solid #a4713f', boxShadow: '0 6px 7px rgba(70,45,20,.3)' }} />
-              <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 9, width: '100%', textAlign: 'center', color: '#4a3f2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+              <div style={{ height: 22 }} />
+              <div style={{ fontSize: 12.5, fontWeight: 600, width: '100%', textAlign: 'center', color: '#4a3f2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
               <div style={{ fontSize: 10.5, color: '#9a8a70', marginTop: 1 }}>อัพเดท {c.updateDateLabel || '—'}</div>
             </div>
           ))}
 
           {isDev && (
-            <div onClick={onAdd} style={{ cursor: 'pointer', padding: '0 12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ width: '100%', maxWidth: 104, height: 150, borderRadius: 6, border: '2px dashed #c3a184', background: 'rgba(255,255,255,.35)', color: '#a06a44', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <div onClick={onAdd} style={{ width: 130, height: 212, boxSizing: 'border-box', padding: '0 13px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+              <div style={{ width: '100%', maxWidth: 104, height: 150, borderRadius: 6, border: '2px dashed #c3a184', background: 'rgba(255,255,255,.4)', color: '#a06a44', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <span style={{ fontSize: 28, lineHeight: 1 }}>＋</span>
                 <span style={{ fontSize: 11.5, fontWeight: 600 }}>เพิ่มวิวรณ์</span>
               </div>
-              <div style={{ width: 'calc(100% + 24px)', marginLeft: -12, marginRight: -12, height: 14, background: 'linear-gradient(#8a5a34,#5c3a1e)', borderTop: '2px solid #a4713f', boxShadow: '0 6px 7px rgba(70,45,20,.3)' }} />
-              <div style={{ height: 30 }} />
             </div>
           )}
         </div>
