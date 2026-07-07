@@ -1,0 +1,60 @@
+name: Restore Deleted Item (one-off)
+
+# Recover row(s) hard-deleted from the catalog/articles, from a past backup.
+# Restores the backup into a throwaway Postgres, then copies rows whose text
+# contains the search term into the live DB. Fails if it recovers nothing, so
+# the run status alone tells you whether it worked.
+
+on:
+  workflow_dispatch:
+    inputs:
+      search:
+        description: 'Recover rows containing this text (name / title / subtitle)'
+        required: true
+        default: 'สายเลือดมังกร'
+      run_id:
+        description: 'Backup run id (28751991686 = 2026-07-05)'
+        required: true
+        default: '28751991686'
+      artifact:
+        description: 'Backup artifact name'
+        required: true
+        default: 'db-backup-20260705-191918'
+
+concurrency:
+  group: db-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: bk
+
+      - name: Recover matching rows into the live database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEARCH: ${{ inputs.search }}
+        run: |
+          set -euo pipefail
+          DUMP="$(ls bk/*.dump)"
+          echo "Using backup: $DUMP"
+          LIVE="$(printf '%s' "$DATABASE_URL" | sed 's/-pooler//')"
+          case "$LIVE" in
+            *sslmode=*) : ;;
+            *\?*) LIVE="$LIVE&sslmode=require" ;;
+            *) LIVE="$LIVE?sslmode=require" ;;
+          esac
+          docker run --rm -d --name pg -e POSTGRES_PASSWORD=pass postgres:18
+          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
+          docker cp "$DUMP" pg:/tmp/b.dump
+          echo "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIFJ1bnMgSU5TSURFIGEgcG9zdGdyZXM6MTggY29udGFpbmVyIHRoYXQgaG9sZHMgYSByZXN0b3JlZCBiYWNrdXAgaW4gaXRzIGxvY2FsCiMgYHBvc3RncmVzYCBkYi4gQ29waWVzIHJvd3Mgd2hvc2UgdGV4dCBjb2x1bW5zIGNvbnRhaW4gJFNFQVJDSCBpbnRvIHRoZSBsaXZlCiMgZGF0YWJhc2UgKCRMSVZFKS4gRmFpbHMgaWYgbm90aGluZyBtYXRjaGVkLiBLZXB0IGFzIGEgcmVhbCBzY3JpcHQgZmlsZSBzbyB0aGUKIyBxdW90aW5nIHN0YXlzIHNhbmUgKHZzLiBpbmxpbmluZyBpdCBpbiBZQU1MKS4Kc2V0IC1ldW8gcGlwZWZhaWwKOiAiJHtMSVZFOj9saXZlIERCIHVybCByZXF1aXJlZH0iCjogIiR7U0VBUkNIOj9zZWFyY2ggdGV4dCByZXF1aXJlZH0iCgpwZ19yZXN0b3JlIC0tbm8tb3duZXIgLS1uby1wcml2aWxlZ2VzIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC90bXAvYi5kdW1wIHx8IHRydWUKClJFQ09WRVJFRD0wCmNvcHlfdGFibGUoKSB7CiAgbG9jYWwgdGFibGU9IiQxIiB3aGVyZT0iJDIiIGNvbHMgbgogIGNvbHM9JChwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgXAogICAgIlNFTEVDVCBzdHJpbmdfYWdnKHF1b3RlX2lkZW50KGNvbHVtbl9uYW1lKSwgJywnKSBGUk9NIGluZm9ybWF0aW9uX3NjaGVtYS5jb2x1bW5zIFdIRVJFIHRhYmxlX25hbWU9JyR0YWJsZSciKQogIG49JChwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgIlNFTEVDVCBjb3VudCgqKSBGUk9NIFwiJHRhYmxlXCIgV0hFUkUgJHdoZXJlIikKICBlY2hvICLilIDilIAgJHRhYmxlOiAkbiBtYXRjaChlcykg4pSA4pSAIgogIHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyAiU0VMRUNUICcgICBpZD0nIHx8IGlkIEZST00gXCIkdGFibGVcIiBXSEVSRSAkd2hlcmUiIHx8IHRydWUKICBpZiBbICIkbiIgLWd0IDAgXTsgdGhlbgogICAgcHNxbCAtVSBwb3N0Z3JlcyAtZCBwb3N0Z3JlcyAtYyAiXGNvcHkgKFNFTEVDVCAkY29scyBGUk9NIFwiJHRhYmxlXCIgV0hFUkUgJHdoZXJlKSBUTyAnL3RtcC9yb3dzLnR4dCciCiAgICBwc3FsICIkTElWRSIgLWMgIlxjb3B5IFwiJHRhYmxlXCIgKCRjb2xzKSBGUk9NICcvdG1wL3Jvd3MudHh0JyIKICAgIFJFQ09WRVJFRD0kKChSRUNPVkVSRUQgKyBuKSkKICBmaQp9CgojIERvdWJsZSBhbnkgc2luZ2xlIHF1b3RlcyBzbyB0aGUgdGVybSBpcyBhIHNhZmUgU1FMIGxpdGVyYWwuClM9JHtTRUFSQ0gvL1wnL1wnXCd9CmNvcHlfdGFibGUgIkNhdGFsb2dJdGVtIiAibmFtZSBJTElLRSAnJSRTJScgT1IgQ09BTEVTQ0Uoc3VidGl0bGUsJycpIElMSUtFICclJFMlJyIKY29weV90YWJsZSAiQXJ0aWNsZSIgICAgICJ0aXRsZSBJTElLRSAnJSRTJScgT1IgQ09BTEVTQ0Uoc3VtbWFyeSwnJykgSUxJS0UgJyUkUyUnIgoKZWNobyAiVE9UQUwgUkVDT1ZFUkVEOiAkUkVDT1ZFUkVEIgppZiBbICIkUkVDT1ZFUkVEIiAtZXEgMCBdOyB0aGVuCiAgZWNobyAiOjplcnJvcjo6bm90aGluZyBtYXRjaGVkIFwiJFNFQVJDSFwiIGluIHRoaXMgYmFja3VwIgogIGV4aXQgMQpmaQo=" | base64 -d > restore.sh
+          docker cp restore.sh pg:/tmp/restore.sh
+          docker exec -e LIVE="$LIVE" -e SEARCH="$SEARCH" pg bash /tmp/restore.sh
