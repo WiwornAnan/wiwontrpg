@@ -1,23 +1,36 @@
 name: Restore Deleted Item (one-off)
 
-# Lists rows present in a backup but missing from the live DB (i.e. deleted) as
-# warning annotations. With apply=true it also copies those rows back into live.
+# mode=find    : full-row text search for 'search' (read-only)
+# mode=list    : rows in the backup but missing from live (read-only)
+# mode=restore : copy backup row (table+id) into live
 
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'find | list | restore'
+        required: true
+        default: 'find'
+      search:
+        description: 'text to search (mode=find)'
+        required: false
+        default: 'สายเลือดมังกร'
+      table:
+        description: 'CatalogItem | Article (mode=restore)'
+        required: false
+        default: 'Article'
+      id:
+        description: 'row id (mode=restore)'
+        required: false
+        default: ''
       run_id:
-        description: 'Backup run id (28751991686 = 2026-07-05)'
+        description: 'Backup run id (28751991686=07-05, 28719899488=07-04)'
         required: true
         default: '28751991686'
       artifact:
         description: 'Backup artifact name'
         required: true
         default: 'db-backup-20260705-191918'
-      apply:
-        description: 'true = actually restore the missing rows; false = list only'
-        required: true
-        default: 'false'
 
 concurrency:
   group: db-restore
@@ -36,14 +49,16 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: bk
 
-      - name: Diff backup against live (and restore if apply=true)
+      - name: Run recovery (${{ inputs.mode }})
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          APPLY: ${{ inputs.apply }}
+          MODE: ${{ inputs.mode }}
+          SEARCH: ${{ inputs.search }}
+          TABLE: ${{ inputs.table }}
+          ID: ${{ inputs.id }}
         run: |
           set -euo pipefail
           DUMP="$(ls bk/*.dump)"
-          echo "Using backup: $DUMP"
           LIVE="$(printf '%s' "$DATABASE_URL" | sed 's/-pooler//')"
           case "$LIVE" in
             *sslmode=*) : ;;
@@ -53,6 +68,6 @@ jobs:
           docker run --rm -d --name pg -e POSTGRES_PASSWORD=pass postgres:18
           for i in $(seq 1 30); do docker exec pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
           docker cp "$DUMP" pg:/tmp/b.dump
-          echo "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIEluc2lkZSBhIHBvc3RncmVzOjE4IGNvbnRhaW5lciBob2xkaW5nIHRoZSByZXN0b3JlZCBiYWNrdXAgKGxvY2FsIGBwb3N0Z3Jlc2AgZGIpLgojIExpc3RzIHJvd3MgcHJlc2VudCBpbiB0aGUgYmFja3VwIGJ1dCBNSVNTSU5HIGZyb20gdGhlIGxpdmUgREIgKCRMSVZFKSDigJQgaS5lLgojIHdoYXQgd2FzIGRlbGV0ZWQg4oCUIGFzIDo6d2FybmluZzo6IGFubm90YXRpb25zLiBJZiBBUFBMWT10cnVlLCBhbHNvIGNvcGllcyB0aG9zZQojIHJvd3MgYmFjayBpbnRvIGxpdmUuIFJlYWQtb25seSB1bmxlc3MgQVBQTFk9dHJ1ZS4Kc2V0IC1ldW8gcGlwZWZhaWwKOiAiJHtMSVZFOj9saXZlIERCIHVybCByZXF1aXJlZH0iCkFQUExZPSIke0FQUExZOi1mYWxzZX0iCgpwZ19yZXN0b3JlIC0tbm8tb3duZXIgLS1uby1wcml2aWxlZ2VzIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC90bXAvYi5kdW1wIHx8IHRydWUKClRPVEFMPTAKcHJvYygpIHsKICBsb2NhbCB0YWJsZT0iJDEiIG5hbWVjb2w9IiQyIiBjb2xzIGlkIG5tCiAgY29scz0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyBcCiAgICAiU0VMRUNUIHN0cmluZ19hZ2cocXVvdGVfaWRlbnQoY29sdW1uX25hbWUpLCAnLCcpIEZST00gaW5mb3JtYXRpb25fc2NoZW1hLmNvbHVtbnMgV0hFUkUgdGFibGVfbmFtZT0nJHRhYmxlJyIpCiAgcHNxbCAtVSBwb3N0Z3JlcyAtZCBwb3N0Z3JlcyAtQXRjICJTRUxFQ1QgaWQgRlJPTSBcIiR0YWJsZVwiIiB8IExDX0FMTD1DIHNvcnQgPiAvdG1wL2Jhay5pZHMKICBwc3FsICIkTElWRSIgICAgICAgICAgICAgLUF0YyAiU0VMRUNUIGlkIEZST00gXCIkdGFibGVcIiIgfCBMQ19BTEw9QyBzb3J0ID4gL3RtcC9saXZlLmlkcwogIGNvbW0gLTIzIC90bXAvYmFrLmlkcyAvdG1wL2xpdmUuaWRzID4gL3RtcC9taXNzaW5nLmlkcyB8fCB0cnVlCiAgd2hpbGUgSUZTPSByZWFkIC1yIGlkOyBkbwogICAgWyAteiAiJGlkIiBdICYmIGNvbnRpbnVlCiAgICBubT0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyAiU0VMRUNUICRuYW1lY29sIEZST00gXCIkdGFibGVcIiBXSEVSRSBpZD0nJGlkJyIpCiAgICBlY2hvICI6Ondhcm5pbmc6Ok1JU1NJTkcgJHRhYmxlIDo6ICRpZCA6OiAkbm0iCiAgICBUT1RBTD0kKChUT1RBTCArIDEpKQogICAgaWYgWyAiJEFQUExZIiA9ICJ0cnVlIiBdOyB0aGVuCiAgICAgIHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLWMgIlxjb3B5IChTRUxFQ1QgJGNvbHMgRlJPTSBcIiR0YWJsZVwiIFdIRVJFIGlkPSckaWQnKSBUTyAnL3RtcC9yb3cudHh0JyIKICAgICAgcHNxbCAiJExJVkUiIC1jICJcY29weSBcIiR0YWJsZVwiICgkY29scykgRlJPTSAnL3RtcC9yb3cudHh0JyIKICAgICAgZWNobyAiOjp3YXJuaW5nOjpSRVNUT1JFRCAkdGFibGUgOjogJGlkIgogICAgZmkKICBkb25lIDwgL3RtcC9taXNzaW5nLmlkcwp9CnByb2MgIkNhdGFsb2dJdGVtIiAibmFtZSIKcHJvYyAiQXJ0aWNsZSIgInRpdGxlIgplY2hvICJUT1RBTCBNSVNTSU5HOiAkVE9UQUwgKGFwcGx5PSRBUFBMWSkiCg==" | base64 -d > restore.sh
-          docker cp restore.sh pg:/tmp/restore.sh
-          docker exec -e LIVE="$LIVE" -e APPLY="$APPLY" pg bash /tmp/restore.sh
+          echo "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIE1vZGVzIChpbnNpZGUgYSBwb3N0Z3JlczoxOCBjb250YWluZXIgd2l0aCB0aGUgcmVzdG9yZWQgYmFja3VwIGluIGxvY2FsIGRiKToKIyAgIGZpbmQgICAg4oCUIGZ1bGwtcm93IHRleHQgc2VhcmNoIGZvciAkU0VBUkNILCBlbWl0IGhpdHMgKHJlYWQtb25seSkKIyAgIGxpc3QgICAg4oCUIHJvd3MgaW4gYmFja3VwIGJ1dCBtaXNzaW5nIGZyb20gbGl2ZSAkTElWRSAocmVhZC1vbmx5KQojICAgcmVzdG9yZSDigJQgY29weSBiYWNrdXAgcm93ICRUQUJMRS8kSUQgaW50byBsaXZlICRMSVZFCnNldCAtZXVvIHBpcGVmYWlsCjogIiR7TU9ERTo/bW9kZSByZXF1aXJlZH0iCnBnX3Jlc3RvcmUgLS1uby1vd25lciAtLW5vLXByaXZpbGVnZXMgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgL3RtcC9iLmR1bXAgfHwgdHJ1ZQpuYW1lY29sKCkgeyBbICIkMSIgPSAiQXJ0aWNsZSIgXSAmJiBlY2hvIHRpdGxlIHx8IGVjaG8gbmFtZTsgfQoKY2FzZSAiJE1PREUiIGluCiAgZmluZCkKICAgIDogIiR7U0VBUkNIOj99IjsgUz0ke1NFQVJDSC8vXCcvXCdcJ30KICAgIGZvciBUIGluIENhdGFsb2dJdGVtIEFydGljbGU7IGRvCiAgICAgIE5DPSQobmFtZWNvbCAiJFQiKQogICAgICBwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgXAogICAgICAgICJTRUxFQ1QgJzo6d2FybmluZzo6SElUICRUIDo6ICd8fGlkfHwnIDo6ICd8fENPQUxFU0NFKCROQywnJykgRlJPTSBcIiRUXCIgdCBXSEVSRSB0Ojp0ZXh0IElMSUtFICclJFMlJyIKICAgIGRvbmUKICAgIDs7CiAgbGlzdCkKICAgIDogIiR7TElWRTo/fSIKICAgIGZvciBUIGluIENhdGFsb2dJdGVtIEFydGljbGU7IGRvCiAgICAgIE5DPSQobmFtZWNvbCAiJFQiKQogICAgICBwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgIlNFTEVDVCBpZCBGUk9NIFwiJFRcIiIgfCBMQ19BTEw9QyBzb3J0ID4gL3RtcC9iLmlkcwogICAgICBwc3FsICIkTElWRSIgICAgICAgICAgICAgLUF0YyAiU0VMRUNUIGlkIEZST00gXCIkVFwiIiB8IExDX0FMTD1DIHNvcnQgPiAvdG1wL2wuaWRzCiAgICAgIGNvbW0gLTIzIC90bXAvYi5pZHMgL3RtcC9sLmlkcyB8IHdoaWxlIElGUz0gcmVhZCAtciBpZDsgZG8KICAgICAgICBbIC16ICIkaWQiIF0gJiYgY29udGludWUKICAgICAgICBubT0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyAiU0VMRUNUICROQyBGUk9NIFwiJFRcIiBXSEVSRSBpZD0nJGlkJyIpCiAgICAgICAgZWNobyAiOjp3YXJuaW5nOjpNSVNTSU5HICRUIDo6ICRpZCA6OiAkbm0iCiAgICAgIGRvbmUKICAgIGRvbmUKICAgIDs7CiAgcmVzdG9yZSkKICAgIDogIiR7TElWRTo/fSI7IDogIiR7VEFCTEU6P30iOyA6ICIke0lEOj99IgogICAgQ09MUz0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyBcCiAgICAgICJTRUxFQ1Qgc3RyaW5nX2FnZyhxdW90ZV9pZGVudChjb2x1bW5fbmFtZSksICcsJykgRlJPTSBpbmZvcm1hdGlvbl9zY2hlbWEuY29sdW1ucyBXSEVSRSB0YWJsZV9uYW1lPSckVEFCTEUnIikKICAgIHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLWMgIlxjb3B5IChTRUxFQ1QgJENPTFMgRlJPTSBcIiRUQUJMRVwiIFdIRVJFIGlkPSckSUQnKSBUTyAnL3RtcC9yb3cudHh0JyIKICAgIE49JCh3YyAtbCA8IC90bXAvcm93LnR4dCB8IHRyIC1kICcgJykKICAgIFsgIiROIiAtZ2UgMSBdIHx8IHsgZWNobyAiOjplcnJvcjo6aWQgJElEIG5vdCBmb3VuZCBpbiBiYWNrdXAiOyBleGl0IDE7IH0KICAgIHBzcWwgIiRMSVZFIiAtYyAiXGNvcHkgXCIkVEFCTEVcIiAoJENPTFMpIEZST00gJy90bXAvcm93LnR4dCciCiAgICBlY2hvICI6Ondhcm5pbmc6OlJFU1RPUkVEICRUQUJMRSAkSUQiCiAgICA7OwogICopIGVjaG8gIjo6ZXJyb3I6OnVua25vd24gbW9kZSAkTU9ERSI7IGV4aXQgMSA7Owplc2FjCg==" | base64 -d > rec.sh
+          docker cp rec.sh pg:/tmp/rec.sh
+          docker exec -e LIVE="$LIVE" -e MODE="$MODE" -e SEARCH="$SEARCH" -e TABLE="$TABLE" -e ID="$ID" pg bash /tmp/rec.sh
