@@ -1,17 +1,11 @@
 name: Restore Deleted Item (one-off)
 
-# Recover row(s) hard-deleted from the catalog/articles, from a past backup.
-# Restores the backup into a throwaway Postgres, then copies rows whose text
-# contains the search term into the live DB. Fails if it recovers nothing, so
-# the run status alone tells you whether it worked.
+# Lists rows present in a backup but missing from the live DB (i.e. deleted) as
+# warning annotations. With apply=true it also copies those rows back into live.
 
 on:
   workflow_dispatch:
     inputs:
-      search:
-        description: 'Recover rows containing this text (name / title / subtitle)'
-        required: true
-        default: 'สายเลือดมังกร'
       run_id:
         description: 'Backup run id (28751991686 = 2026-07-05)'
         required: true
@@ -20,6 +14,10 @@ on:
         description: 'Backup artifact name'
         required: true
         default: 'db-backup-20260705-191918'
+      apply:
+        description: 'true = actually restore the missing rows; false = list only'
+        required: true
+        default: 'false'
 
 concurrency:
   group: db-restore
@@ -38,10 +36,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: bk
 
-      - name: Recover matching rows into the live database
+      - name: Diff backup against live (and restore if apply=true)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SEARCH: ${{ inputs.search }}
+          APPLY: ${{ inputs.apply }}
         run: |
           set -euo pipefail
           DUMP="$(ls bk/*.dump)"
@@ -55,6 +53,6 @@ jobs:
           docker run --rm -d --name pg -e POSTGRES_PASSWORD=pass postgres:18
           for i in $(seq 1 30); do docker exec pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
           docker cp "$DUMP" pg:/tmp/b.dump
-          echo "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIFJ1bnMgSU5TSURFIGEgcG9zdGdyZXM6MTggY29udGFpbmVyIHRoYXQgaG9sZHMgYSByZXN0b3JlZCBiYWNrdXAgaW4gaXRzIGxvY2FsCiMgYHBvc3RncmVzYCBkYi4gQ29waWVzIHJvd3Mgd2hvc2UgdGV4dCBjb2x1bW5zIGNvbnRhaW4gJFNFQVJDSCBpbnRvIHRoZSBsaXZlCiMgZGF0YWJhc2UgKCRMSVZFKS4gRmFpbHMgaWYgbm90aGluZyBtYXRjaGVkLiBLZXB0IGFzIGEgcmVhbCBzY3JpcHQgZmlsZSBzbyB0aGUKIyBxdW90aW5nIHN0YXlzIHNhbmUgKHZzLiBpbmxpbmluZyBpdCBpbiBZQU1MKS4Kc2V0IC1ldW8gcGlwZWZhaWwKOiAiJHtMSVZFOj9saXZlIERCIHVybCByZXF1aXJlZH0iCjogIiR7U0VBUkNIOj9zZWFyY2ggdGV4dCByZXF1aXJlZH0iCgpwZ19yZXN0b3JlIC0tbm8tb3duZXIgLS1uby1wcml2aWxlZ2VzIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC90bXAvYi5kdW1wIHx8IHRydWUKClJFQ09WRVJFRD0wCmNvcHlfdGFibGUoKSB7CiAgbG9jYWwgdGFibGU9IiQxIiB3aGVyZT0iJDIiIGNvbHMgbgogIGNvbHM9JChwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgXAogICAgIlNFTEVDVCBzdHJpbmdfYWdnKHF1b3RlX2lkZW50KGNvbHVtbl9uYW1lKSwgJywnKSBGUk9NIGluZm9ybWF0aW9uX3NjaGVtYS5jb2x1bW5zIFdIRVJFIHRhYmxlX25hbWU9JyR0YWJsZSciKQogIG49JChwc3FsIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC1BdGMgIlNFTEVDVCBjb3VudCgqKSBGUk9NIFwiJHRhYmxlXCIgV0hFUkUgJHdoZXJlIikKICBlY2hvICLilIDilIAgJHRhYmxlOiAkbiBtYXRjaChlcykg4pSA4pSAIgogIHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyAiU0VMRUNUICcgICBpZD0nIHx8IGlkIEZST00gXCIkdGFibGVcIiBXSEVSRSAkd2hlcmUiIHx8IHRydWUKICBpZiBbICIkbiIgLWd0IDAgXTsgdGhlbgogICAgcHNxbCAtVSBwb3N0Z3JlcyAtZCBwb3N0Z3JlcyAtYyAiXGNvcHkgKFNFTEVDVCAkY29scyBGUk9NIFwiJHRhYmxlXCIgV0hFUkUgJHdoZXJlKSBUTyAnL3RtcC9yb3dzLnR4dCciCiAgICBwc3FsICIkTElWRSIgLWMgIlxjb3B5IFwiJHRhYmxlXCIgKCRjb2xzKSBGUk9NICcvdG1wL3Jvd3MudHh0JyIKICAgIFJFQ09WRVJFRD0kKChSRUNPVkVSRUQgKyBuKSkKICBmaQp9CgojIERvdWJsZSBhbnkgc2luZ2xlIHF1b3RlcyBzbyB0aGUgdGVybSBpcyBhIHNhZmUgU1FMIGxpdGVyYWwuClM9JHtTRUFSQ0gvL1wnL1wnXCd9CmNvcHlfdGFibGUgIkNhdGFsb2dJdGVtIiAibmFtZSBJTElLRSAnJSRTJScgT1IgQ09BTEVTQ0Uoc3VidGl0bGUsJycpIElMSUtFICclJFMlJyIKY29weV90YWJsZSAiQXJ0aWNsZSIgICAgICJ0aXRsZSBJTElLRSAnJSRTJScgT1IgQ09BTEVTQ0Uoc3VtbWFyeSwnJykgSUxJS0UgJyUkUyUnIgoKZWNobyAiVE9UQUwgUkVDT1ZFUkVEOiAkUkVDT1ZFUkVEIgppZiBbICIkUkVDT1ZFUkVEIiAtZXEgMCBdOyB0aGVuCiAgZWNobyAiOjplcnJvcjo6bm90aGluZyBtYXRjaGVkIFwiJFNFQVJDSFwiIGluIHRoaXMgYmFja3VwIgogIGV4aXQgMQpmaQo=" | base64 -d > restore.sh
+          echo "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIEluc2lkZSBhIHBvc3RncmVzOjE4IGNvbnRhaW5lciBob2xkaW5nIHRoZSByZXN0b3JlZCBiYWNrdXAgKGxvY2FsIGBwb3N0Z3Jlc2AgZGIpLgojIExpc3RzIHJvd3MgcHJlc2VudCBpbiB0aGUgYmFja3VwIGJ1dCBNSVNTSU5HIGZyb20gdGhlIGxpdmUgREIgKCRMSVZFKSDigJQgaS5lLgojIHdoYXQgd2FzIGRlbGV0ZWQg4oCUIGFzIDo6d2FybmluZzo6IGFubm90YXRpb25zLiBJZiBBUFBMWT10cnVlLCBhbHNvIGNvcGllcyB0aG9zZQojIHJvd3MgYmFjayBpbnRvIGxpdmUuIFJlYWQtb25seSB1bmxlc3MgQVBQTFk9dHJ1ZS4Kc2V0IC1ldW8gcGlwZWZhaWwKOiAiJHtMSVZFOj9saXZlIERCIHVybCByZXF1aXJlZH0iCkFQUExZPSIke0FQUExZOi1mYWxzZX0iCgpwZ19yZXN0b3JlIC0tbm8tb3duZXIgLS1uby1wcml2aWxlZ2VzIC1VIHBvc3RncmVzIC1kIHBvc3RncmVzIC90bXAvYi5kdW1wIHx8IHRydWUKClRPVEFMPTAKcHJvYygpIHsKICBsb2NhbCB0YWJsZT0iJDEiIG5hbWVjb2w9IiQyIiBjb2xzIGlkIG5tCiAgY29scz0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyBcCiAgICAiU0VMRUNUIHN0cmluZ19hZ2cocXVvdGVfaWRlbnQoY29sdW1uX25hbWUpLCAnLCcpIEZST00gaW5mb3JtYXRpb25fc2NoZW1hLmNvbHVtbnMgV0hFUkUgdGFibGVfbmFtZT0nJHRhYmxlJyIpCiAgcHNxbCAtVSBwb3N0Z3JlcyAtZCBwb3N0Z3JlcyAtQXRjICJTRUxFQ1QgaWQgRlJPTSBcIiR0YWJsZVwiIiB8IExDX0FMTD1DIHNvcnQgPiAvdG1wL2Jhay5pZHMKICBwc3FsICIkTElWRSIgICAgICAgICAgICAgLUF0YyAiU0VMRUNUIGlkIEZST00gXCIkdGFibGVcIiIgfCBMQ19BTEw9QyBzb3J0ID4gL3RtcC9saXZlLmlkcwogIGNvbW0gLTIzIC90bXAvYmFrLmlkcyAvdG1wL2xpdmUuaWRzID4gL3RtcC9taXNzaW5nLmlkcyB8fCB0cnVlCiAgd2hpbGUgSUZTPSByZWFkIC1yIGlkOyBkbwogICAgWyAteiAiJGlkIiBdICYmIGNvbnRpbnVlCiAgICBubT0kKHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLUF0YyAiU0VMRUNUICRuYW1lY29sIEZST00gXCIkdGFibGVcIiBXSEVSRSBpZD0nJGlkJyIpCiAgICBlY2hvICI6Ondhcm5pbmc6Ok1JU1NJTkcgJHRhYmxlIDo6ICRpZCA6OiAkbm0iCiAgICBUT1RBTD0kKChUT1RBTCArIDEpKQogICAgaWYgWyAiJEFQUExZIiA9ICJ0cnVlIiBdOyB0aGVuCiAgICAgIHBzcWwgLVUgcG9zdGdyZXMgLWQgcG9zdGdyZXMgLWMgIlxjb3B5IChTRUxFQ1QgJGNvbHMgRlJPTSBcIiR0YWJsZVwiIFdIRVJFIGlkPSckaWQnKSBUTyAnL3RtcC9yb3cudHh0JyIKICAgICAgcHNxbCAiJExJVkUiIC1jICJcY29weSBcIiR0YWJsZVwiICgkY29scykgRlJPTSAnL3RtcC9yb3cudHh0JyIKICAgICAgZWNobyAiOjp3YXJuaW5nOjpSRVNUT1JFRCAkdGFibGUgOjogJGlkIgogICAgZmkKICBkb25lIDwgL3RtcC9taXNzaW5nLmlkcwp9CnByb2MgIkNhdGFsb2dJdGVtIiAibmFtZSIKcHJvYyAiQXJ0aWNsZSIgInRpdGxlIgplY2hvICJUT1RBTCBNSVNTSU5HOiAkVE9UQUwgKGFwcGx5PSRBUFBMWSkiCg==" | base64 -d > restore.sh
           docker cp restore.sh pg:/tmp/restore.sh
-          docker exec -e LIVE="$LIVE" -e SEARCH="$SEARCH" pg bash /tmp/restore.sh
+          docker exec -e LIVE="$LIVE" -e APPLY="$APPLY" pg bash /tmp/restore.sh
