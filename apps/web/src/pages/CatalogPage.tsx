@@ -30,11 +30,12 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
   const [popEditOpen, setPopEditOpen] = useState(false);
   const qc = useQueryClient();
 
-  const isFeature = query.isFeature;
+  const isFeature = query.isFeature && !!cfg.hasFeature; // never applies to non-feature categories
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
   const isDev = user?.role === 'dev';
 
-  const { data, isLoading } = useCatalog(category, query);
+  const effQuery = query.isFeature === isFeature ? query : { ...query, isFeature };
+  const { data, isLoading } = useCatalog(category, effQuery);
   const catScope = isFeature ? `${category}-feature` : category;
   const { data: fieldTags } = useCatalogFieldTags(catScope);
 

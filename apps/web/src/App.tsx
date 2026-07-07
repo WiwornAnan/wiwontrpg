@@ -28,9 +28,9 @@ export function App() {
           <Route path="/wiwon/:id" element={<ArticleDetailPage category="wiwon" />} />
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/characters/:id" element={<ArticleDetailPage category="characters" />} />
-          <Route path="/magic" element={<CatalogPage category="magic" />} />
-          <Route path="/equipment" element={<CatalogPage category="equipment" />} />
-          <Route path="/monster" element={<CatalogPage category="monster" />} />
+          <Route path="/magic" element={<CatalogPage key="magic" category="magic" />} />
+          <Route path="/equipment" element={<CatalogPage key="equipment" category="equipment" />} />
+          <Route path="/monster" element={<CatalogPage key="monster" category="monster" />} />
           <Route path="/pray" element={<PrayPage />} />
           <Route path="/editor" element={<ContentEditorPage />} />
           <Route path="/login" element={<LoginPage />} />

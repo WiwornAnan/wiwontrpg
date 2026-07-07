@@ -110,17 +110,19 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
   const keyStats = isMagicSpell
     ? [
-        { label: 'Magic Slot', value: (fv(item, 'cost') || '—').replace(/A particle of Ehen/gi, 'P.E'), bg: '#fdece2', color: '#c1502a' },
-        { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
-        { label: 'Knowledge', value: fv(item, 'knowledge') || '—', bg: '#e5edfb', color: '#2a6fdb' },
+        { label: 'Magic Slot', value: fv(item, 'cost').replace(/A particle of Ehen/gi, 'P.E'), bg: '#fdece2', color: '#c1502a' },
+        { label: 'Quality of Life', value: fv(item, 'ql'), bg: '#ede7f6', color: '#5b3fa0' },
+        { label: 'Knowledge', value: fv(item, 'knowledge'), bg: '#e5edfb', color: '#2a6fdb' },
       ]
     : isMagicFeature
     ? [
-        { label: 'Willpower', value: fv(item, 'cost') || '—', bg: '#fbeae6', color: '#c0432a' },
-        { label: 'Quality of Life', value: fv(item, 'ql') || '—', bg: '#ede7f6', color: '#5b3fa0' },
-        { label: 'Curiosity Point', value: fv(item, 'curiosity') || '—', bg: '#e5edfb', color: '#2a6fdb' },
+        { label: 'Willpower', value: fv(item, 'cost'), bg: '#fbeae6', color: '#c0432a' },
+        { label: 'Quality of Life', value: fv(item, 'ql'), bg: '#ede7f6', color: '#5b3fa0' },
+        { label: 'Curiosity Point', value: fv(item, 'curiosity'), bg: '#e5edfb', color: '#2a6fdb' },
       ]
     : [];
+  // Only show the stat boxes that actually have a value; the row fits to them.
+  const shownStats = keyStats.filter((k) => k.value && k.value.trim());
 
   // Casting TN — spells: Casting Level + Knowledge Points; features: Capacity +
   // Curiosity Point (checked on d8+d8+d10).
@@ -140,7 +142,8 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const dmgShown = Math.max(0, dmgBase - dmgPenalty);
 
   const descText = item.description;
-  const descLong = descText.replace(/<[^>]+>/g, '').length > 160;
+  // Show ~14 lines before collapsing behind "อ่านเพิ่มเติม" (was too short before).
+  const descLong = descText.replace(/<[^>]+>/g, '').length > 620;
 
   const boxStyle: React.CSSProperties = {
     width: 120,
@@ -265,9 +268,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {keyStats.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 16 }}>
-          {keyStats.map((k) => (
+      {shownStats.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${shownStats.length}, 1fr)`, gap: 8, marginTop: 16 }}>
+          {shownStats.map((k) => (
             <div key={k.label} style={{ background: k.bg, borderRadius: 11, padding: '11px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1, color: k.color }}>{k.value}</div>
               <div style={{ fontSize: 9, fontWeight: 700, color: k.color, opacity: 0.85, marginTop: 3, letterSpacing: '.02em' }}>{k.label}</div>
@@ -467,7 +470,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       <div style={{ fontSize: 12.5, fontWeight: 600, margin: '16px 0 7px' }}>Description</div>
       <div
         className="rt-html"
-        style={{ fontSize: 12.5, lineHeight: 1.8, color: '#46443c', margin: 0, ...(descLong && !descOpen ? { maxHeight: 92, overflow: 'hidden', maskImage: 'linear-gradient(#000 60%,transparent)' } : {}) }}
+        style={{ fontSize: 12.5, lineHeight: 1.8, color: '#46443c', margin: 0, ...(descLong && !descOpen ? { maxHeight: 315, overflow: 'hidden', maskImage: 'linear-gradient(#000 88%,transparent)' } : {}) }}
         dangerouslySetInnerHTML={{ __html: descText ? renderBadges(descText) : '<span style="color:#a8a59d">— ไม่มีคำอธิบาย —</span>' }}
       />
       {descLong && (
@@ -476,7 +479,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </button>
       )}
 
-      {isMagicFeature && (
+      {isMagicFeature && fv(item, 'mode') === 'Active' && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>จำนวนการใช้งาน</div>
           {canEdit ? (
