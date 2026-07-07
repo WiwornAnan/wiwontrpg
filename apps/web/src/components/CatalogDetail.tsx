@@ -77,6 +77,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
   const canEdit = isDev || (!!user && item.isHomebrew && item.ownerUserId === user.id);
   const [descOpen, setDescOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const [dur, setDur] = useState<boolean[]>([false, false, false]); // session durability ticks
 
   const del = useMutation({
@@ -262,11 +263,33 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
           <button onClick={() => onEdit(item)} style={{ flex: 1, padding: 7, background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ✎ แก้ไขข้อมูล
           </button>
-          <button onClick={() => del.mutate()} style={{ flex: 1, padding: 7, background: '#fff', color: '#b4513a', border: '1px solid #f0d3cb', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={() => setConfirmDel(true)} style={{ flex: 1, padding: 7, background: '#fff', color: '#b4513a', border: '1px solid #f0d3cb', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ลบข้อมูล
           </button>
         </div>
       )}
+
+      <Modal
+        open={confirmDel}
+        onClose={() => setConfirmDel(false)}
+        title="ยืนยันการลบข้อมูล"
+        footer={
+          <>
+            <button onClick={() => setConfirmDel(false)} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #d9d7d0', borderRadius: 9, fontSize: 13.5, fontWeight: 500, cursor: 'pointer' }}>
+              ยกเลิก
+            </button>
+            <button onClick={() => { del.mutate(); setConfirmDel(false); }} disabled={del.isPending} style={{ padding: '9px 20px', background: '#b4513a', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+              ตกลง ลบเลย
+            </button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-muted)', margin: 0 }}>
+          แน่ใจแล้วใช่ไหมว่าต้องการลบ “<b>{item.name}</b>”?
+          <br />
+          การลบนี้ถาวรและกู้คืนเองไม่ได้
+        </p>
+      </Modal>
 
       {shownStats.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${shownStats.length}, 1fr)`, gap: 8, marginTop: 16 }}>
