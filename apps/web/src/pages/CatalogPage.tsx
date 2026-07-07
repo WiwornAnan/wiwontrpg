@@ -15,6 +15,20 @@ import layout from '../components/layout.module.css';
 
 const emptyQuery = (): CatalogQuery => ({ scope: 'all', isFeature: false, q: '', page: 1, filters: {}, ranges: {}, sortKey: '', sortDir: 'asc' });
 
+// Compact page list: first page, a window around the current page, the last
+// page, with '…' filling the gaps (e.g. 1 2 3 4 … 10). All shown when few.
+function pageWindow(current: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | '…')[] = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) out.push('…');
+  for (let i = left; i <= right; i++) out.push(i);
+  if (right < total - 1) out.push('…');
+  out.push(total);
+  return out;
+}
+
 export function CatalogPage({ category }: { category: CatalogCategory }) {
   const { user } = useAuth();
   const cfg = getCatalogConfig(category);
@@ -274,15 +288,19 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
               <button onClick={() => patchQuery({ page: Math.max(1, query.page - 1) })} disabled={query.page <= 1} style={pgBtn}>
                 ‹ ก่อนหน้า
               </button>
-              {Array.from({ length: totalPages }, (_, p) => (
-                <button
-                  key={p}
-                  onClick={() => patchQuery({ page: p + 1 })}
-                  style={{ minWidth: 30, padding: '6px 9px', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${query.page === p + 1 ? '#15140f' : '#e0ded7'}`, background: query.page === p + 1 ? '#15140f' : '#fff', color: query.page === p + 1 ? '#fff' : '#6b6860' }}
-                >
-                  {p + 1}
-                </button>
-              ))}
+              {pageWindow(query.page, totalPages).map((p, i) =>
+                p === '…' ? (
+                  <span key={`e${i}`} style={{ minWidth: 20, textAlign: 'center', fontSize: 13, color: '#a8a59d', userSelect: 'none' }}>…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => patchQuery({ page: p })}
+                    style={{ minWidth: 30, padding: '6px 9px', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${query.page === p ? '#15140f' : '#e0ded7'}`, background: query.page === p ? '#15140f' : '#fff', color: query.page === p ? '#fff' : '#6b6860' }}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
               <button onClick={() => patchQuery({ page: Math.min(totalPages, query.page + 1) })} disabled={query.page >= totalPages} style={pgBtn}>
                 ถัดไป ›
               </button>
