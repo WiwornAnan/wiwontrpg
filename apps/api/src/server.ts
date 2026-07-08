@@ -37,6 +37,32 @@ if (isProd) app.set('trust proxy', 1);
 app.use(cors({ origin: ENV.WEB_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
+
+// Health check — deliberately BEFORE session/loadUser so it never depends on a
+// session-store DB read. It does its OWN database ping (with retry) so that:
+//   • it keeps the Neon compute + Prisma connection pool warm on each poll, and
+//   • it reports 503 when the DB is genuinely unreachable, which makes Render's
+//     health check fail and auto-restart the instance — self-healing the
+//     "stale connection → 500 on every request" outage without a manual restart.
+// The retry means a single stale pooled connection (which Prisma drops and
+// reconnects on the next attempt) won't trigger a needless restart.
+app.get('/api/health', async (_req, res) => {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ ok: true });
+      return;
+    } catch (err) {
+      if (attempt === 3) {
+        console.error('[health] database unreachable', err);
+        res.status(503).json({ ok: false, error: 'database unreachable' });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+});
+
 app.use(
   session({
     name: 'wiwon.sid',
@@ -55,6 +81,8 @@ app.use(
 app.use(loadUser);
 
 // Serve uploaded images from the DB (persists across redeploys, no object storage).
+// NOTE: the standalone /api/health route above is intentionally registered
+// earlier, before the session + loadUser middleware.
 app.get('/uploads/:id', async (req, res) => {
   const row = await prisma.upload.findUnique({ where: { id: req.params.id } });
   if (!row) {
@@ -65,8 +93,6 @@ app.get('/uploads/:id', async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.end(Buffer.from(row.data));
 });
-
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRouter);
 app.use('/api/articles', articlesRouter);

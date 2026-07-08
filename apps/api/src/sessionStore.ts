@@ -16,7 +16,14 @@ export class PrismaSessionStore extends Store {
         }
         cb(null, JSON.parse(row.data) as SessionData);
       })
-      .catch((err) => cb(err));
+      // On a transient DB error, degrade to "no session" (anonymous) instead of
+      // propagating the error, which express-session turns into a 500 on every
+      // request from a logged-in user. The connection recovers on a later
+      // request; the health check forces a reconnect / Render restart.
+      .catch((err) => {
+        console.error('[sessionStore] get failed, treating as no session', err);
+        cb(null, null);
+      });
   }
 
   set(sid: string, session: SessionData, cb?: (err?: unknown) => void): void {
