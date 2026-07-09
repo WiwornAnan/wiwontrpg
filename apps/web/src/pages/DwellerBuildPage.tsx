@@ -236,8 +236,6 @@ function StepShell({
         <ClassStep character={character} patch={patch} />
       ) : step === 3 ? (
         <Step3Core character={character} patch={patch} />
-      ) : step === 4 ? (
-        <SkillsStep />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -726,6 +724,8 @@ interface CoreAttr {
   grade: 'A' | 'B' | 'C' | 'D' | 'X';
 }
 const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
+// The die a Core Attribute grade rolls with (X = cannot roll).
+const GRADE_DIE: Record<string, string> = { A: 'd8', B: 'd6', C: 'd4', D: 'd2', X: '0' };
 // Grade scale, low → high. Index is the numeric value (X=0 … A=4).
 const GRADE_ORDER = ['X', 'D', 'C', 'B', 'A'] as const;
 type Grade = (typeof GRADE_ORDER)[number];
@@ -895,6 +895,13 @@ function Step3Core({
   const boostsAvailable = sacrificeCount(adjust, boosts) - boosts.length;
   const touched = Object.keys(adjust).length > 0 || boosts.length > 0;
 
+  // Final grade per attribute abbreviation (STR/DEX/…) — feeds the skill dice.
+  const effByAbbr: Record<string, string> = {};
+  CORE_ATTR_OPTIONS.forEach((attr) => {
+    const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
+    effByAbbr[abbr] = resolve(attr, adjust, boosts).eff;
+  });
+
   const commit = (nextAdjust: Record<string, number>, nextBoost: string[]) =>
     patch.mutate({ data: { ...character.data, coreAdjust: nextAdjust, coreBoostA: nextBoost } });
   const bump = (attr: string, dir: 1 | -1) => {
@@ -923,6 +930,7 @@ function Step3Core({
   });
 
   return (
+    <>
     <div style={cardPlain}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Core Attribute ของตัวละคร</h1>
       <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
@@ -999,77 +1007,79 @@ function Step3Core({
         <li>“—” = เผ่า/สายเลือด/คลาสไม่ได้กำหนดค่านี้ (ค่าที่เหลือหลังคำนวณจะกลายเป็น D)</li>
       </ul>
     </div>
+
+    <div style={{ ...cardPlain, marginTop: 16 }}>
+      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>สกิลของ Dweller</h2>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>
+        ลูกเต๋าของแต่ละสกิลอ้างอิงเกรดสุดท้ายของ Core Attribute ที่สกิลนั้นใช้ — ชี้ที่ชื่อสกิลเพื่อดูคำอธิบาย
+      </p>
+      <SkillsTable effByAbbr={effByAbbr} />
+    </div>
+    </>
   );
 }
 
-// ── Step 4: Dweller skills — reference list, grouped by category. Hover a skill
-//    to reveal its description; the colored tag is its governing Core Attribute.
-function SkillsStep() {
+// Skill reference table (inside Step 3): rows grouped by category, each showing
+// its governing Core Attribute and the die it rolls (from the character's final
+// grade for that attribute). Hover a skill name to reveal its description.
+function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
   const [hover, setHover] = useState<string | null>(null);
+  const rowCell: React.CSSProperties = { padding: '9px 0', borderTop: '1px solid #efece6', display: 'flex', alignItems: 'center' };
   return (
-    <div style={cardPlain}>
-      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>สกิลของ Dweller</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 20px' }}>
-        ทักษะทั้งหมดแบ่งตามหมวด — ชี้ (hover) ที่สกิลเพื่อดูคำอธิบาย ตัวอักษรในกรอบสีคือ Core Attribute ที่ใช้ทอย
-      </p>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
-        {(Object.keys(SKILL_ATTR_COLOR) as (keyof typeof SKILL_ATTR_COLOR)[]).map((a) => (
-          <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#8d8a82' }}>
-            <span style={{ width: 22, height: 20, borderRadius: 6, background: SKILL_ATTR_COLOR[a], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{a}</span>
-          </span>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-        {DWELLER_SKILLS.map((cat) => (
-          <section key={cat.en}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</h2>
-              <span style={{ fontSize: 12.5, color: '#a8a59d', fontStyle: 'italic' }}>{cat.en}</span>
-            </div>
-            <p style={{ fontSize: 12.5, color: '#9a978e', lineHeight: 1.6, margin: '4px 0 0' }}>{cat.desc}</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-              {cat.skills.map((s, i) => {
-                const id = `${cat.en}-${i}`;
-                const on = hover === id;
-                return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {DWELLER_SKILLS.map((cat) => (
+        <section key={cat.en}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</h3>
+            <span style={{ fontSize: 12, color: '#a8a59d', fontStyle: 'italic' }}>{cat.en}</span>
+          </div>
+          <p style={{ fontSize: 12, color: '#9a978e', lineHeight: 1.6, margin: '4px 0 0' }}>{cat.desc}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', columnGap: 12, marginTop: 8 }}>
+            {cat.skills.map((s, i) => {
+              const id = `${cat.en}-${i}`;
+              const on = hover === id;
+              const grade = effByAbbr[s.attr] ?? '—';
+              const die = GRADE_DIE[grade] ?? '—';
+              const dieColor = grade in GRADE_COLOR ? GRADE_COLOR[grade] : '#ece9e3';
+              return (
+                <div key={id} style={{ display: 'contents' }}>
+                  <div style={{ ...rowCell, justifyContent: 'center' }}>
+                    <span style={{ width: 26, height: 22, borderRadius: 6, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.attr}</span>
+                  </div>
                   <div
-                    key={id}
-                    style={{ position: 'relative' }}
+                    style={{ ...rowCell, position: 'relative', cursor: 'help', gap: 8, minWidth: 0 }}
                     onMouseEnter={() => setHover(id)}
                     onMouseLeave={() => setHover((h) => (h === id ? null : h))}
                     onClick={() => setHover((h) => (h === id ? null : id))}
                   >
-                    <div style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'help',
-                      padding: '6px 12px 6px 6px', borderRadius: 10,
-                      border: `1.5px solid ${on ? '#d9d5cc' : 'var(--border-soft)'}`,
-                      background: on ? '#faf9f7' : '#fff',
-                    }}>
-                      <span style={{ width: 24, height: 22, borderRadius: 6, flex: 'none', background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.attr}</span>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{s.name}</span>
-                      <span style={{ fontSize: 11.5, color: '#b0ada4' }}>{s.en}</span>
-                    </div>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: on ? '#e07a5f' : '#2f2c25', whiteSpace: 'nowrap' }}>{s.name}</span>
+                    <span style={{ fontSize: 11.5, color: '#b0ada4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.en}</span>
                     {on && (
                       <div style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30,
-                        width: 300, maxWidth: '82vw', background: '#2f2c25', color: '#f3f1ec',
+                        position: 'absolute', top: 'calc(100% - 2px)', left: 0, zIndex: 30,
+                        width: 320, maxWidth: '82vw', background: '#2f2c25', color: '#f3f1ec',
                         padding: '10px 13px', borderRadius: 10, fontSize: 12.5, lineHeight: 1.65,
                         boxShadow: '0 10px 26px rgba(0,0,0,.22)', pointerEvents: 'none',
                       }}>
-                        <span style={{ fontWeight: 800, color: SKILL_ATTR_COLOR[s.attr] === '#8a5a2a' ? '#e0b487' : '#fff' }}>{s.name} </span>
+                        <span style={{ fontWeight: 800 }}>{s.name} </span>
                         <span style={{ color: '#b8b4ac', fontSize: 11.5 }}>({s.en})</span>
                         <div style={{ marginTop: 5 }}>{s.desc}</div>
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
+                  <div style={{ ...rowCell, justifyContent: 'flex-end' }}>
+                    <span style={{
+                      minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
+                      background: die === '0' ? '#f2efe9' : dieColor, color: die === '0' ? '#b0ada4' : '#fff',
+                      fontSize: 12.5, fontWeight: 800,
+                    }}>{die}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
