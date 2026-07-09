@@ -228,6 +228,8 @@ function StepShell({
         <RaceStep character={character} patch={patch} />
       ) : step === 2 ? (
         <ClassStep character={character} patch={patch} />
+      ) : step === 3 ? (
+        <Step3Core character={character} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -327,6 +329,12 @@ function RaceStep({
       )}
 
       {ancestryChosen && <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} />}
+
+      {ancestryChosen && (
+        <div style={{ ...cardPlain, marginTop: 16 }}>
+          <CoreAttributes path="ancestry-core" refId={ancestryChosen} title="Core Attribute (จาก Ancestry)" />
+        </div>
+      )}
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && (
@@ -631,27 +639,27 @@ const CORE_ATTR_OPTIONS = [
   'Authority (AUT)',
   'Conviction (CVN)',
 ];
-function CoreAttributes({ classValue }: { classValue: string }) {
+function CoreAttributes({ path, refId, title }: { path: string; refId: string; title: string }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
   const { data } = useQuery({
-    queryKey: ['class-core', classValue],
-    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
+    queryKey: [path, refId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/${path}/${encodeURIComponent(refId)}`),
   });
   const attrs = data?.core.attributes ?? [];
   const save = useMutation({
-    mutationFn: (next: CoreAttr[]) => api.put(`/wizard/class-core/${encodeURIComponent(classValue)}`, { attributes: next }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['class-core', classValue] }),
+    mutationFn: (next: CoreAttr[]) => api.put(`/wizard/${path}/${encodeURIComponent(refId)}`, { attributes: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [path, refId] }),
   });
   const update = (id: string, p: Partial<CoreAttr>) => save.mutate(attrs.map((a) => (a.id === id ? { ...a, ...p } : a)));
   const add = () => save.mutate([...attrs, { id: crypto.randomUUID(), name: '', grade: 'C' }]);
   const remove = (id: string) => save.mutate(attrs.filter((a) => a.id !== id));
 
   return (
-    <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Core Attribute (ของคลาส)</div>
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
-        {isDev ? 'ผู้พัฒนากำหนดชื่อ + เกรด A/B/C/D/X — ผู้เล่นรับมาเลย (แก้ไม่ได้)' : 'ค่าหลักของคลาสที่คุณได้รับ'}
+        {isDev ? 'ผู้พัฒนากำหนดชื่อ + เกรด A/B/C/D/X — ผู้เล่นรับมาเลย (แก้ไม่ได้)' : 'ค่าหลักที่คุณได้รับ'}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
@@ -683,6 +691,52 @@ function CoreAttributes({ classValue }: { classValue: string }) {
       {isDev && (
         <button onClick={add} style={{ marginTop: 10, border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ เพิ่มค่า</button>
       )}
+    </div>
+  );
+}
+
+// ── Step 3: the character's actual Core Attributes — every STR…CVN, showing the
+//    grade contributed by Step 1 (Ancestry) and Step 2 (Class). ────────────────
+function GradeBadge({ grade }: { grade: string }) {
+  const known = grade in GRADE_COLOR;
+  return (
+    <span style={{ width: 26, height: 26, borderRadius: 7, flex: 'none', background: known ? GRADE_COLOR[grade] : '#ece9e3', color: known ? '#fff' : '#bdbab2', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{grade}</span>
+  );
+}
+function Step3Core({ character }: { character: Character }) {
+  const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
+  const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
+
+  const { data: aData } = useQuery({
+    enabled: !!ancestryId,
+    queryKey: ['ancestry-core', ancestryId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/ancestry-core/${encodeURIComponent(ancestryId)}`),
+  });
+  const { data: cData } = useQuery({
+    enabled: !!classValue,
+    queryKey: ['class-core', classValue],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
+  });
+  const gradeOf = (attrs: CoreAttr[] | undefined, name: string) => attrs?.find((a) => a.name === name)?.grade ?? '—';
+
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Core Attribute ของตัวละคร</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (Ancestry) และ Step 2 (Class)</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 18px', alignItems: 'center' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>Ancestry</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>Class</div>
+        {CORE_ATTR_OPTIONS.map((attr) => (
+          <div key={attr} style={{ display: 'contents' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33', padding: '8px 0', borderTop: '1px solid #efece6' }}>{attr}</div>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' }}><GradeBadge grade={gradeOf(aData?.core.attributes, attr)} /></div>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' }}><GradeBadge grade={gradeOf(cData?.core.attributes, attr)} /></div>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: '#bdbab2', margin: '16px 0 0' }}>“—” = ยังไม่ได้กำหนดค่านี้ในเผ่าพันธุ์/คลาสที่เลือก</p>
     </div>
   );
 }
@@ -889,7 +943,9 @@ function LevelTable({
 
       <WeaponProficiency classValue={classValue} wiwonIds={wiwonIds} character={character} patch={patch} />
 
-      <CoreAttributes classValue={classValue} />
+      <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
+        <CoreAttributes path="class-core" refId={classValue} title="Core Attribute (ของคลาส)" />
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, paddingTop: 16, borderTop: '1px solid #efece6' }}>
         <span style={{ fontSize: 13, fontWeight: 700 }}>เลเวลตัวละคร (LV)</span>
