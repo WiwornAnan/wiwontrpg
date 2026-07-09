@@ -790,6 +790,7 @@ function LevelTable({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   {level.options.map((o) => {
                     const claimedThis = claimedOpt === o.id;
+                    const lockedOut = !!claimedOpt && !claimedThis; // another option already taken
                     if (editing) {
                       return (
                         <div key={o.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -812,7 +813,7 @@ function LevelTable({
                       );
                     }
                     return (
-                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${claimedThis ? 'var(--coral)' : '#e8e5df'}`, background: claimedThis ? 'var(--coral-bg)' : '#fff' }}>
+                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${claimedThis ? 'var(--coral)' : '#e8e5df'}`, background: claimedThis ? 'var(--coral-bg)' : '#fff', opacity: lockedOut ? 0.5 : 1 }}>
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
                           {o.featureName && <span style={{ fontWeight: 700, color: '#2f2c25' }}>{o.featureName}</span>}
                           {o.featureName && o.text && <span style={{ color: '#c9c6bf' }}> · </span>}
@@ -821,6 +822,8 @@ function LevelTable({
                         </div>
                         {claimedThis ? (
                           <button onClick={() => setCancelTarget(level.lv)} style={{ flex: 'none', border: 'none', background: 'var(--coral)', color: '#fff', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>รับแล้ว ✓</button>
+                        ) : lockedOut ? (
+                          <button disabled style={{ flex: 'none', border: '1px solid #e8e5df', background: '#f4f2ee', color: '#b6b3aa', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'not-allowed' }}>ไม่ได้เลือก</button>
                         ) : (
                           <button onClick={() => claim(level.lv, o.id)} style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>กดรับ</button>
                         )}
