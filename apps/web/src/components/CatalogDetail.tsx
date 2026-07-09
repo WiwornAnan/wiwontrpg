@@ -308,15 +308,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       )}
 
       <div style={{ display: 'flex', gap: 14, marginTop: 14 }}>
-        <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 6, width: 120 }}>
-          <div style={boxStyle} />
-          {relatedWiwon && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, background: '#f6f2ea', border: '1px solid #e8e0d0', borderRadius: 8, padding: '6px 9px' }}>
-              <span style={{ fontSize: 9.5, letterSpacing: '.08em', color: '#a8916a', fontWeight: 700 }}>WIWON ที่เกี่ยวข้อง</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#5c4a2e', lineHeight: 1.25 }}>{relatedWiwon.name}</span>
-            </div>
-          )}
-        </div>
+        <div style={boxStyle} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
           {stats.map((st) => (
             <Row key={st.label} label={st.label} value={st.value} />
@@ -564,6 +556,13 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
           </div>
           <div style={{ fontSize: 11, color: '#c0432a', marginTop: 6 }}>ช่องซ้ายสุดสีแดง = ชำรุด</div>
         </>
+      )}
+
+      {relatedWiwon && (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 3, background: '#f6f2ea', border: '1px solid #e8e0d0', borderRadius: 10, padding: '10px 14px' }}>
+          <span style={{ fontSize: 9.5, letterSpacing: '.08em', color: '#a8916a', fontWeight: 700 }}>WIWON ที่เกี่ยวข้อง</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#5c4a2e', lineHeight: 1.3 }}>{relatedWiwon.name}</span>
+        </div>
       )}
 
       {!user && (
