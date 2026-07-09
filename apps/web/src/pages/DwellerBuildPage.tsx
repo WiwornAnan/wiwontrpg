@@ -99,16 +99,21 @@ function WiwonSetup({
   const selected = wiwonIdsOf(character);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const toggle = (cid: string) => {
-    const next = selected.includes(cid) ? selected.filter((x) => x !== cid) : [...selected, cid];
-    patch.mutate({ data: { ...character.data, wiwonIds: next } });
-  };
-
   const sets = covers.reduce<Record<string, WiwonCover[]>>((acc, c) => {
     const s = (c.setName && c.setName.trim()) || 'ทั่วไป';
     (acc[s] ??= []).push(c);
     return acc;
   }, {});
+  const setEntries = Object.entries(sets);
+  // Selection is by ชุด: a set is on when all its books are included; toggling a
+  // set adds/removes every book in it (downstream still filters by book ids).
+  const isSetOn = (list: WiwonCover[]) => list.length > 0 && list.every((c) => selected.includes(c.id));
+  const toggleSet = (list: WiwonCover[]) => {
+    const ids = list.map((c) => c.id);
+    const next = isSetOn(list) ? selected.filter((id) => !ids.includes(id)) : Array.from(new Set([...selected, ...ids]));
+    patch.mutate({ data: { ...character.data, wiwonIds: next } });
+  };
+  const setsSelected = setEntries.filter(([, list]) => isSetOn(list)).length;
 
   return (
     <>
@@ -116,49 +121,42 @@ function WiwonSetup({
         <span style={{ fontSize: 11, letterSpacing: '.14em', color: '#e07a5f', fontWeight: 700 }}>สร้างตัวละคร</span>
         <h1 style={{ margin: '6px 0 0', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 30 }}>ตั้งค่า Wiwon</h1>
         <p style={{ margin: '8px 0 0', color: '#8d8a82', fontSize: 14 }}>
-          เลือก Wiwon ที่เกี่ยวข้อง (เลือกได้หลายอัน) — เนื้อหา Feature / Magic ในขั้นตอนถัดไปจะปรากฏเฉพาะที่อยู่ใน Wiwon ที่เลือกไว้
+          เลือกชุดหนังสือ (เลือกได้หลายชุด) — ทุกเล่มในชุดที่เลือกจะถูกนำมาใช้ เนื้อหา Feature / Magic ในขั้นตอนถัดไปจะปรากฏเฉพาะที่อยู่ในเล่มเหล่านั้น
         </p>
       </div>
 
       <div style={cardPlain}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
-          Wiwon ที่เกี่ยวข้อง <span style={{ color: '#a8a59d', fontWeight: 500 }}>({selected.length} เลือกไว้)</span>
+          ชุดหนังสือที่เกี่ยวข้อง <span style={{ color: '#a8a59d', fontWeight: 500 }}>({setsSelected} ชุดที่เลือก)</span>
         </div>
         {covers.length === 0 && <div style={{ color: '#a8a59d', fontSize: 13 }}>ยังไม่มี Wiwon บนชั้น</div>}
-        {Object.entries(sets).map(([set, list]) => (
-          <div key={set} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, letterSpacing: '.06em', color: '#a8916a', fontWeight: 700, marginBottom: 8 }}>{set}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {list.map((c) => {
-                const on = selected.includes(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => toggle(c.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '9px 14px',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`,
-                      background: on ? 'var(--coral-bg)' : '#fff',
-                      color: on ? 'var(--coral-ink)' : 'var(--text-muted)',
-                    }}
-                  >
-                    <span style={{ width: 18, height: 18, borderRadius: 5, flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', color: '#fff', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
-                      {on ? '✓' : ''}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {setEntries.map(([set, list]) => {
+            const on = isSetOn(list);
+            return (
+              <div
+                key={set}
+                onClick={() => toggleSet(list)}
+                style={{ cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: 6, flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', color: '#fff', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                    {on ? '✓' : ''}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 14.5, fontWeight: 700, color: on ? 'var(--coral-ink)' : '#2f2c25' }}>{set}</span>
+                  <span style={{ flex: 'none', fontSize: 11.5, color: '#9a978e' }}>{list.length} เล่ม</span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, paddingLeft: 30 }}>
+                  {list.map((c) => (
+                    <span key={c.id} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: on ? 'rgba(224,122,95,.12)' : '#f1efe9', color: on ? 'var(--coral-ink)' : '#7a776f' }}>
+                      {c.name}
                     </span>
-                    {c.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Where the dev-editable setup questions will live (next 3a increment). */}
@@ -192,7 +190,7 @@ function WiwonSetup({
           </>
         }
       >
-        <p style={{ fontSize: 14, lineHeight: 1.7, margin: 0 }}>ฉันตั้งค่าแล้ว จะไปต่อแล้วนะ — เลือก Wiwon ไว้ {selected.length} อัน</p>
+        <p style={{ fontSize: 14, lineHeight: 1.7, margin: 0 }}>ฉันตั้งค่าแล้ว จะไปต่อแล้วนะ — เลือก {setsSelected} ชุด ({selected.length} เล่ม)</p>
       </Modal>
     </>
   );
