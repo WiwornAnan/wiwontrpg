@@ -615,6 +615,15 @@ interface CoreAttr {
   grade: 'A' | 'B' | 'C' | 'D' | 'X';
 }
 const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
+const CORE_ATTR_OPTIONS = [
+  'Strength (STR)',
+  'Dexterity (DEX)',
+  'Endurance (END)',
+  'Perception (PER)',
+  'Intelligence (INT)',
+  'Authority (AUT)',
+  'Conviction (CVN)',
+];
 function CoreAttributes({ classValue }: { classValue: string }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
@@ -642,7 +651,12 @@ function CoreAttributes({ classValue }: { classValue: string }) {
         {attrs.map((a) =>
           isDev ? (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #e8e5df', borderRadius: 10, padding: '7px 9px', background: '#faf9f7' }}>
-              <input defaultValue={a.name} onBlur={(e) => e.target.value !== a.name && update(a.id, { name: e.target.value })} placeholder="ชื่อค่า" style={{ width: 120, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 12.5, background: '#fff' }} />
+              <select value={a.name} onChange={(e) => update(a.id, { name: e.target.value })} style={{ width: 168, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 12.5, background: '#fff' }}>
+                <option value="">— เลือกค่า —</option>
+                {CORE_ATTR_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
               <select value={a.grade} onChange={(e) => update(a.id, { grade: e.target.value as CoreAttr['grade'] })} style={{ border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 800, color: GRADE_COLOR[a.grade], background: '#fff' }}>
                 {['A', 'B', 'C', 'D', 'X'].map((g) => (
                   <option key={g} value={g}>{g}</option>
