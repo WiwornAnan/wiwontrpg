@@ -12,6 +12,8 @@ const TOTAL_STEPS = 12;
 // Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
 const RACES_WITH_ANCESTRY = ['Animalea', 'Sprite'];
 const raceHasAncestry = (name: string) => RACES_WITH_ANCESTRY.some((r) => r.toLowerCase() === name.trim().toLowerCase());
+// Dragonkin Lineage additionally picks an element.
+const DRAGONKIN_ELEMENTS = ['ธาตุไฟ', 'ธาตุสมุทร', 'ธาตุวายุ', 'ธาตุปฐพี'];
 const wiwonIdsOf = (c: Character) => (Array.isArray(c.data.wiwonIds) ? (c.data.wiwonIds as string[]) : []);
 
 export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
@@ -288,6 +290,9 @@ function RaceStep({
   const chosen = typeof character.data.race === 'string' ? (character.data.race as string) : '';
   const chosenRaceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
   const ancestryChosen = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
+  const ancestryName = typeof character.data.ancestryName === 'string' ? (character.data.ancestryName as string) : '';
+  const isDragonkin = !!ancestryChosen && ancestryName.trim().toLowerCase() === 'dragonkin lineage';
+  const dragonElement = typeof character.data.dragonkinElement === 'string' ? (character.data.dragonkinElement as string) : '';
   // Ancestry layer only unlocks for certain races (Animalea / Sprite).
   const showAncestry = !!chosen && raceHasAncestry(chosenRaceName);
   const [info, setInfo] = useState<CatalogItem | null>(null);
@@ -384,6 +389,31 @@ function RaceStep({
             onPick={pickAncestry}
             onInfo={setInfo}
           />
+        </div>
+      )}
+
+      {showAncestry && isDragonkin && (
+        <div style={{ ...cardPlain, marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>เลือกธาตุของ Dragonkin</div>
+          <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>เลือกธาตุ 1 อย่าง</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {DRAGONKIN_ELEMENTS.map((el) => {
+              const on = dragonElement === el;
+              return (
+                <button
+                  key={el}
+                  onClick={() => patch.mutate({ data: { ...character.data, dragonkinElement: on ? '' : el } })}
+                  title={on ? 'กดอีกครั้งเพื่อเอาออก' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff', color: on ? 'var(--coral-ink)' : 'var(--text-muted)' }}
+                >
+                  <span style={{ width: 18, height: 18, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                    {on ? '✓' : ''}
+                  </span>
+                  {el}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
