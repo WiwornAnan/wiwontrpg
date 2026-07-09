@@ -234,7 +234,7 @@ function StepShell({
       ) : step === 2 ? (
         <ClassStep character={character} patch={patch} />
       ) : step === 3 ? (
-        <Step3Core character={character} />
+        <Step3Core character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -723,6 +723,26 @@ interface CoreAttr {
   grade: 'A' | 'B' | 'C' | 'D' | 'X';
 }
 const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
+// Grade scale, low → high. Index is the numeric value (X=0 … A=4).
+const GRADE_ORDER = ['X', 'D', 'C', 'B', 'A'] as const;
+type Grade = (typeof GRADE_ORDER)[number];
+const gval = (g: string): number => GRADE_ORDER.indexOf(g as Grade);
+const gname = (v: number): Grade => GRADE_ORDER[Math.max(0, Math.min(4, v))];
+const isGrade = (g: string | undefined): g is Grade => !!g && g in GRADE_COLOR;
+// Combine the primary grade (เผ่าพันธุ์ = race, or its Ancestry) with Class (the decider):
+//   • primary is X → always X            • Class lower → keep primary
+//   • Class higher → use Class           • Class equal → bump primary up 1 (cap A)
+//   • primary undefined → the value becomes D (all leftovers are D)
+function combineGrade(base: string | undefined, cls: string | undefined): Grade {
+  if (!isGrade(base)) return 'D';
+  if (base === 'X') return 'X';
+  if (!isGrade(cls)) return base;
+  const vb = gval(base);
+  const vc = gval(cls);
+  if (vc < vb) return base;
+  if (vc > vb) return cls;
+  return gname(vb + 1);
+}
 const CORE_ATTR_OPTIONS = [
   'Strength (STR)',
   'Dexterity (DEX)',
@@ -796,13 +816,26 @@ function GradeBadge({ grade }: { grade: string }) {
     <span style={{ width: 26, height: 26, borderRadius: 7, flex: 'none', background: known ? GRADE_COLOR[grade] : '#ece9e3', color: known ? '#fff' : '#bdbab2', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{grade}</span>
   );
 }
-function Step3Core({ character }: { character: Character }) {
+const RIGHTS_TOTAL = 3;
+const coreAdjustOf = (c: Character): Record<string, number> =>
+  c.data.coreAdjust && typeof c.data.coreAdjust === 'object' ? (c.data.coreAdjust as Record<string, number>) : {};
+const coreBoostOf = (c: Character): string[] =>
+  Array.isArray(c.data.coreBoostA) ? (c.data.coreBoostA as string[]) : [];
+
+function Step3Core({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
   const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
   const raceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
   const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
   const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
   // Ancestry races take core from the Ancestry, so skip their race-core column.
-  const useRaceCore = !!raceId && !raceHasAncestry(raceName);
+  const isAncestryRace = !!raceId && raceHasAncestry(raceName);
+  const useRaceCore = !!raceId && !isAncestryRace;
 
   const { data: aData } = useQuery({
     enabled: useRaceCore,
@@ -820,29 +853,151 @@ function Step3Core({ character }: { character: Character }) {
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
   });
   const gradeOf = (attrs: CoreAttr[] | undefined, name: string) => attrs?.find((a) => a.name === name)?.grade ?? '—';
-  const headStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 };
-  const cellStyle: React.CSSProperties = { display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' };
+
+  // The primary ("ค่าหลัก") comes from the Ancestry for Ancestry races, otherwise the Race.
+  const baseAttrs = isAncestryRace ? bData?.core.attributes : aData?.core.attributes;
+  const raceGrade = (attr: string) => gradeOf(aData?.core.attributes, attr);
+  const ancestryGrade = (attr: string) => gradeOf(bData?.core.attributes, attr);
+  const classGrade = (attr: string) => gradeOf(cData?.core.attributes, attr);
+  const combinedOf = (attr: string) => combineGrade(gradeOf(baseAttrs, attr), classGrade(attr));
+
+  const adjust = coreAdjustOf(character);
+  const boosts = coreBoostOf(character);
+
+  // Resolve one attribute under a given (adjust, boosts) state. `step` is the
+  // real level movement vs. the computed grade (clamped; 0 when X-locked/boosted),
+  // which is what the rights economy charges/refunds — never the raw stored delta.
+  const resolve = (attr: string, adj: Record<string, number>, bst: string[]) => {
+    const combined = combinedOf(attr);
+    const lockedX = combined === 'X';
+    const boosted = bst.includes(attr);
+    const cv = gval(combined);
+    const effVal = lockedX ? 0 : boosted ? 4 : Math.max(0, Math.min(4, cv + (adj[attr] ?? 0)));
+    const step = lockedX || boosted ? 0 : effVal - cv;
+    return { combined, lockedX, boosted, effVal, eff: gname(effVal), step };
+  };
+  // "Sacrifices": attributes the player pushed all the way down to X. Each one
+  // unlocks a free "set another attribute to A".
+  const sacrificeCount = (adj: Record<string, number>, bst: string[]) =>
+    CORE_ATTR_OPTIONS.reduce((n, attr) => {
+      const r = resolve(attr, adj, bst);
+      return !r.lockedX && !r.boosted && r.effVal === 0 ? n + 1 : n;
+    }, 0);
+  // Drop boosts that are no longer paid for by a sacrifice.
+  const trimBoosts = (adj: Record<string, number>, bst: string[]) => bst.slice(0, sacrificeCount(adj, bst));
+
+  const steps = CORE_ATTR_OPTIONS.map((attr) => resolve(attr, adjust, boosts).step);
+  const totalUp = steps.reduce((s, d) => s + Math.max(0, d), 0);
+  const totalDown = steps.reduce((s, d) => s + Math.max(0, -d), 0);
+  const rights = RIGHTS_TOTAL - totalUp + totalDown;
+  const boostsAvailable = sacrificeCount(adjust, boosts) - boosts.length;
+  const touched = Object.keys(adjust).length > 0 || boosts.length > 0;
+
+  const commit = (nextAdjust: Record<string, number>, nextBoost: string[]) =>
+    patch.mutate({ data: { ...character.data, coreAdjust: nextAdjust, coreBoostA: nextBoost } });
+  const bump = (attr: string, dir: 1 | -1) => {
+    const nextAdjust = { ...adjust, [attr]: (adjust[attr] ?? 0) + dir };
+    if (nextAdjust[attr] === 0) delete nextAdjust[attr];
+    commit(nextAdjust, trimBoosts(nextAdjust, boosts));
+  };
+  const toggleBoost = (attr: string) => {
+    if (boosts.includes(attr)) {
+      commit(adjust, boosts.filter((a) => a !== attr));
+      return;
+    }
+    // Boosting to A supersedes any manual delta on that attribute; clear it.
+    const nextAdjust = { ...adjust };
+    delete nextAdjust[attr];
+    commit(nextAdjust, [...boosts, attr]);
+  };
+  const reset = () => commit({}, []);
+
+  const headStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 };
+  const cellStyle: React.CSSProperties = { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px 0', borderTop: '1px solid #efece6' };
+  const stepBtn = (enabled: boolean): React.CSSProperties => ({
+    width: 26, height: 26, borderRadius: 7, border: '1px solid #e0ded7', background: enabled ? '#fff' : '#f5f3ef',
+    color: enabled ? '#6b6860' : '#cfccc4', fontSize: 16, fontWeight: 800, lineHeight: 1,
+    cursor: enabled ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none',
+  });
 
   return (
     <div style={cardPlain}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Core Attribute ของตัวละคร</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (เผ่าพันธุ์ + Ancestry) และ Step 2 (Class)</p>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
+        รวมเกรดจากเผ่าพันธุ์ (ค่าหลัก) กับ Class (ตัวตัดสิน) — จากนั้นปรับได้เองด้วยสิทธิ์ที่มี
+      </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0 18px', alignItems: 'center' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
-        <div style={headStyle}>เผ่าพันธุ์</div>
-        <div style={headStyle}>Ancestry</div>
-        <div style={headStyle}>Class</div>
-        {CORE_ATTR_OPTIONS.map((attr) => (
-          <div key={attr} style={{ display: 'contents' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33', padding: '8px 0', borderTop: '1px solid #efece6' }}>{attr}</div>
-            <div style={cellStyle}><GradeBadge grade={gradeOf(aData?.core.attributes, attr)} /></div>
-            <div style={cellStyle}><GradeBadge grade={gradeOf(bData?.core.attributes, attr)} /></div>
-            <div style={cellStyle}><GradeBadge grade={gradeOf(cData?.core.attributes, attr)} /></div>
-          </div>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <span style={{
+          fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20,
+          background: rights > 0 ? '#eef6f0' : '#f9eeea', color: rights > 0 ? '#2f7d4f' : '#b0552f',
+          border: `1px solid ${rights > 0 ? '#cfe6d6' : '#f0d8ce'}`,
+        }}>
+          สิทธิ์ปรับค่าคงเหลือ: {rights}
+        </span>
+        {boostsAvailable > 0 && (
+          <span style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 20, background: '#f3eefb', color: '#5b3fa0', border: '1px solid #e2d7f4' }}>
+            ★ ตั้งค่าเป็น A ได้อีก {boostsAvailable}
+          </span>
+        )}
+        {touched && (
+          <button onClick={reset} disabled={patch.isPending} style={{ marginLeft: 'auto', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            ↺ รีเซ็ตการปรับค่า
+          </button>
+        )}
       </div>
-      <p style={{ fontSize: 12, color: '#bdbab2', margin: '16px 0 0' }}>“—” = ยังไม่ได้กำหนดค่านี้ (หรือไม่มีในเผ่า/สายเลือด/คลาสที่เลือก)</p>
+
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,1fr) auto auto auto auto minmax(132px,auto)', gap: '0 16px', alignItems: 'center', minWidth: 560 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
+          <div style={headStyle}>เผ่าพันธุ์</div>
+          <div style={headStyle}>Ancestry</div>
+          <div style={headStyle}>Class</div>
+          <div style={headStyle}>ผลรวม</div>
+          <div style={{ ...headStyle, textAlign: 'right' }}>สุดท้าย</div>
+          {CORE_ATTR_OPTIONS.map((attr) => {
+            const { lockedX, boosted, effVal, eff, step: delta } = resolve(attr, adjust, boosts);
+            const isSacrifice = !lockedX && !boosted && effVal === 0;
+            const canUp = !lockedX && !boosted && effVal < 4 && rights >= 1;
+            const canDown = !lockedX && !boosted && effVal > 0;
+            const canBoost = boostsAvailable > 0 && !lockedX && !boosted && !isSacrifice && effVal < 4;
+            return (
+              <div key={attr} style={{ display: 'contents' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33', padding: '10px 0', borderTop: '1px solid #efece6' }}>{attr}</div>
+                <div style={cellStyle}><GradeBadge grade={raceGrade(attr)} /></div>
+                <div style={cellStyle}><GradeBadge grade={ancestryGrade(attr)} /></div>
+                <div style={cellStyle}><GradeBadge grade={classGrade(attr)} /></div>
+                <div style={cellStyle}><span style={{ color: '#cfccc4', fontSize: 14 }}>→</span></div>
+                <div style={{ ...cellStyle, justifyContent: 'flex-end', gap: 6 }}>
+                  {boosted ? (
+                    <>
+                      <GradeBadge grade={eff} />
+                      <button onClick={() => toggleBoost(attr)} title="ยกเลิกการตั้งเป็น A" style={{ ...stepBtn(true), width: 'auto', padding: '0 8px', fontSize: 11, fontWeight: 700 }}>✕A</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => bump(attr, -1)} disabled={!canDown} style={stepBtn(canDown)} title="ลดลง 1 ขั้น (ได้สิทธิ์คืน +1)">−</button>
+                      <div title={lockedX ? 'ค่านี้เป็น X — เปลี่ยนไม่ได้' : delta !== 0 ? `ปรับ ${delta > 0 ? '+' : ''}${delta}` : undefined}>
+                        <GradeBadge grade={eff} />
+                      </div>
+                      <button onClick={() => bump(attr, 1)} disabled={!canUp} style={stepBtn(canUp)} title="เพิ่ม 1 ขั้น (ใช้สิทธิ์ 1)">+</button>
+                      {canBoost && (
+                        <button onClick={() => toggleBoost(attr)} title="ตั้งเป็น A (จากการปรับค่าลงถึง X)" style={{ ...stepBtn(true), width: 'auto', padding: '0 8px', fontSize: 11, fontWeight: 800, color: '#5b3fa0', borderColor: '#e2d7f4' }}>★A</button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <ul style={{ fontSize: 12, color: '#a8a59d', lineHeight: 1.9, margin: '16px 0 0', paddingLeft: 18 }}>
+        <li>มีสิทธิ์ปรับค่า {RIGHTS_TOTAL} ครั้ง — เพิ่ม 1 ขั้นใช้ 1 สิทธิ์ (ลง A ไม่ได้), ลด 1 ขั้นได้สิทธิ์คืน +1</li>
+        <li>ค่าที่เป็น X จากการคำนวณ เปลี่ยนไม่ได้ — แต่ถ้าปรับค่าใดลงจนถึง X เอง จะตั้งค่าอื่นให้เป็น A ได้ 1 ค่า</li>
+        <li>“—” = เผ่า/สายเลือด/คลาสไม่ได้กำหนดค่านี้ (ค่าที่เหลือหลังคำนวณจะกลายเป็น D)</li>
+      </ul>
     </div>
   );
 }
