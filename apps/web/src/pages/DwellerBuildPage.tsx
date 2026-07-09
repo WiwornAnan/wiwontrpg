@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLevel, WizardLevelOption } from '@wiwonanant/shared';
+import { CATALOG_CONFIGS } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
@@ -1671,6 +1672,39 @@ function Step7Purchase({
   );
 }
 
+// Full read-only detail for a catalog item (all stat rows + description + tags),
+// shared by the Feature and Magic exchange popups.
+function ItemDetailView({ item, isFeature }: { item: CatalogItem; isFeature: boolean }) {
+  const cfg = CATALOG_CONFIGS.magic;
+  const src = isFeature && cfg.feature ? cfg.feature : cfg;
+  const fv = (key: string) =>
+    key === 'source' ? item.source : key === 'tag' ? String(item.fields.tag ?? item.tags[0] ?? '') : item.fields[key] != null ? String(item.fields[key]) : '';
+  const rows = src.detailKeys.map(([label, key]) => ({ label, value: fv(key) })).filter((r) => r.value !== '');
+  return (
+    <div>
+      {item.subtitle && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>{item.subtitle}</div>}
+      {rows.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 16px', margin: '4px 0 14px', fontSize: 13 }}>
+          {rows.map((r) => (
+            <div key={r.label} style={{ display: 'contents' }}>
+              <div style={{ color: '#a8a59d', fontWeight: 600 }}>{r.label}</div>
+              <div style={{ color: '#2f2c25', fontWeight: 600 }}>{r.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {item.description
+        ? <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: item.description }} />
+        : <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>}
+      {item.tags.length > 0 && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 14 }}>
+          {item.tags.map((t) => <span key={t} style={{ fontSize: 11, color: '#8d8a82', background: '#f2efe9', borderRadius: 6, padding: '2px 9px' }}>{t}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Unified, search-driven Feature buyer: one box for all purchasable tags.
 // Owned Features always show; the rest appear when you type or pick a tag chip.
 function FeatureBuySearch({
@@ -1768,11 +1802,7 @@ function FeatureBuySearch({
       </div>
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
-        {info && (
-          info.description
-            ? <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
-            : <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
-        )}
+        {info && <ItemDetailView item={info} isFeature />}
       </Modal>
     </div>
   );
@@ -1790,7 +1820,11 @@ const EHEN_SIZES = [
   { key: 'large', label: 'ใหญ่' },
 ];
 const CORE_PRODUCTION_DIE: Record<string, string> = { small: 'd6', medium: 'd8', large: 'd12' };
+const ORGAN_PRODUCTION_DIE: Record<string, string> = { small: 'd8', medium: 'd8', large: 'd10' };
 const MAGIC_RARITIES = ['Common', 'Uncommon'];
+// Color of Ehen — mirrors the Magic "Color of Ehen" (tag) options.
+const EHEN_COLORS = ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Cyan'];
+const EHEN_COLOR_HEX: Record<string, string> = { Pink: '#e48fb0', Silver: '#b8b8b8', Blue: '#4a7fd0', Purple: '#7a52c0', Yellow: '#d9b93a', Red: '#c0453a', White: '#eeeee8', Black: '#333333', Cyan: '#3ab0c0' };
 
 // Fetch every actual Magic (non-Feature) in the Wiwon, paging the catalog.
 async function fetchMagicSpells(wiwonIds: string[]): Promise<CatalogItem[]> {
@@ -1828,9 +1862,12 @@ function Step8Magic({
 
   const ehenType = typeof character.data.ehenType === 'string' ? (character.data.ehenType as string) : '';
   const ehenSize = typeof character.data.ehenSize === 'string' ? (character.data.ehenSize as string) : '';
+  const ehenColor = typeof character.data.ehenColor === 'string' ? (character.data.ehenColor as string) : '';
+  // Production die per size — Core makes P.E. on demand, Organ once per Long Rest.
+  const prod = (size: string) => (ehenType === 'core' ? CORE_PRODUCTION_DIE[size] : `${ORGAN_PRODUCTION_DIE[size]} / Long Rest`);
 
   const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
-  const pickType = (key: string) => setData(key === 'none' ? { ehenType: key, ehenSize: '' } : { ehenType: key });
+  const pickType = (key: string) => setData(key === 'none' ? { ehenType: key, ehenSize: '', ehenColor: '' } : { ehenType: key });
   const toggleMagic = (m: CatalogItem, cost: number) => {
     const next = { ...magicBought };
     if (m.id in next) delete next[m.id];
@@ -1854,24 +1891,41 @@ function Step8Magic({
         </div>
 
         {(ehenType === 'organ' || ehenType === 'core') && (
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33', marginBottom: 10 }}>
-              {ehenType === 'organ' ? 'Organ Size' : 'Core Size'}
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {EHEN_SIZES.map((s) => (
-                <button key={s.key} onClick={() => setData({ ehenSize: s.key })} style={chip(ehenSize === s.key)}>
-                  {s.label}
-                  {ehenType === 'core' && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: ehenSize === s.key ? '#c15a3f' : '#9a978e' }}>{CORE_PRODUCTION_DIE[s.key]}</span>}
-                </button>
-              ))}
-            </div>
-            {ehenType === 'core' && ehenSize && (
-              <div style={{ marginTop: 12, fontSize: 13, color: '#3c3a33', background: '#faf9f7', borderRadius: 10, padding: '10px 14px' }}>
-                ความสามารถในการผลิต <b>A particle of Ehen</b>: <b style={{ color: '#c15a3f' }}>{CORE_PRODUCTION_DIE[ehenSize]}</b>
+          <>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33', marginBottom: 10 }}>
+                {ehenType === 'organ' ? 'Organ Size' : 'Core Size'}
               </div>
-            )}
-          </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {EHEN_SIZES.map((s) => (
+                  <button key={s.key} onClick={() => setData({ ehenSize: s.key })} style={chip(ehenSize === s.key)}>
+                    {s.label}
+                    <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: ehenSize === s.key ? '#c15a3f' : '#9a978e' }}>{prod(s.key)}</span>
+                  </button>
+                ))}
+              </div>
+              {ehenSize && (
+                <div style={{ marginTop: 12, fontSize: 13, color: '#3c3a33', background: '#faf9f7', borderRadius: 10, padding: '10px 14px' }}>
+                  ความสามารถในการผลิต <b>A particle of Ehen</b>: <b style={{ color: '#c15a3f' }}>{prod(ehenSize)}</b>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33', marginBottom: 10 }}>Color of Ehen</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {EHEN_COLORS.map((c) => {
+                  const on = ehenColor === c;
+                  return (
+                    <button key={c} onClick={() => setData({ ehenColor: on ? '' : c })} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: `1.5px solid ${on ? '#e07a5f' : 'var(--border-soft)'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#3c3a33', borderRadius: 20, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: EHEN_COLOR_HEX[c], border: '1px solid rgba(0,0,0,.15)', flex: 'none' }} />
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -1970,11 +2024,7 @@ function MagicBuySearch({
       </div>
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
-        {info && (
-          info.description
-            ? <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
-            : <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
-        )}
+        {info && <ItemDetailView item={info} isFeature={false} />}
       </Modal>
     </div>
   );
