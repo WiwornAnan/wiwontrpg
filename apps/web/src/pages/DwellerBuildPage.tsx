@@ -237,6 +237,8 @@ function StepShell({
         <ClassStep character={character} patch={patch} />
       ) : step === 3 ? (
         <Step3Core character={character} patch={patch} />
+      ) : step === 4 ? (
+        <Step4Questions character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1149,6 +1151,187 @@ function SkillsTable({
         </section>
       ))}
       <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} onClose={() => setRoll(null)} />
+    </div>
+  );
+}
+
+// ── Step 4: dev-authored questionnaire. Players tick one option per question;
+//    each option grants a Quality-of-Life (QL) value the dev sets. ─────────────
+interface Step4Option { id: string; text: string; ql: number }
+interface Step4Question { id: string; section: string; title: string; options: Step4Option[] }
+const STEP4_SECTIONS = ['ฐานะทางสังคม', 'วิถีชีวิต', 'ความพยายามในการศึกษา'];
+const step4AnswersOf = (c: Character): Record<string, string> =>
+  c.data.step4Answers && typeof c.data.step4Answers === 'object' ? (c.data.step4Answers as Record<string, string>) : {};
+
+function Step4Questions({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Step4Question[]>([]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['step4-questions', 'global'],
+    queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global'),
+  });
+  const questions = data?.step4.questions ?? [];
+  const answers = step4AnswersOf(character);
+
+  const save = useMutation({
+    mutationFn: () => api.put('/wizard/step4-questions/global', { questions: draft }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['step4-questions', 'global'] });
+      setEditing(false);
+    },
+  });
+
+  const totalQL = questions.reduce((sum, q) => {
+    const opt = q.options.find((o) => o.id === answers[q.id]);
+    return sum + (opt?.ql ?? 0);
+  }, 0);
+
+  const pick = (qId: string, optId: string) => {
+    const next = { ...answers };
+    if (next[qId] === optId) delete next[qId];
+    else next[qId] = optId;
+    patch.mutate({ data: { ...character.data, step4Answers: next } });
+  };
+
+  // ── Dev editing ──
+  const startEdit = () => {
+    setDraft(questions.map((q) => ({ ...q, options: q.options.map((o) => ({ ...o })) })));
+    setEditing(true);
+  };
+  const setQuestion = (qId: string, fn: (q: Step4Question) => Step4Question) =>
+    setDraft((d) => d.map((q) => (q.id === qId ? fn(q) : q)));
+  const addQuestion = (section: string) => setDraft((d) => [...d, { id: crypto.randomUUID(), section, title: '', options: [] }]);
+  const removeQuestion = (qId: string) => setDraft((d) => d.filter((q) => q.id !== qId));
+  const addOption = (qId: string) => setQuestion(qId, (q) => ({ ...q, options: [...q.options, { id: crypto.randomUUID(), text: '', ql: 0 }] }));
+  const removeOption = (qId: string, oId: string) => setQuestion(qId, (q) => ({ ...q, options: q.options.filter((o) => o.id !== oId) }));
+  const setOption = (qId: string, oId: string, p: Partial<Step4Option>) =>
+    setQuestion(qId, (q) => ({ ...q, options: q.options.map((o) => (o.id === oId ? { ...o, ...p } : o)) }));
+
+  const input: React.CSSProperties = { border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, background: '#fff', width: '100%', boxSizing: 'border-box' };
+
+  return (
+    <div style={cardPlain}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>คำถามคุณภาพชีวิต</h1>
+          <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 0' }}>เลือกคำตอบในแต่ละข้อ — แต่ละตัวเลือกให้ค่า Quality of Life (QL)</p>
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 800, padding: '9px 16px', borderRadius: 20, background: '#eef4fb', color: '#2a5fbd', border: '1px solid #d3e2f5', whiteSpace: 'nowrap' }}>
+          รวม {totalQL} QL
+        </span>
+      </div>
+
+      {isDev && !editing && (
+        <button onClick={startEdit} style={{ marginTop: 14, border: '1px solid #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+          ✎ แก้ไขคำถาม (ผู้พัฒนา)
+        </button>
+      )}
+
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
+
+      {/* ── Dev editor ── */}
+      {editing ? (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {STEP4_SECTIONS.map((sec) => (
+            <div key={sec}>
+              <h2 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 800, color: '#2f2c25' }}>{sec}</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {draft.filter((q) => q.section === sec).map((q, qi) => (
+                  <div key={q.id} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#faf9f7' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#a8a59d', flex: 'none' }}>ข้อ {qi + 1}</span>
+                      <input value={q.title} onChange={(e) => setQuestion(q.id, (x) => ({ ...x, title: e.target.value }))} placeholder="หัวข้อคำถาม" style={input} />
+                      <button onClick={() => removeQuestion(q.id)} style={{ flex: 'none', border: '1px solid #e6cfcf', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '8px 10px', fontSize: 12, cursor: 'pointer' }}>ลบข้อ</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {q.options.map((o) => (
+                        <div key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input value={o.text} onChange={(e) => setOption(q.id, o.id, { text: e.target.value })} placeholder="ข้อความตัวเลือก" style={input} />
+                          <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8d8a82', whiteSpace: 'nowrap' }}>
+                            QL
+                            <input type="number" value={o.ql} onChange={(e) => setOption(q.id, o.id, { ql: Math.round(Number(e.target.value) || 0) })} style={{ ...input, width: 70 }} />
+                          </label>
+                          <button onClick={() => removeOption(q.id, o.id)} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '8px 11px', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                        </div>
+                      ))}
+                      <button onClick={() => addOption(q.id)} style={{ alignSelf: 'flex-start', border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ เพิ่มตัวเลือก</button>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={() => addQuestion(sec)} style={{ alignSelf: 'flex-start', border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>+ เพิ่มคำถามใน “{sec}”</button>
+              </div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="coral" disabled={save.isPending} onClick={() => save.mutate()}>บันทึก</Button>
+            <Button variant="ghost" disabled={save.isPending} onClick={() => setEditing(false)}>ยกเลิก</Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 26 }}>
+          {!isLoading && questions.length === 0 && (
+            <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>
+              ยังไม่มีคำถาม{isDev ? ' — กด “แก้ไขคำถาม” เพื่อเพิ่ม' : ''}
+            </div>
+          )}
+          {STEP4_SECTIONS.map((sec) => {
+            const secQuestions = questions.filter((q) => q.section === sec);
+            if (secQuestions.length === 0) return null;
+            const secQL = secQuestions.reduce((sum, q) => sum + (q.options.find((o) => o.id === answers[q.id])?.ql ?? 0), 0);
+            return (
+              <div key={sec}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderBottom: '2px solid #efece6', paddingBottom: 8, marginBottom: 14 }}>
+                  <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20, color: '#2f2c25' }}>{sec}</h2>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#2a5fbd', whiteSpace: 'nowrap' }}>{secQL} QL</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                  {secQuestions.map((q, qi) => (
+                    <div key={q.id}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#2f2c25', marginBottom: 10 }}>
+                        <span style={{ color: '#b0ada4' }}>{qi + 1}. </span>{q.title || '(ยังไม่มีหัวข้อ)'}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {q.options.map((o) => {
+                          const on = answers[q.id] === o.id;
+                          return (
+                            <div
+                              key={o.id}
+                              onClick={() => pick(q.id, o.id)}
+                              title={on ? 'กดอีกครั้งเพื่อเอาติ๊กออก' : undefined}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '12px 14px', borderRadius: 12,
+                                border: `1.5px solid ${on ? '#e07a5f' : 'var(--border-soft)'}`, background: on ? '#fdf4f1' : '#fff',
+                              }}
+                            >
+                              <span style={{ width: 20, height: 20, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? '#e07a5f' : '#cfccc4'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {on && <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#e07a5f' }} />}
+                              </span>
+                              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: '#2f2c25' }}>{o.text || '(ตัวเลือกว่าง)'}</span>
+                              <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px', whiteSpace: 'nowrap' }}>
+                                Quality of Life = {o.ql} QL
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {q.options.length === 0 && <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีตัวเลือก</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

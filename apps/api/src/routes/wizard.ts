@@ -206,6 +206,49 @@ wizardRouter.put('/race-core/:refId', requireDev, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Step 4 questionnaire: dev-authored questions, players tick one option each.
+//    Each option carries a Quality-of-Life (QL) value the dev sets. Global set,
+//    so keyed by a fixed refId ('global'). ─────────────────────────────────────
+const step4Schema = z.object({
+  questions: z.array(z.object({
+    id: z.string(),
+    section: z.string().default(''),
+    title: z.string().default(''),
+    options: z.array(z.object({
+      id: z.string(),
+      text: z.string().default(''),
+      ql: z.number().int().default(0),
+    })).default([]),
+  })),
+});
+
+wizardRouter.get('/step4-questions/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'step4-questions', refId: req.params.refId } },
+  });
+  let questions: z.infer<typeof step4Schema>['questions'] = [];
+  if (row) {
+    const parsed = step4Schema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) questions = parsed.data.questions;
+  }
+  res.json({ step4: { questions } });
+});
+
+wizardRouter.put('/step4-questions/:refId', requireDev, async (req, res) => {
+  const parsed = step4Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'step4-questions', refId: req.params.refId } },
+    create: { kind: 'step4-questions', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});
+
 // Ancestry Core Attributes (Step 1) — same shape, keyed by the Ancestry id.
 wizardRouter.get('/ancestry-core/:refId', async (req, res) => {
   const row = await prisma.wizardTemplate.findUnique({
