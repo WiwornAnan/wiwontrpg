@@ -349,7 +349,8 @@ function RaceStep({
       {/* Every race gets its own Feature เสริม (Merits/Demerits) + Core Attribute. */}
       {chosen && <FeatureGrants refId={chosen} wiwonIds={wiwonIds} poolTags={['Merits', 'Demerits']} title="Feature เสริม (จากเผ่าพันธุ์)" />}
 
-      {chosen && (
+      {/* Races with an Ancestry take their Core Attribute from the Ancestry instead. */}
+      {chosen && !showAncestry && (
         <div style={{ ...cardPlain, marginTop: 16 }}>
           <CoreAttributes path="race-core" refId={chosen} title="Core Attribute (จากเผ่าพันธุ์)" />
         </div>
@@ -751,11 +752,14 @@ function GradeBadge({ grade }: { grade: string }) {
 }
 function Step3Core({ character }: { character: Character }) {
   const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const raceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
   const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
   const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
+  // Ancestry races take core from the Ancestry, so skip their race-core column.
+  const useRaceCore = !!raceId && !raceHasAncestry(raceName);
 
   const { data: aData } = useQuery({
-    enabled: !!raceId,
+    enabled: useRaceCore,
     queryKey: ['race-core', raceId],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/race-core/${encodeURIComponent(raceId)}`),
   });
