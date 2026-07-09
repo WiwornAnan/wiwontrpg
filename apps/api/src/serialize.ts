@@ -7,11 +7,13 @@ import type {
   User as PUser,
   WiwonCover as PCover,
   Bookmark as PBookmark,
+  Character as PCharacter,
 } from '@prisma/client';
 import {
   CR_RESET_HOUR,
   type Article,
   type CatalogItem,
+  type Character,
   type Comment,
   type PrayMessage,
   type PublicUser,
@@ -114,6 +116,20 @@ export function toCatalogItem(i: PCatalogItem & { owner?: PUser | null }): Catal
     nameCount: i.nameCount,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
+  };
+}
+
+export function toCharacter(c: PCharacter): Character {
+  return {
+    id: c.id,
+    ownerUserId: c.ownerUserId,
+    name: c.name,
+    status: c.status as Character['status'],
+    step: c.step,
+    relatedWiwonId: c.relatedWiwonId,
+    data: parseJson(c.data, {}),
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
   };
 }
 

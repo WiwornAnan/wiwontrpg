@@ -98,6 +98,18 @@ export interface CatalogItem {
   updatedAt: string;
 }
 
+export interface Character {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  status: 'draft' | 'complete';
+  step: number;
+  relatedWiwonId: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type PrayKind = 'general' | 'official-request';
 
 export interface PrayReply {

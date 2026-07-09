@@ -27,6 +27,26 @@ model User {
   crLedger     CrLedgerEntry[]
   comments     Comment[]
   bookmarks    Bookmark[]
+  characters   Character[]
+}
+
+// A player's "Dweller" — created via the character-creation wizard. Kept as a
+// draft (resume where you left off) until finished. `data` holds the whole
+// wizard state as JSON so the shape can evolve without migrations.
+model Character {
+  id             String   @id @default(cuid())
+  ownerUserId    String
+  name           String   @default("")
+  status         String   @default("draft") // 'draft' | 'complete'
+  step           Int      @default(0) // current wizard step (0 = ตั้งค่า Wiwon)
+  relatedWiwonId String? // the Wiwon chosen at setup
+  data           String   @default("{}") // JSON: all picks made in the wizard
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
 }
 
 model Session {

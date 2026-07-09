@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
@@ -14,7 +14,7 @@ interface HeroData {
   imageUrl: string | null;
 }
 
-export function HeroBanner({ category, title, subtitle }: { category: DocCategory; title?: string; subtitle?: string }) {
+export function HeroBanner({ category, title, subtitle, action }: { category: DocCategory; title?: string; subtitle?: string; action?: ReactNode }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
   const meta = CATEGORY_META[category];
@@ -79,6 +79,9 @@ export function HeroBanner({ category, title, subtitle }: { category: DocCategor
           <button className={styles.heroEdit} onClick={openEdit}>
             ✎ แก้ไข Banner
           </button>
+        )}
+        {action && (
+          <div style={{ position: 'absolute', right: 28, top: '50%', transform: 'translateY(-50%)', zIndex: 2 }}>{action}</div>
         )}
       </div>
 

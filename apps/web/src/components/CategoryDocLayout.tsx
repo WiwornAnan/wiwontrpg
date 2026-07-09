@@ -19,6 +19,7 @@ interface Props {
   heroTitle?: string;
   heroSubtitle?: string;
   aboveGrid?: ReactNode; // e.g. Wiwon cover carousel
+  heroAction?: ReactNode; // e.g. floating "Dweller Sheet" button on Characters
   emptyNote?: string;
   hideHero?: boolean; // Wiwon renders its own cover-driven hero instead
   hideTagSearch?: boolean; // Wiwon has no in-page tag search
@@ -30,7 +31,7 @@ interface Group {
   items: Article[];
 }
 
-export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, emptyNote, hideHero, hideTagSearch, paneTitle }: Props) {
+export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, aboveGrid, heroAction, emptyNote, hideHero, hideTagSearch, paneTitle }: Props) {
   const { isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -107,7 +108,7 @@ export function CategoryDocLayout({ category, coverId, heroTitle, heroSubtitle, 
 
   return (
     <div className={styles.page}>
-      {!hideHero && <HeroBanner category={category} title={heroTitle} subtitle={heroSubtitle} />}
+      {!hideHero && <HeroBanner category={category} title={heroTitle} subtitle={heroSubtitle} action={heroAction} />}
 
       {aboveGrid}
 
