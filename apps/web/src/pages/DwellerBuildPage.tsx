@@ -248,6 +248,8 @@ function StepShell({
         <Step7Purchase character={character} patch={patch} />
       ) : step === 8 ? (
         <Step8Magic character={character} patch={patch} />
+      ) : step === 9 ? (
+        <Step9Money character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1514,10 +1516,6 @@ function Step7Purchase({
   patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
 }) {
   const wiwonIds = wiwonIdsOf(character);
-  const [qlInput, setQlInput] = useState(1);
-  const qlRef = useRef<HTMLDivElement>(null);
-  const walletRef = useRef<HTMLDivElement>(null);
-  const navBtn: React.CSSProperties = { border: '1px solid #d9d2c4', background: '#15140f', color: '#f7dca0', borderRadius: 20, padding: '9px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 18px rgba(0,0,0,.28)', whiteSpace: 'nowrap' };
 
   // Total QL comes from the Step 4 answers.
   const { data: step4 } = useQuery({
@@ -1534,19 +1532,52 @@ function Step7Purchase({
     ? Object.values(character.data.step8Magic as Record<string, number>).reduce((s, n) => s + n, 0) : 0;
   const availableQL = totalQL - spentFeatures - qlConverted - spentMagic;
 
+  const toggleBuy = (feat: CatalogItem, cost: number) => {
+    const next = { ...purchases };
+    if (feat.id in next) delete next[feat.id];
+    else { if (availableQL < cost) return; next[feat.id] = cost; }
+    patch.mutate({ data: { ...character.data, step7Purchases: next } });
+  };
+
+  const pill = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
+
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life แลก Feature</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 แลก Feature — ค้นหาหรือกรองด้วยแท็ก ราคาคือค่า Quality of Life ที่ระบุใน Feature (Life lesson, Local Knowledge, Social, Specialization, Language, Weapon Proficiency)</p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
+        <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
+        {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลก Feature: {spentFeatures} QL</span>}
+        {spentMagic > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลกเวทมนตร์: {spentMagic} QL</span>}
+        {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
+      </div>
+
+      <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
+    </div>
+  );
+}
+
+// Coin wallet card (moved to Step 9): coin table with +/-, QL→money, Royal
+// Bonds, and a grand total. `availableQL` caps the QL→money conversion.
+function WalletCard({
+  character,
+  patch,
+  availableQL,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+  availableQL: number;
+}) {
+  const [qlInput, setQlInput] = useState(1);
   const walletIC = numData(character.data.walletIC);
+  const qlConverted = numData(character.data.qlConverted);
   const rb: RoyalBond[] = Array.isArray(character.data.walletRB) ? (character.data.walletRB as RoyalBond[]) : [];
   const coins = decomposeIC(walletIC);
   const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
   const grandGC = walletIC / 1000 + rbTotalGC;
 
   const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
-  const toggleBuy = (feat: CatalogItem, cost: number) => {
-    const next = { ...purchases };
-    if (feat.id in next) delete next[feat.id];
-    else { if (availableQL < cost) return; next[feat.id] = cost; }
-    setData({ step7Purchases: next });
-  };
   const adjustCoin = (deltaIC: number) => setData({ walletIC: Math.max(0, walletIC + deltaIC) });
   const convertQL = () => {
     const amt = Math.max(0, Math.min(Math.floor(qlInput || 0), availableQL));
@@ -1557,118 +1588,93 @@ function Step7Purchase({
   const setBond = (id: string, price: number) => setData({ walletRB: rb.map((b) => (b.id === id ? { ...b, price } : b)) });
   const removeBond = (id: string) => setData({ walletRB: rb.filter((b) => b.id !== id) });
 
-  const pill = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
-
   return (
-    <>
-      <div ref={qlRef} style={cardPlain}>
-        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life แลก Feature</h1>
-        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 แลก Feature — ค้นหาหรือกรองด้วยแท็ก ราคาคือค่า Quality of Life ที่ระบุใน Feature (Life lesson, Local Knowledge, Social, Specialization, Language, Weapon Proficiency)</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
-          <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
-          {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลก Feature: {spentFeatures} QL</span>}
-          {spentMagic > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลกเวทมนตร์: {spentMagic} QL</span>}
-          {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
-        </div>
+    <div style={{ ...cardPlain, marginTop: 16 }}>
+      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>กระเป๋าเงิน</h2>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
+        10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
+      </p>
 
-        <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
-      </div>
-
-      {/* Side quick-nav between the QL section and the wallet. */}
-      <div style={{ position: 'fixed', right: 16, top: '40%', transform: 'translateY(-50%)', zIndex: 120, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button onClick={() => qlRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} style={navBtn}>↑ แลก QL</button>
-        <button onClick={() => walletRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} style={navBtn}>↓ กระเป๋าเงิน</button>
-      </div>
-
-      {/* ── Currency wallet ── */}
-      <div ref={walletRef} style={{ ...cardPlain, marginTop: 16 }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>กระเป๋าเงิน</h2>
-        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
-          10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
-        </p>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 460, borderCollapse: 'collapse', fontSize: 13.5 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: '#a8a59d', fontSize: 11, fontWeight: 700 }}>
-                <th style={{ padding: '0 0 8px' }}>เหรียญ</th>
-                <th style={{ padding: '0 0 8px', textAlign: 'center' }}>ค่า (IC)</th>
-                <th style={{ padding: '0 0 8px', textAlign: 'center' }}>จำนวน</th>
-                <th style={{ padding: '0 0 8px', textAlign: 'right' }}>ปรับ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {COIN_DEFS.map((c) => (
-                <tr key={c.key} style={{ borderTop: '1px solid #efece6' }}>
-                  <td style={{ padding: '9px 0' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.color, flex: 'none' }} />
-                      <span style={{ fontWeight: 700, color: '#2f2c25' }}>{c.label}</span>
-                      <span style={{ fontSize: 11.5, color: '#b0ada4', fontWeight: 700 }}>{c.key}</span>
-                    </span>
-                  </td>
-                  <td style={{ padding: '9px 0', textAlign: 'center', color: '#9a978e' }}>{c.ic.toLocaleString()}</td>
-                  <td style={{ padding: '9px 0', textAlign: 'center', fontSize: 17, fontWeight: 800, color: coins[c.key] > 0 ? '#2f2c25' : '#cfccc4' }}>{coins[c.key]}</td>
-                  <td style={{ padding: '9px 0' }}>
-                    <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                      <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
-                      <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '2px solid #e4e1d9' }}>
-                <td style={{ padding: '10px 0', fontWeight: 800, color: '#2f2c25' }}>รวมเป็นเหรียญ</td>
-                <td />
-                <td colSpan={2} style={{ padding: '10px 0', textAlign: 'right', fontWeight: 800, color: '#c79a2e', fontSize: 15 }}>
-                  {(walletIC / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} GC <span style={{ color: '#b0ada4', fontWeight: 600, fontSize: 12 }}>({walletIC.toLocaleString()} IC)</span>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 460, borderCollapse: 'collapse', fontSize: 13.5 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', color: '#a8a59d', fontSize: 11, fontWeight: 700 }}>
+              <th style={{ padding: '0 0 8px' }}>เหรียญ</th>
+              <th style={{ padding: '0 0 8px', textAlign: 'center' }}>ค่า (IC)</th>
+              <th style={{ padding: '0 0 8px', textAlign: 'center' }}>จำนวน</th>
+              <th style={{ padding: '0 0 8px', textAlign: 'right' }}>ปรับ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COIN_DEFS.map((c) => (
+              <tr key={c.key} style={{ borderTop: '1px solid #efece6' }}>
+                <td style={{ padding: '9px 0' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.color, flex: 'none' }} />
+                    <span style={{ fontWeight: 700, color: '#2f2c25' }}>{c.label}</span>
+                    <span style={{ fontSize: 11.5, color: '#b0ada4', fontWeight: 700 }}>{c.key}</span>
+                  </span>
+                </td>
+                <td style={{ padding: '9px 0', textAlign: 'center', color: '#9a978e' }}>{c.ic.toLocaleString()}</td>
+                <td style={{ padding: '9px 0', textAlign: 'center', fontSize: 17, fontWeight: 800, color: coins[c.key] > 0 ? '#2f2c25' : '#cfccc4' }}>{coins[c.key]}</td>
+                <td style={{ padding: '9px 0' }}>
+                  <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                    <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
+                    <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                  </div>
                 </td>
               </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* QL → money */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16, padding: '12px 14px', background: '#faf9f7', borderRadius: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33' }}>แลก QL เป็นเงิน</span>
-          <span style={{ fontSize: 12, color: '#9a978e' }}>(1 QL = 5 SC)</span>
-          <input type="number" min={1} value={qlInput} onChange={(e) => setQlInput(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={{ width: 76, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
-          <span style={{ fontSize: 12.5, color: '#8d8a82' }}>QL → {(qlInput || 0) * 5} SC</span>
-          <button onClick={convertQL} disabled={availableQL < 1 || qlInput < 1} style={{ border: 'none', background: availableQL >= 1 && qlInput >= 1 ? '#e07a5f' : '#e5cfc7', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: availableQL >= 1 && qlInput >= 1 ? 'pointer' : 'not-allowed' }}>แลก</button>
-        </div>
-
-        {/* Royal Bonds */}
-        <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 700, color: '#3c3a33' }}>Royal Bond (RB) — ใบรับรองกำหนดราคาเองได้</span>
-            <button onClick={addBond} style={{ border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ เพิ่มใบ</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {rb.length === 0 && <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีใบรับรอง</div>}
-            {rb.map((b, i) => (
-              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#5a6b86', flex: 'none' }}>RB #{i + 1}</span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8d8a82' }}>
-                  มูลค่า
-                  <input type="number" min={0} value={b.price} onChange={(e) => setBond(b.id, Math.max(0, Number(e.target.value) || 0))} style={{ width: 92, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
-                  GC
-                </label>
-                <button onClick={() => removeBond(b.id)} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
-              </div>
             ))}
-          </div>
-        </div>
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: '2px solid #e4e1d9' }}>
+              <td style={{ padding: '10px 0', fontWeight: 800, color: '#2f2c25' }}>รวมเป็นเหรียญ</td>
+              <td />
+              <td colSpan={2} style={{ padding: '10px 0', textAlign: 'right', fontWeight: 800, color: '#c79a2e', fontSize: 15 }}>
+                {(walletIC / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} GC <span style={{ color: '#b0ada4', fontWeight: 600, fontSize: 12 }}>({walletIC.toLocaleString()} IC)</span>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #efece6', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#a8a59d' }}>มูลค่ารวมโดยประมาณ</span>
-          <span style={{ fontSize: 20, fontWeight: 800, color: '#c79a2e' }}>{Number.isInteger(grandGC) ? grandGC : grandGC.toFixed(2)} GC</span>
-          {rbTotalGC > 0 && <span style={{ fontSize: 12, color: '#9a978e' }}>(เหรียญ {(walletIC / 1000).toFixed(2)} GC + RB {rbTotalGC} GC)</span>}
+      {/* QL → money */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16, padding: '12px 14px', background: '#faf9f7', borderRadius: 12 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33' }}>แลก QL เป็นเงิน</span>
+        <span style={{ fontSize: 12, color: '#9a978e' }}>(1 QL = 5 SC)</span>
+        <input type="number" min={1} value={qlInput} onChange={(e) => setQlInput(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={{ width: 76, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
+        <span style={{ fontSize: 12.5, color: '#8d8a82' }}>QL → {(qlInput || 0) * 5} SC · เหลือ {availableQL} QL</span>
+        <button onClick={convertQL} disabled={availableQL < 1 || qlInput < 1} style={{ border: 'none', background: availableQL >= 1 && qlInput >= 1 ? '#e07a5f' : '#e5cfc7', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: availableQL >= 1 && qlInput >= 1 ? 'pointer' : 'not-allowed' }}>แลก</button>
+      </div>
+
+      {/* Royal Bonds */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#3c3a33' }}>Royal Bond (RB) — ใบรับรองกำหนดราคาเองได้</span>
+          <button onClick={addBond} style={{ border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ เพิ่มใบ</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+          {rb.length === 0 && <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีใบรับรอง</div>}
+          {rb.map((b, i) => (
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#5a6b86', flex: 'none' }}>RB #{i + 1}</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8d8a82' }}>
+                มูลค่า
+                <input type="number" min={0} value={b.price} onChange={(e) => setBond(b.id, Math.max(0, Number(e.target.value) || 0))} style={{ width: 92, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
+                GC
+              </label>
+              <button onClick={() => removeBond(b.id)} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
+            </div>
+          ))}
         </div>
       </div>
-    </>
+
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #efece6', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#a8a59d' }}>มูลค่ารวมโดยประมาณ</span>
+        <span style={{ fontSize: 20, fontWeight: 800, color: '#c79a2e' }}>{Number.isInteger(grandGC) ? grandGC : grandGC.toFixed(2)} GC</span>
+        {rbTotalGC > 0 && <span style={{ fontSize: 12, color: '#9a978e' }}>(เหรียญ {(walletIC / 1000).toFixed(2)} GC + RB {rbTotalGC} GC)</span>}
+      </div>
+    </div>
   );
 }
 
@@ -2043,6 +2049,207 @@ function MagicBuySearch({
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && <ItemDetailView item={info} isFeature={false} />}
       </Modal>
+    </div>
+  );
+}
+
+// ── Step 9: starting money + wallet + Equipment shop/bag ──
+const CR_TO_IC = 100; // equipment price: 1 Cr = 1 SC = 100 IC
+const START_GOLD_IC = 10000; // เงินเริ่มต้น 10 Gold
+const SELL_RATE = 0.4; // ราคาขาย = 40% ของเต็ม (ลดลง 60%)
+const coinStr = (ic: number) => {
+  const d = decomposeIC(ic);
+  const parts = COIN_DEFS.filter((c) => d[c.key] > 0).map((c) => `${d[c.key]} ${c.key}`);
+  return parts.length ? parts.join(' ') : '0';
+};
+const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
+
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number }
+
+async function fetchEquipment(): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
+  const out: CatalogItem[] = [];
+  for (let page = 1; page < 50; page++) {
+    params.set('page', String(page));
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/equipment?${params.toString()}`);
+    out.push(...d.items);
+    if (d.items.length === 0 || out.length >= d.total) break;
+  }
+  return out;
+}
+
+function Step9Money({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [sellTarget, setSellTarget] = useState<BagLine | null>(null);
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+
+  // Available QL (shared pool) → caps QL→money conversion in the wallet.
+  const { data: step4 } = useQuery({
+    queryKey: ['step4-questions', 'global'],
+    queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global'),
+  });
+  const answers4 = character.data.step4Answers && typeof character.data.step4Answers === 'object' ? (character.data.step4Answers as Record<string, string>) : {};
+  const totalQL = (step4?.step4.questions ?? []).reduce((s, q) => s + (q.options.find((o) => o.id === answers4[q.id])?.ql ?? 0), 0);
+  const sink = (k: string) => (character.data[k] && typeof character.data[k] === 'object' ? Object.values(character.data[k] as Record<string, number>).reduce((s, n) => s + n, 0) : 0);
+  const availableQL = totalQL - sink('step7Purchases') - numData(character.data.qlConverted) - sink('step8Magic');
+
+  const started = character.data.walletStart === true;
+  const walletIC = numData(character.data.walletIC);
+  const tradeIC = numData(character.data.walletTradeIC);
+  const bag: BagLine[] = Array.isArray(character.data.bag) ? (character.data.bag as BagLine[]) : [];
+  const hasTrades = bag.length > 0 || tradeIC !== 0;
+
+  const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
+  const claim = () => setData({ walletStart: true, walletIC: walletIC + START_GOLD_IC });
+  const cancelStart = () => {
+    if (hasTrades) { setConfirmReset(true); return; }
+    setData({ walletStart: false, walletIC: Math.max(0, walletIC - START_GOLD_IC) });
+  };
+  const doReset = () => {
+    // Undo every trade, drop the bag, then pull the 10 Gold back out.
+    setData({ walletStart: false, walletIC: Math.max(0, walletIC - tradeIC - START_GOLD_IC), walletTradeIC: 0, bag: [] });
+    setConfirmReset(false);
+  };
+  const buy = (m: CatalogItem) => {
+    const p = priceOf(m);
+    if (walletIC < p) return;
+    setData({ walletIC: walletIC - p, walletTradeIC: tradeIC - p, bag: [...bag, { lineId: crypto.randomUUID(), itemId: m.id, name: m.name, priceIC: p }] });
+  };
+  const sell = (line: BagLine) => {
+    const refund = Math.floor(line.priceIC * SELL_RATE);
+    setData({ walletIC: walletIC + refund, walletTradeIC: tradeIC + refund, bag: bag.filter((l) => l.lineId !== line.lineId) });
+    setSellTarget(null);
+  };
+
+  return (
+    <>
+      <div style={cardPlain}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เงินและร้านค้า</h1>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>รับเงินเริ่มต้น จัดการกระเป๋าเงิน และซื้อ/ขายอุปกรณ์จาก Equipment &amp; Items</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 16px', background: '#faf9f7', borderRadius: 12 }}>
+          <span style={{ fontSize: 22 }}>🪙</span>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#2f2c25' }}>เงินเริ่มต้น — 10 Gold</div>
+            <div style={{ fontSize: 12, color: '#9a978e' }}>{started ? 'รับแล้ว' : 'กดรับเพื่อเพิ่มเข้ากระเป๋าเงิน'}</div>
+          </div>
+          {started ? (
+            <button onClick={cancelStart} style={{ border: '1px solid #e6cfcf', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>ยกเลิก</button>
+          ) : (
+            <button onClick={claim} style={{ border: 'none', background: '#2f7d4f', color: '#fff', borderRadius: 8, padding: '9px 18px', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>กดรับ</button>
+          )}
+        </div>
+      </div>
+
+      <WalletCard character={character} patch={patch} availableQL={availableQL} />
+
+      {/* Shop + Bag side by side */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ ...cardPlain, flex: '1 1 320px', minWidth: 280 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20 }}>ร้านค้า</h2>
+          <p style={{ color: '#8d8a82', fontSize: 12.5, margin: '6px 0 12px' }}>จาก Equipment &amp; Items — กด “ซื้อ” เพื่อหักเงินและเก็บเข้ากระเป๋า</p>
+          <ShopList walletIC={walletIC} onBuy={buy} onInfo={setInfo} />
+        </div>
+
+        <div style={{ ...cardPlain, flex: '1 1 260px', minWidth: 240 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20 }}>กระเป๋าของตัวละคร</h2>
+          <p style={{ color: '#b0552f', fontSize: 12, margin: '6px 0 12px' }}>⚠️ ราคาขายจะลดลง 60% จากราคาเต็ม</p>
+          {bag.length === 0 ? (
+            <div style={{ color: '#bdbab2', fontSize: 12.5, padding: '10px 0' }}>ยังไม่มีของในกระเป๋า</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {bag.map((l) => (
+                <div key={l.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border-soft)', background: '#fff' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#2f2c25' }}>{l.name}</div>
+                    <div style={{ fontSize: 11, color: '#9a978e' }}>จ่ายไป {coinStr(l.priceIC)}</div>
+                  </div>
+                  <button onClick={() => setSellTarget(l)} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>ขาย</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Cancel-start reset confirm */}
+      <Modal open={confirmReset} onClose={() => setConfirmReset(false)} title="ยกเลิกเงินเริ่มต้น">
+        <p style={{ fontSize: 13.5, color: '#3c3a33', lineHeight: 1.7, margin: 0 }}>
+          คุณใช้เงินไปแล้ว การยกเลิกเงินเริ่มต้นจะ <b>รีเซ็ตการซื้อขายทั้งหมด</b> (คืนของในกระเป๋าและยกเลิกการซื้อ/ขายทุกครั้ง) แล้วดึง 10 Gold ออก — ยืนยันหรือไม่?
+        </p>
+        <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={() => setConfirmReset(false)}>ยกเลิก</Button>
+          <Button variant="coral" onClick={doReset}>รีเซ็ตทั้งหมด</Button>
+        </div>
+      </Modal>
+
+      {/* Sell confirm */}
+      <Modal open={!!sellTarget} onClose={() => setSellTarget(null)} title="ขายของ">
+        {sellTarget && (
+          <>
+            <p style={{ fontSize: 13.5, color: '#3c3a33', lineHeight: 1.7, margin: 0 }}>
+              ขาย <b>{sellTarget.name}</b> — ⚠️ ราคาขายจะลดลง 60% จากราคาเต็ม<br />
+              จ่ายไป {coinStr(sellTarget.priceIC)} · ได้คืน <b style={{ color: '#2f7d4f' }}>{coinStr(Math.floor(sellTarget.priceIC * SELL_RATE))}</b>
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
+              <Button variant="ghost" onClick={() => setSellTarget(null)}>ยกเลิก</Button>
+              <Button variant="coral" onClick={() => sell(sellTarget)}>ยืนยันการขาย</Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && <ItemDetailView item={info} isFeature={false} />}
+      </Modal>
+    </>
+  );
+}
+
+function ShopList({ walletIC, onBuy, onInfo }: { walletIC: number; onBuy: (m: CatalogItem) => void; onInfo: (m: CatalogItem) => void }) {
+  const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const { data: all, isLoading } = useQuery({ queryKey: ['step9-equipment'], queryFn: fetchEquipment });
+  const pool = all ?? [];
+  const allTags = Array.from(new Set(pool.flatMap((m) => m.tags))).sort();
+  const q = query.trim().toLowerCase();
+  const hay = (m: CatalogItem) => `${m.name} ${m.subtitle ?? ''} ${m.tags.join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
+  const matches = pool.filter((m) => (!tagFilter || m.tags.includes(tagFilter)) && (!q || hay(m).includes(q)));
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 ค้นหาอุปกรณ์…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#fff' }} />
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          {allTags.slice(0, 12).map((t) => {
+            const on = tagFilter === t;
+            return <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? '#e07a5f' : '#e0ded7'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#8d8a82', borderRadius: 20, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>{t}</button>;
+          })}
+        </div>
+      )}
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && pool.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ยังไม่มีอุปกรณ์ในคลัง</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        {matches.map((m) => {
+          const p = priceOf(m);
+          const afford = walletIC >= p;
+          return (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border-soft)', background: '#fff' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#2f2c25' }}>{m.name}</div>
+                <div style={{ fontSize: 11, color: '#9a978e' }}>{coinStr(p)}</div>
+              </div>
+              <button onClick={() => onInfo(m)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '5px 9px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>
+              <button onClick={() => onBuy(m)} disabled={!afford} title={afford ? undefined : 'เงินไม่พอ'} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: afford ? 'pointer' : 'not-allowed', background: afford ? '#e07a5f' : '#eee', color: afford ? '#fff' : '#b0ada4' }}>ซื้อ</button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
