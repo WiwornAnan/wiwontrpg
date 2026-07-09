@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Character, WiwonCover } from '@wiwonanant/shared';
+import type { CatalogItem, Character, WiwonCover } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
@@ -214,7 +214,7 @@ function StepShell({
     .map((wid) => covers.find((c) => c.id === wid)?.name)
     .filter(Boolean);
 
-  const title = step === 1 ? 'เลือกเผ่าพันธุ์ของคุณ' : `ขั้นตอนที่ ${step}`;
+  const canNext = step === 1 ? !!character.data.race : true;
 
   return (
     <>
@@ -226,29 +226,132 @@ function StepShell({
         <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)', transition: 'width .3s' }} />
       </div>
 
-      <div style={cardPlain}>
-        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>{title}</h1>
-        {selectedNames.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-            {selectedNames.map((n) => (
-              <span key={n} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>
-                {n}
-              </span>
-            ))}
-          </div>
-        )}
-        <p style={{ color: '#bdbab2', fontSize: 13, margin: '18px 0 0' }}>เนื้อหาขั้นตอนนี้กำลังพัฒนา (เฟส 3c เป็นต้นไป)</p>
-      </div>
+      {step === 1 ? (
+        <RaceStep character={character} patch={patch} />
+      ) : (
+        <div style={cardPlain}>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
+          {selectedNames.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+              {selectedNames.map((n) => (
+                <span key={n} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>
+                  {n}
+                </span>
+              ))}
+            </div>
+          )}
+          <p style={{ color: '#bdbab2', fontSize: 13, margin: '18px 0 0' }}>เนื้อหาขั้นตอนนี้กำลังพัฒนา (เฟส 3d เป็นต้นไป)</p>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 22 }}>
         <Button variant="ghost" disabled={patch.isPending} onClick={() => patch.mutate({ step: step - 1 })}>
           ← ย้อนกลับ
         </Button>
-        <Button variant="coral" disabled={patch.isPending || step >= TOTAL_STEPS} onClick={() => patch.mutate({ step: step + 1 })}>
+        <Button variant="coral" disabled={patch.isPending || step >= TOTAL_STEPS || !canNext} onClick={() => patch.mutate({ step: step + 1 })}>
           ถัดไป →
         </Button>
       </div>
     </>
+  );
+}
+
+// ── Step 1: เลือกเผ่าพันธุ์ — Features tagged "Race" within the chosen Wiwon ──
+async function fetchRaceOptions(wiwonIds: string[]): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({ isFeature: 'true', tag: 'Race', scope: 'all' });
+  if (wiwonIds.length) params.set('relatedWiwon', wiwonIds.join(','));
+  const out: CatalogItem[] = [];
+  for (let page = 1; page < 50; page++) {
+    params.set('page', String(page));
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/magic?${params.toString()}`);
+    out.push(...d.items);
+    if (d.items.length === 0 || out.length >= d.total) break;
+  }
+  return out;
+}
+
+function RaceStep({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const wiwonIds = wiwonIdsOf(character);
+  const chosen = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+
+  const { data: races, isLoading } = useQuery({
+    queryKey: ['race-options', wiwonIds.join(',')],
+    queryFn: () => fetchRaceOptions(wiwonIds),
+  });
+
+  const pick = (r: CatalogItem) =>
+    patch.mutate({ data: { ...character.data, race: r.id, raceName: r.name } });
+
+  const fv = (it: CatalogItem, k: string) => (it.fields[k] != null ? String(it.fields[k]) : '');
+
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เลือกเผ่าพันธุ์ของคุณ</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>
+        เลือกเผ่าพันธุ์ 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Race” ใน Wiwon ที่เลือกไว้)
+      </p>
+
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && (races?.length ?? 0) === 0 && (
+        <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>
+          ยังไม่มี Feature แท็ก “Race” ใน Wiwon ที่เลือก — ผู้พัฒนาเพิ่มได้ในหน้า Magic &amp; Feature (แท็ก Race + เลือก Wiwon ที่เกี่ยวข้อง)
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {(races ?? []).map((r) => {
+          const on = chosen === r.id;
+          return (
+            <div
+              key={r.id}
+              onClick={() => pick(r)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff' }}
+            >
+              <span style={{ width: 20, height: 20, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800 }}>
+                {on ? '✓' : ''}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: '#2f2c25' }}>{r.name}</div>
+                <div style={{ fontSize: 12, color: '#9a978e', marginTop: 2 }}>
+                  {[r.subtitle, fv(r, 'rarity') && `Capacity: ${fv(r, 'rarity')}`].filter(Boolean).join(' · ') || 'เผ่าพันธุ์'}
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setInfo(r); }}
+                style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                ⓘ ดูข้อมูล
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && (
+          <div>
+            {info.subtitle && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>{info.subtitle}</div>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {info.tags.map((t) => (
+                <span key={t} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#edeae4', color: '#6b6860' }}>#{t}</span>
+              ))}
+            </div>
+            {info.description ? (
+              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
+            ) : (
+              <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
   );
 }
 
