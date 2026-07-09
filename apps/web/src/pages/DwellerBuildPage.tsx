@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
+import { DiceRoller } from '../components/DiceRoller';
 import layout from '../components/layout.module.css';
 import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
 
@@ -1009,9 +1010,9 @@ function Step3Core({
     </div>
 
     <div style={{ ...cardPlain, marginTop: 16 }}>
-      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>สกิลของ Dweller</h2>
+      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>Ego Dice</h2>
       <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>
-        ลูกเต๋าของแต่ละสกิลอ้างอิงเกรดสุดท้ายของ Core Attribute ที่สกิลนั้นใช้ — ชี้ที่ชื่อสกิลเพื่อดูคำอธิบาย
+        ลูกเต๋าประจำสกิลอ้างอิงเกรดสุดท้ายของ Core Attribute ที่สกิลนั้นใช้ — <b>กดที่ลูกเต๋า</b> เพื่อเปิดหน้าทอย (ตั้งค่า Ego dice ให้อัตโนมัติ) · ชี้ที่ชื่อสกิลเพื่อดูคำอธิบาย
       </p>
       <SkillsTable effByAbbr={effByAbbr} />
     </div>
@@ -1022,8 +1023,11 @@ function Step3Core({
 // Skill reference table (inside Step 3): rows grouped by category, each showing
 // its governing Core Attribute and the die it rolls (from the character's final
 // grade for that attribute). Hover a skill name to reveal its description.
+const GRADE_FACES: Record<string, number> = { A: 8, B: 6, C: 4, D: 2 };
+
 function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
   const [hover, setHover] = useState<string | null>(null);
+  const [rollFaces, setRollFaces] = useState<number | null>(null);
   const rowCell: React.CSSProperties = { padding: '9px 0', borderTop: '1px solid #efece6', display: 'flex', alignItems: 'center' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1068,11 +1072,26 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
                     )}
                   </div>
                   <div style={{ ...rowCell, justifyContent: 'flex-end' }}>
-                    <span style={{
-                      minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
-                      background: dieColor, color: grade in GRADE_COLOR ? '#fff' : '#b0ada4',
-                      fontSize: 12.5, fontWeight: 800,
-                    }}>{die}</span>
+                    {grade in GRADE_FACES ? (
+                      <button
+                        onClick={() => setRollFaces(GRADE_FACES[grade])}
+                        title={`ทอย Ego dice (${die})`}
+                        style={{
+                          minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
+                          background: dieColor, color: '#fff', fontSize: 12.5, fontWeight: 800,
+                          border: 'none', cursor: 'pointer',
+                        }}
+                      >{die}</button>
+                    ) : (
+                      <span
+                        title={grade === 'X' ? 'X — ทอยได้ แต่ผลเป็น 0 เสมอ' : undefined}
+                        style={{
+                          minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
+                          background: dieColor, color: grade in GRADE_COLOR ? '#fff' : '#b0ada4',
+                          fontSize: 12.5, fontWeight: 800, display: 'inline-block',
+                        }}
+                      >{die}</span>
+                    )}
                   </div>
                 </div>
               );
@@ -1080,6 +1099,7 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
           </div>
         </section>
       ))}
+      <DiceRoller open={rollFaces !== null} egoFaces={rollFaces ?? 20} onClose={() => setRollFaces(null)} />
     </div>
   );
 }
