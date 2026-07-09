@@ -9,6 +9,9 @@ import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 
 const TOTAL_STEPS = 12;
+// Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
+const RACES_WITH_ANCESTRY = ['Animalea', 'Sprite'];
+const raceHasAncestry = (name: string) => RACES_WITH_ANCESTRY.some((r) => r.toLowerCase() === name.trim().toLowerCase());
 const wiwonIdsOf = (c: Character) => (Array.isArray(c.data.wiwonIds) ? (c.data.wiwonIds as string[]) : []);
 
 export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
@@ -283,21 +286,31 @@ function RaceStep({
 }) {
   const wiwonIds = wiwonIdsOf(character);
   const chosen = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const chosenRaceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
   const ancestryChosen = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
+  // Ancestry layer only unlocks for certain races (Animalea / Sprite).
+  const showAncestry = !!chosen && raceHasAncestry(chosenRaceName);
   const [info, setInfo] = useState<CatalogItem | null>(null);
 
   const { data: races, isLoading } = useQuery({
     queryKey: ['race-options', wiwonIds.join(',')],
     queryFn: () => fetchFeaturesByTag('Race', wiwonIds),
   });
-  // Ancestry is a second layer, shown once a race is picked (e.g. Wolf Lineage).
   const { data: ancestries, isLoading: ancLoading } = useQuery({
-    enabled: !!chosen,
+    enabled: showAncestry,
     queryKey: ['ancestry-options', wiwonIds.join(',')],
     queryFn: () => fetchFeaturesByTag('Ancestry', wiwonIds),
   });
 
-  const pickRace = (r: CatalogItem) => patch.mutate({ data: { ...character.data, race: r.id, raceName: r.name } });
+  const pickRace = (r: CatalogItem) => {
+    const next: Record<string, unknown> = { ...character.data, race: r.id, raceName: r.name };
+    // Switching to a race without ancestry clears any stale ancestry pick.
+    if (!raceHasAncestry(r.name)) {
+      delete next.ancestry;
+      delete next.ancestryName;
+    }
+    patch.mutate({ data: next });
+  };
   const pickAncestry = (a: CatalogItem) => patch.mutate({ data: { ...character.data, ancestry: a.id, ancestryName: a.name } });
 
   return (
@@ -313,11 +326,11 @@ function RaceStep({
         onInfo={setInfo}
       />
 
-      {chosen && (
+      {showAncestry && (
         <div style={{ marginTop: 16 }}>
           <FeaturePicker
             title="เลือก Ancestry (สายเลือด)"
-            hint="เลือก Ancestry 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Ancestry”) — เลือกแล้วจะมี Feature เสริมของสายเลือดนั้น"
+            hint={`เผ่า ${chosenRaceName} มีสายเลือดให้เลือก — เลือก Ancestry 1 อย่าง (Feature แท็ก “Ancestry”)`}
             items={ancestries ?? []}
             isLoading={ancLoading}
             emptyText="ยังไม่มี Feature แท็ก “Ancestry” ใน Wiwon ที่เลือก"
@@ -328,9 +341,9 @@ function RaceStep({
         </div>
       )}
 
-      {ancestryChosen && <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} />}
+      {showAncestry && ancestryChosen && <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} />}
 
-      {ancestryChosen && (
+      {showAncestry && ancestryChosen && (
         <div style={{ ...cardPlain, marginTop: 16 }}>
           <CoreAttributes path="ancestry-core" refId={ancestryChosen} title="Core Attribute (จาก Ancestry)" />
         </div>
