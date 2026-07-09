@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CatalogItem, Character, WiwonCover } from '@wiwonanant/shared';
+import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLevel, WizardLevelOption } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
@@ -214,7 +214,7 @@ function StepShell({
     .map((wid) => covers.find((c) => c.id === wid)?.name)
     .filter(Boolean);
 
-  const canNext = step === 1 ? !!character.data.race : true;
+  const canNext = step === 1 ? !!character.data.race : step === 2 ? !!character.data.class : true;
 
   return (
     <>
@@ -228,6 +228,8 @@ function StepShell({
 
       {step === 1 ? (
         <RaceStep character={character} patch={patch} />
+      ) : step === 2 ? (
+        <ClassStep character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -256,9 +258,11 @@ function StepShell({
   );
 }
 
-// ── Step 1: เลือกเผ่าพันธุ์ — Features tagged "Race" within the chosen Wiwon ──
-async function fetchRaceOptions(wiwonIds: string[]): Promise<CatalogItem[]> {
-  const params = new URLSearchParams({ isFeature: 'true', tag: 'Race', scope: 'all' });
+// Fetch every Feature within the chosen Wiwon (optionally narrowed to a tag),
+// paging through the catalog list.
+async function fetchFeaturesByTag(tag: string, wiwonIds: string[]): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({ isFeature: 'true', scope: 'all' });
+  if (tag) params.set('tag', tag);
   if (wiwonIds.length) params.set('relatedWiwon', wiwonIds.join(','));
   const out: CatalogItem[] = [];
   for (let page = 1; page < 50; page++) {
@@ -283,7 +287,7 @@ function RaceStep({
 
   const { data: races, isLoading } = useQuery({
     queryKey: ['race-options', wiwonIds.join(',')],
-    queryFn: () => fetchRaceOptions(wiwonIds),
+    queryFn: () => fetchFeaturesByTag('Race', wiwonIds),
   });
 
   const pick = (r: CatalogItem) =>
@@ -350,6 +354,250 @@ function RaceStep({
             )}
           </div>
         )}
+      </Modal>
+    </div>
+  );
+}
+
+// ── Step 2: เลือกคลาส (Features tagged "Class") → Lv 1–15 reward table ──
+const claimsOf = (c: Character): Record<string, string> =>
+  c.data.levelClaims && typeof c.data.levelClaims === 'object' ? (c.data.levelClaims as Record<string, string>) : {};
+
+function ClassStep({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const wiwonIds = wiwonIdsOf(character);
+  const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
+  const className = typeof character.data.className === 'string' ? (character.data.className as string) : classValue;
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+  const fv = (it: CatalogItem, k: string) => (it.fields[k] != null ? String(it.fields[k]) : '');
+
+  const { data: classes, isLoading } = useQuery({
+    queryKey: ['class-options', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Class', wiwonIds),
+    enabled: !classValue,
+  });
+
+  if (classValue) {
+    return <LevelTable character={character} patch={patch} classValue={classValue} className={className} wiwonIds={wiwonIds} />;
+  }
+
+  const pick = (c: CatalogItem) => {
+    const cv = fv(c, 'class') || c.name;
+    patch.mutate({ data: { ...character.data, class: cv, classFeatureId: c.id, className: c.name } });
+  };
+
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เลือกคลาสของคุณ</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>เลือกคลาส 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Class” ใน Wiwon ที่เลือกไว้)</p>
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && (classes?.length ?? 0) === 0 && (
+        <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>
+          ยังไม่มี Feature แท็ก “Class” ใน Wiwon ที่เลือก
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {(classes ?? []).map((c) => (
+          <div key={c.id} onClick={() => pick(c)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: '1.5px solid var(--border-soft)', background: '#fff' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: '#2f2c25' }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: '#9a978e', marginTop: 2 }}>{fv(c, 'class') ? `Class: ${fv(c, 'class')}` : 'คลาส'}</div>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); setInfo(c); }} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ⓘ ดูข้อมูล
+            </button>
+          </div>
+        ))}
+      </div>
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && (
+          <div>
+            {info.subtitle && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>{info.subtitle}</div>}
+            {info.description ? (
+              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
+            ) : (
+              <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function LevelTable({
+  character,
+  patch,
+  classValue,
+  className,
+  wiwonIds,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+  classValue: string;
+  className: string;
+  wiwonIds: string[];
+}) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const claims = claimsOf(character);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<WizardLevel[]>([]);
+  const [cancelTarget, setCancelTarget] = useState<number | null>(null);
+
+  const { data: tplData } = useQuery({
+    queryKey: ['class-levels', classValue],
+    queryFn: () => api.get<{ template: ClassLevelTemplate }>(`/wizard/class-levels/${encodeURIComponent(classValue)}`),
+  });
+  const levels = tplData?.template.levels ?? [];
+
+  const { data: pool } = useQuery({
+    enabled: isDev,
+    queryKey: ['feature-pool', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('', wiwonIds),
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.put(`/wizard/class-levels/${encodeURIComponent(classValue)}`, { levels: draft }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['class-levels', classValue] });
+      setEditing(false);
+    },
+  });
+
+  const startEdit = () => {
+    setDraft(levels.map((l) => ({ ...l, options: l.options.map((o) => ({ ...o })) })));
+    setEditing(true);
+  };
+  const updateLevel = (lv: number, fn: (l: WizardLevel) => WizardLevel) =>
+    setDraft((d) => d.map((l) => (l.lv === lv ? fn(l) : l)));
+  const addOption = (lv: number) =>
+    updateLevel(lv, (l) => ({ ...l, options: [...l.options, { id: crypto.randomUUID(), featureId: null, featureName: null, text: '' }] }));
+  const removeOption = (lv: number, oid: string) => updateLevel(lv, (l) => ({ ...l, options: l.options.filter((o) => o.id !== oid) }));
+  const setOption = (lv: number, oid: string, p: Partial<WizardLevelOption>) =>
+    updateLevel(lv, (l) => ({ ...l, options: l.options.map((o) => (o.id === oid ? { ...o, ...p } : o)) }));
+
+  const claim = (lv: number, optId: string) =>
+    patch.mutate({ data: { ...character.data, levelClaims: { ...claims, [String(lv)]: optId } } });
+  const doCancel = () => {
+    if (cancelTarget == null) return;
+    const next = { ...claims };
+    delete next[String(cancelTarget)];
+    patch.mutate({ data: { ...character.data, levelClaims: next } }, { onSuccess: () => setCancelTarget(null) });
+  };
+
+  const view = editing ? draft : levels;
+
+  return (
+    <div style={cardPlain}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>คลาส: {className}</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {isDev &&
+            (editing ? (
+              <>
+                <Button variant="ghost" onClick={() => setEditing(false)}>ยกเลิก</Button>
+                <Button variant="coral" disabled={save.isPending} onClick={() => save.mutate()}>บันทึกตาราง</Button>
+              </>
+            ) : (
+              <Button variant="ghost" onClick={startEdit}>✎ แก้ไขตาราง</Button>
+            ))}
+          {!editing && (
+            <Button variant="ghost" onClick={() => patch.mutate({ data: { ...character.data, class: '', classFeatureId: '', className: '' } })}>
+              เปลี่ยนคลาส
+            </Button>
+          )}
+        </div>
+      </div>
+      <p style={{ color: '#8d8a82', fontSize: 13, margin: '4px 0 18px' }}>
+        ตารางเลเวล Lv 1–15 — {isDev && editing ? 'ผู้พัฒนากำหนดตัวเลือกที่ผู้เล่นจะได้รับต่อเลเวล' : 'กด “รับ” เพื่อเลือกของ 1 อย่างต่อเลเวล'}
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {view.map((level) => {
+          const claimedOpt = claims[String(level.lv)];
+          return (
+            <div key={level.lv} style={{ display: 'flex', gap: 12, padding: '12px 14px', borderRadius: 12, background: '#faf9f7', border: '1px solid #eae7e0' }}>
+              <div style={{ flex: 'none', width: 44, height: 44, borderRadius: 10, background: '#15140f', color: '#f7dca0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                <span style={{ fontSize: 8, opacity: 0.7 }}>LV</span>
+                {level.lv}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {editing ? (
+                  <input value={level.note} onChange={(e) => updateLevel(level.lv, (l) => ({ ...l, note: e.target.value }))} placeholder="หมายเหตุของเลเวลนี้ (ไม่บังคับ)" style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 12.5, marginBottom: 8, background: '#fff' }} />
+                ) : (
+                  level.note && <div style={{ fontSize: 12.5, color: '#6b6860', marginBottom: 8 }}>{level.note}</div>
+                )}
+
+                {!editing && level.options.length === 0 && <div style={{ fontSize: 12.5, color: '#bdbab2' }}>—</div>}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {level.options.map((o) => {
+                    const claimedThis = claimedOpt === o.id;
+                    if (editing) {
+                      return (
+                        <div key={o.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <select
+                            value={o.featureId ?? ''}
+                            onChange={(e) => {
+                              const f = (pool ?? []).find((x) => x.id === e.target.value);
+                              setOption(level.lv, o.id, { featureId: f ? f.id : null, featureName: f ? f.name : null });
+                            }}
+                            style={{ flex: '0 0 40%', border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 12, background: '#fff' }}
+                          >
+                            <option value="">— ไม่ลิงก์ Feature —</option>
+                            {(pool ?? []).map((f) => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                          </select>
+                          <input value={o.text} onChange={(e) => setOption(level.lv, o.id, { text: e.target.value })} placeholder="ข้อความ เช่น +1 HP" style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 12, background: '#fff' }} />
+                          <button onClick={() => removeOption(level.lv, o.id)} title="ลบตัวเลือก" style={{ flex: 'none', border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 30, height: 30, cursor: 'pointer' }}>×</button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${claimedThis ? 'var(--coral)' : '#e8e5df'}`, background: claimedThis ? 'var(--coral-bg)' : '#fff' }}>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
+                          {o.featureName && <span style={{ fontWeight: 700, color: '#2f2c25' }}>{o.featureName}</span>}
+                          {o.featureName && o.text && <span style={{ color: '#c9c6bf' }}> · </span>}
+                          {o.text && <span style={{ color: '#5f5c54' }}>{o.text}</span>}
+                          {!o.featureName && !o.text && <span style={{ color: '#bdbab2' }}>(ตัวเลือกว่าง)</span>}
+                        </div>
+                        {claimedThis ? (
+                          <button onClick={() => setCancelTarget(level.lv)} style={{ flex: 'none', border: 'none', background: 'var(--coral)', color: '#fff', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>รับแล้ว ✓</button>
+                        ) : (
+                          <button onClick={() => claim(level.lv, o.id)} style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>กดรับ</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {editing && (
+                    <button onClick={() => addOption(level.lv)} style={{ alignSelf: 'flex-start', border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ เพิ่มตัวเลือก</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Modal
+        open={cancelTarget != null}
+        onClose={() => setCancelTarget(null)}
+        title="ยกเลิกการรับ"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCancelTarget(null)}>ไม่ยกเลิก</Button>
+            <Button variant="danger" onClick={doCancel}>ตกลง ยกเลิก</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 14, margin: 0 }}>คุณจะยกเลิกใช่ไหม — ของที่ได้จาก Lv {cancelTarget} จะหายไป</p>
       </Modal>
     </div>
   );

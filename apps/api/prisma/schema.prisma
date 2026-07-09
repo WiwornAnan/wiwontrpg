@@ -49,6 +49,20 @@ model Character {
   @@index([ownerUserId])
 }
 
+// Dev-authored wizard content that players receive but cannot edit — e.g. a
+// class's Lv 1–15 reward table. `refId` scopes it (the class value); `data`
+// holds the structured template as JSON so it can evolve without migrations.
+model WizardTemplate {
+  id        String   @id @default(cuid())
+  kind      String // 'class-levels'
+  refId     String // e.g. the Class value ("Caster")
+  data      String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([kind, refId])
+}
+
 model Session {
   sid       String   @id
   data      String

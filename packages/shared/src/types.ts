@@ -110,6 +110,23 @@ export interface Character {
   updatedAt: string;
 }
 
+// Dev-authored class Lv 1–15 reward table. Each level offers options; a player
+// claims one option per level.
+export interface WizardLevelOption {
+  id: string;
+  featureId: string | null;
+  featureName: string | null;
+  text: string;
+}
+export interface WizardLevel {
+  lv: number;
+  note: string;
+  options: WizardLevelOption[];
+}
+export interface ClassLevelTemplate {
+  levels: WizardLevel[];
+}
+
 export type PrayKind = 'general' | 'official-request';
 
 export interface PrayReply {
