@@ -725,8 +725,6 @@ interface CoreAttr {
   grade: 'A' | 'B' | 'C' | 'D' | 'X';
 }
 const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
-// The die a Core Attribute grade rolls with. X still rolls — it just always yields 0.
-const GRADE_DIE: Record<string, string> = { A: 'd8', B: 'd6', C: 'd4', D: 'd2', X: '0' };
 // Grade scale, low → high. Index is the numeric value (X=0 … A=4).
 const GRADE_ORDER = ['X', 'D', 'C', 'B', 'A'] as const;
 type Grade = (typeof GRADE_ORDER)[number];
@@ -1010,11 +1008,11 @@ function Step3Core({
     </div>
 
     <div style={{ ...cardPlain, marginTop: 16 }}>
-      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>Ego Dice</h2>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>
-        ลูกเต๋าประจำสกิลอ้างอิงเกรดสุดท้ายของ Core Attribute ที่สกิลนั้นใช้ — <b>กดที่ลูกเต๋า</b> เพื่อเปิดหน้าทอย (ตั้งค่า Ego dice ให้อัตโนมัติ) · ชี้ที่ชื่อสกิลเพื่อดูคำอธิบาย
+      <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>Dweller Skill</h2>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
+        ลูกเต๋าประจำสกิลอ้างอิงเกรดสุดท้ายของ Core Attribute ที่สกิลนั้นใช้ — <b>กดที่ลูกเต๋า</b> เพื่อเปิดหน้าทอย · ชี้ที่ชื่อสกิลเพื่อดูคำอธิบาย
       </p>
-      <SkillsTable effByAbbr={effByAbbr} />
+      <SkillsTable effByAbbr={effByAbbr} character={character} patch={patch} />
     </div>
     </>
   );
@@ -1023,16 +1021,66 @@ function Step3Core({
 // Skill reference table (inside Step 3): rows grouped by category, each showing
 // its governing Core Attribute and the die it rolls (from the character's final
 // grade for that attribute). Hover a skill name to reveal its description.
-// The die each grade rolls on the astrolabe. X still rolls (on the smallest die,
-// d2) even though its result is treated as 0.
-const GRADE_FACES: Record<string, number> = { A: 8, B: 6, C: 4, D: 2, X: 2 };
+// Die ladder (faces). 0 = the X "die" (rolls d2 but counts as 0). พรสวรรค์
+// (talent) bumps a skill one rung up this ladder.
+const DIE_LADDER = [0, 2, 4, 6, 8, 10, 12, 20];
+const GRADE_LADDER_IDX: Record<string, number> = { X: 0, D: 1, C: 2, B: 3, A: 4 };
+const PROF_MAX = 6; // เชี่ยวชาญ → Advantage on the roll
+const TALENT_MAX = 2; // พรสวรรค์ → upgrade the die one step
+const skillKey = (catEn: string, en: string) => `${catEn}:${en}`;
 
-function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
+function SkillsTable({
+  effByAbbr,
+  character,
+  patch,
+}: {
+  effByAbbr: Record<string, string>;
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
   const [hover, setHover] = useState<string | null>(null);
-  const [rollFaces, setRollFaces] = useState<number | null>(null);
+  const [roll, setRoll] = useState<{ faces: number; adv: boolean } | null>(null);
+
+  const prof = Array.isArray(character.data.skillProf) ? (character.data.skillProf as string[]) : [];
+  const talent = Array.isArray(character.data.skillTalent) ? (character.data.skillTalent as string[]) : [];
+  const commit = (nextProf: string[], nextTalent: string[]) =>
+    patch.mutate({ data: { ...character.data, skillProf: nextProf, skillTalent: nextTalent } });
+  const toggleProf = (key: string) => {
+    if (prof.includes(key)) commit(prof.filter((k) => k !== key), talent);
+    else if (prof.length < PROF_MAX) commit([...prof, key], talent);
+  };
+  const toggleTalent = (key: string) => {
+    if (talent.includes(key)) commit(prof, talent.filter((k) => k !== key));
+    else if (talent.length < TALENT_MAX) commit(prof, [...talent, key]);
+  };
+  const reset = () => commit([], []);
+
   const rowCell: React.CSSProperties = { padding: '9px 0', borderTop: '1px solid #efece6', display: 'flex', alignItems: 'center' };
+  const tag = (active: boolean, activeBg: string): React.CSSProperties => ({
+    width: 26, height: 24, borderRadius: 7, flex: 'none', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: `1px solid ${active ? activeBg : '#e0ded7'}`, background: active ? activeBg : '#fff', color: active ? '#fff' : '#b0ada4',
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 13px', borderRadius: 20, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>
+          ▲ เชี่ยวชาญ: {PROF_MAX - prof.length}/{PROF_MAX}
+        </span>
+        <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 13px', borderRadius: 20, background: '#f3eefb', color: '#5b3fa0', border: '1px solid #e2d7f4' }}>
+          ✦ พรสวรรค์: {TALENT_MAX - talent.length}/{TALENT_MAX}
+        </span>
+        {(prof.length > 0 || talent.length > 0) && (
+          <button onClick={reset} disabled={patch.isPending} style={{ marginLeft: 'auto', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            ↺ รีเซ็ตสกิล
+          </button>
+        )}
+      </div>
+      <p style={{ fontSize: 12, color: '#a8a59d', margin: '-8px 0 0', lineHeight: 1.7 }}>
+        <b style={{ color: '#2f7d4f' }}>▲ เชี่ยวชาญ</b> = ทอยแบบ Advantage · <b style={{ color: '#5b3fa0' }}>✦ พรสวรรค์</b> = อัพเกรดลูกเต๋า +1 ขั้น · ใส่ทั้งสองในสกิลเดียวกันได้
+      </p>
+
       {DWELLER_SKILLS.map((cat) => (
         <section key={cat.en}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -1041,11 +1089,17 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
           </div>
           <p style={{ fontSize: 12, color: '#9a978e', lineHeight: 1.6, margin: '4px 0 0' }}>{cat.desc}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', columnGap: 12, marginTop: 8 }}>
-            {cat.skills.map((s, i) => {
-              const id = `${cat.en}-${i}`;
+            {cat.skills.map((s) => {
+              const id = skillKey(cat.en, s.en);
               const on = hover === id;
               const grade = effByAbbr[s.attr] ?? '—';
-              const die = GRADE_DIE[grade] ?? '—';
+              const hasProf = prof.includes(id);
+              const hasTalent = talent.includes(id);
+              const baseIdx = GRADE_LADDER_IDX[grade] ?? 0;
+              const idx = Math.min(DIE_LADDER.length - 1, baseIdx + (hasTalent ? 1 : 0));
+              const faces = DIE_LADDER[idx];
+              const die = faces === 0 ? '0' : `d${faces}`;
+              const rollFaces = faces === 0 ? 2 : faces;
               const dieColor = grade in GRADE_COLOR ? GRADE_COLOR[grade] : '#ece9e3';
               return (
                 <div key={id} style={{ display: 'contents' }}>
@@ -1073,26 +1127,20 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
                       </div>
                     )}
                   </div>
-                  <div style={{ ...rowCell, justifyContent: 'flex-end' }}>
-                    {grade in GRADE_FACES ? (
-                      <button
-                        onClick={() => setRollFaces(GRADE_FACES[grade])}
-                        title={grade === 'X' ? 'ทอย Ego dice (d2 · ผลอ้างอิงเป็น 0)' : `ทอย Ego dice (${die})`}
-                        style={{
-                          minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
-                          background: dieColor, color: '#fff', fontSize: 12.5, fontWeight: 800,
-                          border: 'none', cursor: 'pointer',
-                        }}
-                      >{die}</button>
-                    ) : (
-                      <span
-                        style={{
-                          minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
-                          background: dieColor, color: grade in GRADE_COLOR ? '#fff' : '#b0ada4',
-                          fontSize: 12.5, fontWeight: 800, display: 'inline-block',
-                        }}
-                      >{die}</span>
-                    )}
+                  <div style={{ ...rowCell, justifyContent: 'flex-end', gap: 6 }}>
+                    <button onClick={() => toggleProf(id)} disabled={!hasProf && prof.length >= PROF_MAX} title="เชี่ยวชาญ — ทอยแบบ Advantage" style={{ ...tag(hasProf, '#2f7d4f'), opacity: !hasProf && prof.length >= PROF_MAX ? 0.4 : 1 }}>▲</button>
+                    <button onClick={() => toggleTalent(id)} disabled={!hasTalent && talent.length >= TALENT_MAX} title="พรสวรรค์ — อัพเกรดลูกเต๋า +1 ขั้น" style={{ ...tag(hasTalent, '#5b3fa0'), opacity: !hasTalent && talent.length >= TALENT_MAX ? 0.4 : 1 }}>✦</button>
+                    <button
+                      onClick={() => setRoll({ faces: rollFaces, adv: hasProf })}
+                      title={`ทอย Dweller Skill (${die}${hasProf ? ' · Advantage' : ''}${faces === 0 ? ' · ผลอ้างอิง 0' : ''})`}
+                      style={{
+                        minWidth: 44, textAlign: 'center', padding: '4px 9px', borderRadius: 7, position: 'relative',
+                        background: dieColor, color: '#fff', fontSize: 12.5, fontWeight: 800, border: 'none', cursor: 'pointer',
+                      }}
+                    >
+                      {die}
+                      {hasProf && <span style={{ position: 'absolute', top: -6, right: -5, fontSize: 10, color: '#2f7d4f', background: '#fff', borderRadius: '50%', width: 14, height: 14, lineHeight: '14px', border: '1px solid #cfe6d6' }}>▲</span>}
+                    </button>
                   </div>
                 </div>
               );
@@ -1100,7 +1148,7 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
           </div>
         </section>
       ))}
-      <DiceRoller open={rollFaces !== null} egoFaces={rollFaces ?? 20} onClose={() => setRollFaces(null)} />
+      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} onClose={() => setRoll(null)} />
     </div>
   );
 }
