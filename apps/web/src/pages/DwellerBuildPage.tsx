@@ -301,6 +301,15 @@ function RaceStep({
     queryKey: ['ancestry-options', wiwonIds.join(',')],
     queryFn: () => fetchFeaturesByTag('Ancestry', wiwonIds),
   });
+  // A race's Ancestry options are limited to the lineages the dev listed in its
+  // "Feature เสริม (จากเผ่าพันธุ์)" — not every Ancestry-tagged Feature.
+  const { data: raceGrant } = useQuery({
+    enabled: showAncestry && !!chosen,
+    queryKey: ['feature-grant', chosen],
+    queryFn: () => api.get<{ grant: { features: { featureId: string }[] } }>(`/wizard/race-grant/${chosen}`),
+  });
+  const allowedAncestryIds = new Set((raceGrant?.grant.features ?? []).map((f) => f.featureId));
+  const raceAncestries = (ancestries ?? []).filter((a) => allowedAncestryIds.has(a.id));
 
   const pickRace = (r: CatalogItem) => {
     const next: Record<string, unknown> = { ...character.data };
@@ -347,7 +356,14 @@ function RaceStep({
       />
 
       {/* Every race gets its own Feature เสริม (Merits/Demerits) + Core Attribute. */}
-      {chosen && <FeatureGrants refId={chosen} wiwonIds={wiwonIds} poolTags={['Merits', 'Demerits']} title="Feature เสริม (จากเผ่าพันธุ์)" />}
+      {chosen && (
+        <FeatureGrants
+          refId={chosen}
+          wiwonIds={wiwonIds}
+          poolTags={showAncestry ? ['Merits', 'Demerits', 'Ancestry'] : ['Merits', 'Demerits']}
+          title="Feature เสริม (จากเผ่าพันธุ์)"
+        />
+      )}
 
       {/* Races with an Ancestry take their Core Attribute from the Ancestry instead. */}
       {chosen && !showAncestry && (
@@ -360,10 +376,10 @@ function RaceStep({
         <div style={{ marginTop: 16 }}>
           <FeaturePicker
             title="เลือก Ancestry (สายเลือด)"
-            hint={`เผ่า ${chosenRaceName} มีสายเลือดให้เลือก — เลือก Ancestry 1 อย่าง (Feature แท็ก “Ancestry”)`}
-            items={ancestries ?? []}
+            hint={`เลือกสายเลือดของเผ่า ${chosenRaceName} 1 อย่าง (มาจาก Feature เสริมของเผ่า)`}
+            items={raceAncestries}
             isLoading={ancLoading}
-            emptyText="ยังไม่มี Feature แท็ก “Ancestry” ใน Wiwon ที่เลือก"
+            emptyText="เผ่านี้ยังไม่ได้กำหนดสายเลือด — ผู้พัฒนาเพิ่มสายเลือด (Feature Ancestry) ในช่อง “Feature เสริม (จากเผ่าพันธุ์)” ด้านบน"
             chosenId={ancestryChosen}
             onPick={pickAncestry}
             onInfo={setInfo}
