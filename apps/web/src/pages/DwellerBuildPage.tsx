@@ -1555,7 +1555,7 @@ function Step7Purchase({
     <>
       <div style={cardPlain}>
         <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life ซื้อ Feature</h1>
-        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 ซื้อ Feature ตามแท็ก — ราคาคือค่า Quality of Life ที่ระบุใน Feature</p>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 ซื้อ Feature — ค้นหาหรือกรองด้วยแท็ก ราคาคือค่า Quality of Life ที่ระบุใน Feature (Life lesson, Local Knowledge, Social, Specialization, Language, Weapon Proficiency)</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
           <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
@@ -1563,11 +1563,7 @@ function Step7Purchase({
           {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 18 }}>
-          {PURCHASE_TAGS.map((t) => (
-            <TagBuyFrame key={t} tag={t} wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
-          ))}
-        </div>
+        <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
       </div>
 
       {/* ── Currency wallet ── */}
@@ -1577,17 +1573,47 @@ function Step7Purchase({
           10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
         </p>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          {COIN_DEFS.map((c) => (
-            <div key={c.key} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px', minWidth: 96, textAlign: 'center', background: '#fff' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: c.color }}>{c.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#2f2c25', margin: '2px 0 6px' }}>{coins[c.key]}<span style={{ fontSize: 12, color: '#b0ada4', fontWeight: 700 }}> {c.key}</span></div>
-              <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
-                <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
-                <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
-              </div>
-            </div>
-          ))}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 460, borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: '#a8a59d', fontSize: 11, fontWeight: 700 }}>
+                <th style={{ padding: '0 0 8px' }}>เหรียญ</th>
+                <th style={{ padding: '0 0 8px', textAlign: 'center' }}>ค่า (IC)</th>
+                <th style={{ padding: '0 0 8px', textAlign: 'center' }}>จำนวน</th>
+                <th style={{ padding: '0 0 8px', textAlign: 'right' }}>ปรับ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COIN_DEFS.map((c) => (
+                <tr key={c.key} style={{ borderTop: '1px solid #efece6' }}>
+                  <td style={{ padding: '9px 0' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.color, flex: 'none' }} />
+                      <span style={{ fontWeight: 700, color: '#2f2c25' }}>{c.label}</span>
+                      <span style={{ fontSize: 11.5, color: '#b0ada4', fontWeight: 700 }}>{c.key}</span>
+                    </span>
+                  </td>
+                  <td style={{ padding: '9px 0', textAlign: 'center', color: '#9a978e' }}>{c.ic.toLocaleString()}</td>
+                  <td style={{ padding: '9px 0', textAlign: 'center', fontSize: 17, fontWeight: 800, color: coins[c.key] > 0 ? '#2f2c25' : '#cfccc4' }}>{coins[c.key]}</td>
+                  <td style={{ padding: '9px 0' }}>
+                    <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                      <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
+                      <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #e4e1d9' }}>
+                <td style={{ padding: '10px 0', fontWeight: 800, color: '#2f2c25' }}>รวมเป็นเหรียญ</td>
+                <td />
+                <td colSpan={2} style={{ padding: '10px 0', textAlign: 'right', fontWeight: 800, color: '#c79a2e', fontSize: 15 }}>
+                  {(walletIC / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} GC <span style={{ color: '#b0ada4', fontWeight: 600, fontSize: 12 }}>({walletIC.toLocaleString()} IC)</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
 
         {/* QL → money */}
@@ -1631,55 +1657,102 @@ function Step7Purchase({
   );
 }
 
-function TagBuyFrame({
-  tag,
+// Unified, search-driven Feature buyer: one box for all purchasable tags.
+// Owned Features always show; the rest appear when you type or pick a tag chip.
+function FeatureBuySearch({
   wiwonIds,
   purchases,
   availableQL,
   onToggle,
 }: {
-  tag: string;
   wiwonIds: string[];
   purchases: Record<string, number>;
   availableQL: number;
   onToggle: (f: CatalogItem, cost: number) => void;
 }) {
   const [info, setInfo] = useState<CatalogItem | null>(null);
-  const { data: feats, isLoading } = useQuery({
-    queryKey: ['step7-feats', tag, wiwonIds.join(',')],
-    queryFn: () => fetchFeaturesByTag(tag, wiwonIds),
+  const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // One request for every Feature in the Wiwon; filter to the purchasable tags.
+  const { data: all, isLoading } = useQuery({
+    queryKey: ['step7-feats', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('', wiwonIds),
   });
-  const items = feats ?? [];
+  const purchasable = (all ?? []).filter((f) => f.tags.some((t) => PURCHASE_TAGS.includes(t)));
+
+  const q = query.trim().toLowerCase();
+  const owned = purchasable.filter((f) => f.id in purchases);
+  const matches = purchasable.filter((f) => {
+    if (f.id in purchases) return false; // shown in the owned block already
+    if (tagFilter && !f.tags.includes(tagFilter)) return false;
+    if (q && !(f.name.toLowerCase().includes(q) || (f.subtitle ?? '').toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const searching = q.length > 0 || tagFilter !== null;
+
+  const row = (f: CatalogItem) => {
+    const cost = qlCostOf(f);
+    const isOwned = f.id in purchases;
+    const canAfford = isOwned || availableQL >= cost;
+    const ptags = f.tags.filter((t) => PURCHASE_TAGS.includes(t));
+    return (
+      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${isOwned ? '#2f7d4f' : 'var(--border-soft)'}`, background: isOwned ? '#f2f8f4' : '#fff' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{f.name}</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
+            {ptags.map((t) => <span key={t} style={{ fontSize: 10.5, color: '#8d8a82', background: '#f2efe9', borderRadius: 6, padding: '1px 7px' }}>{t}</span>)}
+          </div>
+        </div>
+        <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>
+        <button onClick={() => setInfo(f)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
+        <button
+          onClick={() => onToggle(f, cost)}
+          disabled={!canAfford}
+          style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: isOwned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: isOwned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
+        >
+          {isOwned ? 'ซื้อแล้ว ✓' : 'ซื้อ'}
+        </button>
+      </div>
+    );
+  };
 
   return (
-    <div style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#faf9f7' }}>
-      <div style={{ fontSize: 14.5, fontWeight: 800, color: '#2f2c25', marginBottom: 10 }}>{tag}</div>
-      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '8px 0' }}>กำลังโหลด…</div>}
-      {!isLoading && items.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5 }}>ยังไม่มี Feature แท็กนี้ใน Wiwon ที่เลือก</div>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((f) => {
-          const cost = qlCostOf(f);
-          const owned = f.id in purchases;
-          const canAfford = owned || availableQL >= cost;
+    <div style={{ marginTop: 18 }}>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="🔍 ค้นหา Feature ที่จะซื้อ…"
+        style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '10px 13px', fontSize: 13.5, background: '#fff' }}
+      />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+        {PURCHASE_TAGS.map((t) => {
+          const on = tagFilter === t;
           return (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${owned ? '#2f7d4f' : 'var(--border-soft)'}`, background: owned ? '#f2f8f4' : '#fff' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{f.name}</div>
-                {f.subtitle && <div style={{ fontSize: 11.5, color: '#9a978e' }}>{f.subtitle}</div>}
-              </div>
-              <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>
-              <button onClick={() => setInfo(f)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
-              <button
-                onClick={() => onToggle(f, cost)}
-                disabled={!canAfford}
-                style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: owned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: owned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
-              >
-                {owned ? 'ซื้อแล้ว ✓' : 'ซื้อ'}
-              </button>
-            </div>
+            <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? '#e07a5f' : '#e0ded7'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#8d8a82', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{t}</button>
           );
         })}
       </div>
+
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
+
+      {owned.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 8 }}>ซื้อแล้ว ({owned.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{owned.map(row)}</div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {!isLoading && !searching && matches.length > 0 && (
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>เลือกซื้อได้ ({matches.length})</div>
+        )}
+        {searching && matches.length === 0 && !isLoading && (
+          <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบ Feature ที่ตรงกับที่ค้นหา</div>
+        )}
+        {matches.map(row)}
+      </div>
+
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && (
           info.description
