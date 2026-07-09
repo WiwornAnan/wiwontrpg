@@ -346,6 +346,15 @@ function RaceStep({
         onInfo={setInfo}
       />
 
+      {/* Every race gets its own Feature เสริม (Merits/Demerits) + Core Attribute. */}
+      {chosen && <FeatureGrants refId={chosen} wiwonIds={wiwonIds} poolTags={['Merits', 'Demerits']} title="Feature เสริม (จากเผ่าพันธุ์)" />}
+
+      {chosen && (
+        <div style={{ ...cardPlain, marginTop: 16 }}>
+          <CoreAttributes path="race-core" refId={chosen} title="Core Attribute (จากเผ่าพันธุ์)" />
+        </div>
+      )}
+
       {showAncestry && (
         <div style={{ marginTop: 16 }}>
           <FeaturePicker
@@ -361,12 +370,8 @@ function RaceStep({
         </div>
       )}
 
-      {showAncestry && ancestryChosen && <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} />}
-
       {showAncestry && ancestryChosen && (
-        <div style={{ ...cardPlain, marginTop: 16 }}>
-          <CoreAttributes path="ancestry-core" refId={ancestryChosen} title="Core Attribute (จาก Ancestry)" />
-        </div>
+        <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} poolTags={['Flaws']} title="Feature เสริม (จาก Ancestry)" />
       )}
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
@@ -460,7 +465,7 @@ interface RaceGrant {
   featureId: string;
   featureName: string | null;
 }
-function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] }) {
+function FeatureGrants({ refId, wiwonIds, poolTags, title }: { refId: string; wiwonIds: string[]; poolTags: string[]; title: string }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
   const [addId, setAddId] = useState('');
@@ -471,12 +476,13 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
   });
   const features = data?.grant.features ?? [];
 
-  // Ancestry supplementary Features come only from the "Flaws"-tagged pool.
-  const { data: pool } = useQuery({
+  // Only Features carrying one of the allowed tags may be granted here.
+  const { data: allFeatures } = useQuery({
     enabled: isDev,
-    queryKey: ['feature-pool', 'Flaws', wiwonIds.join(',')],
-    queryFn: () => fetchFeaturesByTag('Flaws', wiwonIds),
+    queryKey: ['feature-pool', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('', wiwonIds),
   });
+  const pool = (allFeatures ?? []).filter((f) => f.tags.some((t) => poolTags.includes(t)));
 
   const save = useMutation({
     mutationFn: (next: RaceGrant[]) => api.put(`/wizard/race-grant/${refId}`, { features: next }),
@@ -492,13 +498,13 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
 
   return (
     <div style={{ ...cardPlain, marginTop: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Feature เสริม (จาก Ancestry)</div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
-        {isDev ? 'ผู้พัฒนากำหนดได้ — ผู้เล่นจะได้รับทั้งหมดนี้อัตโนมัติ' : 'คุณจะได้รับ Feature เหล่านี้จากสายเลือดที่เลือก'}
+        {isDev ? 'ผู้พัฒนากำหนดได้ — ผู้เล่นจะได้รับทั้งหมดนี้อัตโนมัติ' : 'คุณจะได้รับ Feature เหล่านี้อัตโนมัติ'}
       </div>
 
       {features.length === 0 && (
-        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'สายเลือดนี้ยังไม่มี Feature เสริม'}</div>
+        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'ยังไม่มี Feature เสริม'}</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -515,7 +521,7 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
       {isDev && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, background: '#fff' }}>
-            <option value="">— เลือก Feature (แท็ก Flaws) เพื่อเพิ่ม —</option>
+            <option value="">— เลือก Feature (แท็ก {poolTags.join(' / ')}) เพื่อเพิ่ม —</option>
             {(pool ?? []).filter((f) => !features.some((x) => x.featureId === f.id)).map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
@@ -738,13 +744,13 @@ function GradeBadge({ grade }: { grade: string }) {
   );
 }
 function Step3Core({ character }: { character: Character }) {
-  const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
+  const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
   const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
 
   const { data: aData } = useQuery({
-    enabled: !!ancestryId,
-    queryKey: ['ancestry-core', ancestryId],
-    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/ancestry-core/${encodeURIComponent(ancestryId)}`),
+    enabled: !!raceId,
+    queryKey: ['race-core', raceId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/race-core/${encodeURIComponent(raceId)}`),
   });
   const { data: cData } = useQuery({
     enabled: !!classValue,
@@ -756,11 +762,11 @@ function Step3Core({ character }: { character: Character }) {
   return (
     <div style={cardPlain}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Core Attribute ของตัวละคร</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (Ancestry) และ Step 2 (Class)</p>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (เผ่าพันธุ์) และ Step 2 (Class)</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 18px', alignItems: 'center' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>Ancestry</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>เผ่าพันธุ์</div>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>Class</div>
         {CORE_ATTR_OPTIONS.map((attr) => (
           <div key={attr} style={{ display: 'contents' }}>
