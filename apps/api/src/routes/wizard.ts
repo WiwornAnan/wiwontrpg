@@ -132,3 +132,44 @@ wizardRouter.put('/class-weapons/:refId', requireDev, async (req, res) => {
   });
   res.json({ ok: true });
 });
+
+// ── Class Core Attributes: dev-graded (A/B/C/D/X), players just receive them.
+//    Defaults to the 2 main attributes when a class has none yet. ──────────────
+const coreSchema = z.object({
+  attributes: z.array(z.object({
+    id: z.string(),
+    name: z.string().default(''),
+    grade: z.enum(['A', 'B', 'C', 'D', 'X']).default('C'),
+  })),
+});
+const defaultCore = () => [
+  { id: 'core-1', name: '', grade: 'C' as const },
+  { id: 'core-2', name: '', grade: 'C' as const },
+];
+
+wizardRouter.get('/class-core/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'class-core', refId: req.params.refId } },
+  });
+  let attributes: z.infer<typeof coreSchema>['attributes'] = defaultCore();
+  if (row) {
+    const parsed = coreSchema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) attributes = parsed.data.attributes;
+  }
+  res.json({ core: { attributes } });
+});
+
+wizardRouter.put('/class-core/:refId', requireDev, async (req, res) => {
+  const parsed = coreSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'class-core', refId: req.params.refId } },
+    create: { kind: 'class-core', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});

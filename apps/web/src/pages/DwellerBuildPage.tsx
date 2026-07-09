@@ -608,6 +608,64 @@ function WeaponProficiency({
   );
 }
 
+// ── Class Core Attributes — dev-graded (A/B/C/D/X); players just receive them. ──
+interface CoreAttr {
+  id: string;
+  name: string;
+  grade: 'A' | 'B' | 'C' | 'D' | 'X';
+}
+const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
+function CoreAttributes({ classValue }: { classValue: string }) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['class-core', classValue],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
+  });
+  const attrs = data?.core.attributes ?? [];
+  const save = useMutation({
+    mutationFn: (next: CoreAttr[]) => api.put(`/wizard/class-core/${encodeURIComponent(classValue)}`, { attributes: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['class-core', classValue] }),
+  });
+  const update = (id: string, p: Partial<CoreAttr>) => save.mutate(attrs.map((a) => (a.id === id ? { ...a, ...p } : a)));
+  const add = () => save.mutate([...attrs, { id: crypto.randomUUID(), name: '', grade: 'C' }]);
+  const remove = (id: string) => save.mutate(attrs.filter((a) => a.id !== id));
+
+  return (
+    <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Core Attribute (ของคลาส)</div>
+      <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
+        {isDev ? 'ผู้พัฒนากำหนดชื่อ + เกรด A/B/C/D/X — ผู้เล่นรับมาเลย (แก้ไม่ได้)' : 'ค่าหลักของคลาสที่คุณได้รับ'}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {attrs.map((a) =>
+          isDev ? (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #e8e5df', borderRadius: 10, padding: '7px 9px', background: '#faf9f7' }}>
+              <input defaultValue={a.name} onBlur={(e) => e.target.value !== a.name && update(a.id, { name: e.target.value })} placeholder="ชื่อค่า" style={{ width: 120, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 12.5, background: '#fff' }} />
+              <select value={a.grade} onChange={(e) => update(a.id, { grade: e.target.value as CoreAttr['grade'] })} style={{ border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 800, color: GRADE_COLOR[a.grade], background: '#fff' }}>
+                {['A', 'B', 'C', 'D', 'X'].map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+              <button onClick={() => remove(a.id)} title="ลบ" style={{ border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 28, height: 28, cursor: 'pointer' }}>×</button>
+            </div>
+          ) : (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e8e5df', borderRadius: 10, padding: '8px 14px', background: '#faf9f7' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33' }}>{a.name || '—'}</span>
+              <span style={{ width: 26, height: 26, borderRadius: 7, background: GRADE_COLOR[a.grade], color: '#fff', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{a.grade}</span>
+            </div>
+          ),
+        )}
+      </div>
+
+      {isDev && (
+        <button onClick={add} style={{ marginTop: 10, border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ เพิ่มค่า</button>
+      )}
+    </div>
+  );
+}
+
 // ── Step 2: เลือกคลาส (Features tagged "Class") → Lv 1–15 reward table ──
 const claimsOf = (c: Character): Record<string, string> =>
   c.data.levelClaims && typeof c.data.levelClaims === 'object' ? (c.data.levelClaims as Record<string, string>) : {};
@@ -741,6 +799,9 @@ function LevelTable({
   };
 
   const view = editing ? draft : levels;
+  const charLevel = Math.min(15, Math.max(1, Number(character.data.level) || 1));
+  // Players only see levels up to their chosen character LV; dev edits all 15.
+  const visibleLevels = editing ? view : view.filter((l) => l.lv <= charLevel);
 
   return (
     <div style={cardPlain}>
@@ -769,9 +830,25 @@ function LevelTable({
 
       <WeaponProficiency classValue={classValue} wiwonIds={wiwonIds} character={character} patch={patch} />
 
-      <div style={{ fontSize: 12.5, fontWeight: 700, margin: '20px 0 10px' }}>ตาราง Lv 1–15</div>
+      <CoreAttributes classValue={classValue} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, paddingTop: 16, borderTop: '1px solid #efece6' }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>เลเวลตัวละคร (LV)</span>
+        <select
+          value={charLevel}
+          onChange={(e) => patch.mutate({ data: { ...character.data, level: Number(e.target.value) } })}
+          style={{ border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 700, background: '#fff' }}
+        >
+          {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>LV {n}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 12, color: '#a8a59d' }}>ตารางจะเปิดถึง Lv {charLevel}</span>
+      </div>
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, margin: '16px 0 10px' }}>ตาราง Lv 1–{charLevel}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {view.map((level) => {
+        {visibleLevels.map((level) => {
           const claimedOpt = claims[String(level.lv)];
           return (
             <div key={level.lv} style={{ display: 'flex', gap: 12, padding: '12px 14px', borderRadius: 12, background: '#faf9f7', border: '1px solid #eae7e0' }}>
