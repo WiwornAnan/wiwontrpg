@@ -1023,7 +1023,9 @@ function Step3Core({
 // Skill reference table (inside Step 3): rows grouped by category, each showing
 // its governing Core Attribute and the die it rolls (from the character's final
 // grade for that attribute). Hover a skill name to reveal its description.
-const GRADE_FACES: Record<string, number> = { A: 8, B: 6, C: 4, D: 2 };
+// The die each grade rolls on the astrolabe. X still rolls (on the smallest die,
+// d2) even though its result is treated as 0.
+const GRADE_FACES: Record<string, number> = { A: 8, B: 6, C: 4, D: 2, X: 2 };
 
 function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
   const [hover, setHover] = useState<string | null>(null);
@@ -1075,7 +1077,7 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
                     {grade in GRADE_FACES ? (
                       <button
                         onClick={() => setRollFaces(GRADE_FACES[grade])}
-                        title={`ทอย Ego dice (${die})`}
+                        title={grade === 'X' ? 'ทอย Ego dice (d2 · ผลอ้างอิงเป็น 0)' : `ทอย Ego dice (${die})`}
                         style={{
                           minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
                           background: dieColor, color: '#fff', fontSize: 12.5, fontWeight: 800,
@@ -1084,7 +1086,6 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
                       >{die}</button>
                     ) : (
                       <span
-                        title={grade === 'X' ? 'X — ทอยได้ แต่ผลเป็น 0 เสมอ' : undefined}
                         style={{
                           minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
                           background: dieColor, color: grade in GRADE_COLOR ? '#fff' : '#b0ada4',
