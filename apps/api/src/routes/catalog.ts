@@ -43,6 +43,8 @@ catalogRouter.get('/:category', async (req, res) => {
   const where: Record<string, unknown> = { category, isFeature };
   if (scope === 'official') where.isHomebrew = false;
   else if (scope === 'homebrew') where.isHomebrew = true;
+  const relatedWiwon = (req.query.relatedWiwon as string) || '';
+  if (relatedWiwon) where.relatedWiwonId = relatedWiwon;
 
   const rows = await prisma.catalogItem.findMany({ where, include: { owner: true }, orderBy: { createdAt: 'asc' } });
   let items = rows.map(toCatalogItem);
@@ -168,6 +170,7 @@ const itemInput = z.object({
   isFeature: z.boolean().optional(),
   name: z.string().min(1, 'กรุณากรอกชื่อ'),
   subtitle: z.string().nullable().optional(),
+  relatedWiwonId: z.string().nullable().optional(),
   fields: z.record(z.unknown()).default({}),
   description: z.string().default(''),
   tags: z.array(z.string()).default([]),
@@ -204,6 +207,7 @@ catalogRouter.post('/:category', requireAuth, async (req, res) => {
       isFeature,
       name: d.name,
       subtitle: d.subtitle ?? null,
+      relatedWiwonId: d.relatedWiwonId ?? null,
       fields: JSON.stringify(cleanFields(category, isFeature, d.fields)),
       description: sanitizeDescription(d.description),
       tags: JSON.stringify(d.tags),
@@ -243,6 +247,7 @@ catalogRouter.patch('/:category/item/:id', requireAuth, async (req, res) => {
     data: {
       ...(d.name !== undefined ? { name: d.name } : {}),
       ...(d.subtitle !== undefined ? { subtitle: d.subtitle } : {}),
+      ...(d.relatedWiwonId !== undefined ? { relatedWiwonId: d.relatedWiwonId } : {}),
       ...(d.fields !== undefined ? { fields: JSON.stringify(cleanFields(existing.category as CatalogCategory, isFeature, d.fields)) } : {}),
       ...(d.description !== undefined ? { description: sanitizeDescription(d.description) } : {}),
       ...(d.tags !== undefined ? { tags: JSON.stringify(d.tags) } : {}),

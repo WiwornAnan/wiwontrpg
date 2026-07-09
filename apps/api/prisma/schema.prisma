@@ -86,6 +86,7 @@ model CatalogItem {
   isFeature           Boolean  @default(false)
   name                String
   subtitle            String?
+  relatedWiwonId      String? // id of the WiwonCover this item belongs to (loose ref)
   fields              String   @default("{}") // JSON category-specific field bag
   description         String   @default("")
   tags                String   @default("[]") // JSON string[]

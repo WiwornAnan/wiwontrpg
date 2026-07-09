@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import type { CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
+import type { CatalogCategory, CatalogConfig, CatalogItem, WiwonCover } from '@wiwonanant/shared';
 import { computeFeatureTN, computeMagicTN } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -71,6 +71,11 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { data: coversData } = useQuery({
+    queryKey: ['wiwon-covers'],
+    queryFn: () => api.get<{ covers: WiwonCover[] }>('/wiwon-covers'),
+  });
+  const relatedWiwon = coversData?.covers.find((c) => c.id === item.relatedWiwonId) ?? null;
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
   const isMagicSpell = category === 'magic' && !isFeature;
   const isMagicFeature = category === 'magic' && isFeature;
@@ -303,7 +308,15 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       )}
 
       <div style={{ display: 'flex', gap: 14, marginTop: 14 }}>
-        <div style={boxStyle} />
+        <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 6, width: 120 }}>
+          <div style={boxStyle} />
+          {relatedWiwon && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, background: '#f6f2ea', border: '1px solid #e8e0d0', borderRadius: 8, padding: '6px 9px' }}>
+              <span style={{ fontSize: 9.5, letterSpacing: '.08em', color: '#a8916a', fontWeight: 700 }}>WIWON ที่เกี่ยวข้อง</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#5c4a2e', lineHeight: 1.25 }}>{relatedWiwon.name}</span>
+            </div>
+          )}
+        </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
           {stats.map((st) => (
             <Row key={st.label} label={st.label} value={st.value} />

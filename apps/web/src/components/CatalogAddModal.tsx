@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { AddField, CatalogCategory, CatalogConfig, CatalogItem } from '@wiwonanant/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { AddField, CatalogCategory, CatalogConfig, CatalogItem, WiwonCover } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
 import { mergeFieldOptions, useCatalogFieldTags } from '../lib/catalogHooks';
@@ -40,6 +40,12 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
   });
   const [tags, setTags] = useState<string[]>(editItem?.tags ?? []);
   const [tagInput, setTagInput] = useState('');
+  const [relatedWiwonId, setRelatedWiwonId] = useState<string>(editItem?.relatedWiwonId ?? '');
+  const { data: coversData } = useQuery({
+    queryKey: ['wiwon-covers'],
+    queryFn: () => api.get<{ covers: WiwonCover[] }>('/wiwon-covers'),
+  });
+  const covers = coversData?.covers ?? [];
   const [description, setDescription] = useState(editItem?.description ?? '');
   const [iconUrl, setIconUrl] = useState<string | null>(editItem?.iconUrl ?? null);
   const [uploading, setUploading] = useState(false);
@@ -67,7 +73,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
           if (!Number.isNaN(n)) outFields[numKey] = n;
         }
       }
-      const body = { isFeature, name, fields: outFields, description, tags: Array.from(new Set([...autoTags, ...tags])), iconUrl };
+      const body = { isFeature, name, fields: outFields, description, tags: Array.from(new Set([...autoTags, ...tags])), iconUrl, relatedWiwonId: relatedWiwonId || null };
       if (editItem) return api.patch(`/catalog/${category}/item/${editItem.id}`, body);
       return api.post(`/catalog/${category}`, body);
     },
@@ -160,6 +166,28 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
             {renderField(f)}
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <label style={labelStyle}>Wiwon ที่เกี่ยวข้อง</label>
+        <select style={inputStyle} value={relatedWiwonId} onChange={(e) => setRelatedWiwonId(e.target.value)}>
+          <option value="">— ไม่ระบุ —</option>
+          {Object.entries(
+            covers.reduce<Record<string, WiwonCover[]>>((acc, c) => {
+              const s = (c.setName && c.setName.trim()) || 'ทั่วไป';
+              (acc[s] ??= []).push(c);
+              return acc;
+            }, {}),
+          ).map(([set, list]) => (
+            <optgroup key={set} label={set}>
+              {list.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
 
       <div style={{ marginTop: 14 }}>

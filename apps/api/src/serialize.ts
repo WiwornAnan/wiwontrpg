@@ -94,6 +94,7 @@ export function toCatalogItem(i: PCatalogItem & { owner?: PUser | null }): Catal
     isFeature: i.isFeature,
     name: i.name,
     subtitle: i.subtitle,
+    relatedWiwonId: i.relatedWiwonId,
     fields: parseJson(i.fields, {}),
     description: i.description,
     tags: parseJson(i.tags, []),

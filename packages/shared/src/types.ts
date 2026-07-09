@@ -75,6 +75,7 @@ export interface CatalogItem {
   isFeature: boolean;
   name: string;
   subtitle: string | null;
+  relatedWiwonId: string | null;
   fields: Record<string, unknown>;
   description: string; // sanitized HTML
   tags: string[];

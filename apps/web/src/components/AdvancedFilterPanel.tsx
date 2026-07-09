@@ -1,4 +1,4 @@
-import type { FilterField } from '@wiwonanant/shared';
+import type { FilterField, WiwonCover } from '@wiwonanant/shared';
 import { mergeFieldOptions, type FieldTagMap } from '../lib/catalogHooks';
 
 interface Props {
@@ -6,6 +6,7 @@ interface Props {
   filters: Record<string, string>;
   ranges: Record<string, { min?: string; max?: string }>;
   fieldTags?: FieldTagMap;
+  wiwonOptions?: WiwonCover[];
   canManage?: boolean;
   onManage?: (field: FilterField) => void;
   onFilter: (key: string, value: string) => void;
@@ -15,7 +16,12 @@ interface Props {
 
 const selStyle: React.CSSProperties = { flex: 1, width: '100%', border: '1px solid #e0ded7', borderRadius: 8, padding: '9px 11px', fontSize: 13, background: '#faf9f7', outline: 'none', color: '#46443c' };
 
-export function AdvancedFilterPanel({ fields, filters, ranges, fieldTags, canManage, onManage, onFilter, onRange, onClear }: Props) {
+export function AdvancedFilterPanel({ fields, filters, ranges, fieldTags, wiwonOptions, canManage, onManage, onFilter, onRange, onClear }: Props) {
+  const wiwonSets = (wiwonOptions ?? []).reduce<Record<string, WiwonCover[]>>((acc, c) => {
+    const s = (c.setName && c.setName.trim()) || 'ทั่วไป';
+    (acc[s] ??= []).push(c);
+    return acc;
+  }, {});
   return (
     <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: '22px 24px', marginBottom: 16, animation: 'fadeIn .25s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -24,6 +30,23 @@ export function AdvancedFilterPanel({ fields, filters, ranges, fieldTags, canMan
           ล้างตัวกรอง
         </button>
       </div>
+      {(wiwonOptions?.length ?? 0) > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #efece6' }}>
+          <span style={{ fontSize: 12.5, color: '#5f5c54', minWidth: 118 }}>Wiwon ที่เกี่ยวข้อง:</span>
+          <select value={filters.relatedWiwon ?? ''} onChange={(e) => onFilter('relatedWiwon', e.target.value)} style={{ ...selStyle, maxWidth: 320 }}>
+            <option value="">ทั้งหมด</option>
+            {Object.entries(wiwonSets).map(([set, list]) => (
+              <optgroup key={set} label={set}>
+                {list.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px 32px' }}>
         {fields.map((f) => (
           <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

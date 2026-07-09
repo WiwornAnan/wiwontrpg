@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCatalogConfig, type CatalogCategory, type CatalogItem, type FilterField } from '@wiwonanant/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getCatalogConfig, type CatalogCategory, type CatalogItem, type FilterField, type WiwonCover } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { useCatalog, useCatalogFieldTags, type CatalogQuery } from '../lib/catalogHooks';
 import { api } from '../lib/api';
@@ -55,6 +55,13 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
+
+  const { data: coversData } = useQuery({
+    queryKey: ['wiwon-covers'],
+    queryFn: () => api.get<{ covers: WiwonCover[] }>('/wiwon-covers'),
+  });
+  const covers = useMemo(() => coversData?.covers ?? [], [coversData]);
+  const coverName = (id: string) => covers.find((c) => c.id === id)?.name ?? id;
 
   const submitOfficial = useMutation({
     mutationFn: (item: CatalogItem) => api.post(`/catalog/${category}/item/${item.id}/submit-official`, {}),
@@ -135,7 +142,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
           </svg>
           {activeChips.map(([k, v]) => (
             <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#15140f', color: '#fff', borderRadius: 7, padding: '4px 6px 4px 10px', fontSize: 12, fontWeight: 500 }}>
-              {v}
+              {k === 'relatedWiwon' ? `Wiwon: ${coverName(v)}` : v}
               <button onClick={() => setFilter(k, '')} style={{ border: 'none', background: 'none', color: '#b6b3aa', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>
                 ×
               </button>
@@ -168,6 +175,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
           filters={query.filters}
           ranges={query.ranges}
           fieldTags={fieldTags}
+          wiwonOptions={covers}
           canManage={isDev}
           onManage={setManageField}
           onFilter={setFilter}
