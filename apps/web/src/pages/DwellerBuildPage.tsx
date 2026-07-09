@@ -770,6 +770,7 @@ function LevelTable({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<WizardLevel[]>([]);
   const [cancelTarget, setCancelTarget] = useState<number | null>(null);
+  const [pendingLevel, setPendingLevel] = useState<number | null>(null);
 
   const { data: tplData } = useQuery({
     queryKey: ['class-levels', classValue],
@@ -812,6 +813,18 @@ function LevelTable({
     patch.mutate({ data: { ...character.data, levelClaims: next } }, { onSuccess: () => setCancelTarget(null) });
   };
 
+  // Changing LV: if lowering below a level that's already claimed, confirm first
+  // — accepting wipes every claim in the table.
+  const changeLevel = (n: number) => {
+    const hasClaimAbove = Object.keys(claims).some((lv) => Number(lv) > n);
+    if (hasClaimAbove) setPendingLevel(n);
+    else patch.mutate({ data: { ...character.data, level: n } });
+  };
+  const confirmLevelDown = () => {
+    if (pendingLevel == null) return;
+    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {} } }, { onSuccess: () => setPendingLevel(null) });
+  };
+
   const view = editing ? draft : levels;
   const charLevel = Math.min(15, Math.max(1, Number(character.data.level) || 1));
   // Players only see levels up to their chosen character LV; dev edits all 15.
@@ -850,7 +863,7 @@ function LevelTable({
         <span style={{ fontSize: 13, fontWeight: 700 }}>เลเวลตัวละคร (LV)</span>
         <select
           value={charLevel}
-          onChange={(e) => patch.mutate({ data: { ...character.data, level: Number(e.target.value) } })}
+          onChange={(e) => changeLevel(Number(e.target.value))}
           style={{ border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 700, background: '#fff' }}
         >
           {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
@@ -944,6 +957,20 @@ function LevelTable({
         }
       >
         <p style={{ fontSize: 14, margin: 0 }}>คุณจะยกเลิกใช่ไหม — ของที่ได้จาก Lv {cancelTarget} จะหายไป</p>
+      </Modal>
+
+      <Modal
+        open={pendingLevel != null}
+        onClose={() => setPendingLevel(null)}
+        title="ย้อนเลเวล"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingLevel(null)}>ไม่ย้อน</Button>
+            <Button variant="danger" onClick={confirmLevelDown}>ตกลง ย้อนเลเวล</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 14, lineHeight: 1.7, margin: 0 }}>คุณแน่ใจแล้วใช่ไหมว่าจะ “ย้อนเลเวล” ของตนเอง — ทุกอย่างที่กดรับไว้ในตารางจะกลายเป็นไม่เคยรับมาก่อนทั้งหมด</p>
       </Modal>
     </div>
   );
