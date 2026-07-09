@@ -303,15 +303,35 @@ function RaceStep({
   });
 
   const pickRace = (r: CatalogItem) => {
-    const next: Record<string, unknown> = { ...character.data, race: r.id, raceName: r.name };
-    // Switching to a race without ancestry clears any stale ancestry pick.
-    if (!raceHasAncestry(r.name)) {
+    const next: Record<string, unknown> = { ...character.data };
+    if (chosen === r.id) {
+      // Click the ticked race again to un-tick it.
+      delete next.race;
+      delete next.raceName;
       delete next.ancestry;
       delete next.ancestryName;
+    } else {
+      next.race = r.id;
+      next.raceName = r.name;
+      // Switching to a race without ancestry clears any stale ancestry pick.
+      if (!raceHasAncestry(r.name)) {
+        delete next.ancestry;
+        delete next.ancestryName;
+      }
     }
     patch.mutate({ data: next });
   };
-  const pickAncestry = (a: CatalogItem) => patch.mutate({ data: { ...character.data, ancestry: a.id, ancestryName: a.name } });
+  const pickAncestry = (a: CatalogItem) => {
+    const next: Record<string, unknown> = { ...character.data };
+    if (ancestryChosen === a.id) {
+      delete next.ancestry;
+      delete next.ancestryName;
+    } else {
+      next.ancestry = a.id;
+      next.ancestryName = a.name;
+    }
+    patch.mutate({ data: next });
+  };
 
   return (
     <>
@@ -409,6 +429,7 @@ function FeaturePicker({
             <div
               key={it.id}
               onClick={() => onPick(it)}
+              title={on ? 'กดอีกครั้งเพื่อเอาติ๊กออก' : undefined}
               style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff' }}
             >
               <span style={{ width: 20, height: 20, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800 }}>
