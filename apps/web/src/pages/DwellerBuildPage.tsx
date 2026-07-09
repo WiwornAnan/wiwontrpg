@@ -1512,6 +1512,9 @@ function Step7Purchase({
 }) {
   const wiwonIds = wiwonIdsOf(character);
   const [qlInput, setQlInput] = useState(1);
+  const qlRef = useRef<HTMLDivElement>(null);
+  const walletRef = useRef<HTMLDivElement>(null);
+  const navBtn: React.CSSProperties = { border: '1px solid #d9d2c4', background: '#15140f', color: '#f7dca0', borderRadius: 20, padding: '9px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 18px rgba(0,0,0,.28)', whiteSpace: 'nowrap' };
 
   // Total QL comes from the Step 4 answers.
   const { data: step4 } = useQuery({
@@ -1553,21 +1556,27 @@ function Step7Purchase({
 
   return (
     <>
-      <div style={cardPlain}>
-        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life ซื้อ Feature</h1>
-        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 ซื้อ Feature — ค้นหาหรือกรองด้วยแท็ก ราคาคือค่า Quality of Life ที่ระบุใน Feature (Life lesson, Local Knowledge, Social, Specialization, Language, Weapon Proficiency)</p>
+      <div ref={qlRef} style={cardPlain}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life แลก Feature</h1>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 แลก Feature — ค้นหาหรือกรองด้วยแท็ก ราคาคือค่า Quality of Life ที่ระบุใน Feature (Life lesson, Local Knowledge, Social, Specialization, Language, Weapon Proficiency)</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
           <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
-          {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้ซื้อ Feature: {spentFeatures} QL</span>}
+          {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลก Feature: {spentFeatures} QL</span>}
           {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
         </div>
 
         <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
       </div>
 
+      {/* Side quick-nav between the QL section and the wallet. */}
+      <div style={{ position: 'fixed', right: 16, top: '40%', transform: 'translateY(-50%)', zIndex: 120, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button onClick={() => qlRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} style={navBtn}>↑ แลก QL</button>
+        <button onClick={() => walletRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} style={navBtn}>↓ กระเป๋าเงิน</button>
+      </div>
+
       {/* ── Currency wallet ── */}
-      <div style={{ ...cardPlain, marginTop: 16 }}>
+      <div ref={walletRef} style={{ ...cardPlain, marginTop: 16 }}>
         <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>กระเป๋าเงิน</h2>
         <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
           10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
@@ -1711,7 +1720,7 @@ function FeatureBuySearch({
           disabled={!canAfford}
           style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: isOwned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: isOwned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
         >
-          {isOwned ? 'ซื้อแล้ว ✓' : 'ซื้อ'}
+          {isOwned ? 'แลกแล้ว ✓' : 'แลก'}
         </button>
       </div>
     );
@@ -1738,14 +1747,14 @@ function FeatureBuySearch({
 
       {owned.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 8 }}>ซื้อแล้ว ({owned.length})</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 8 }}>แลกแล้ว ({owned.length})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{owned.map(row)}</div>
         </div>
       )}
 
       <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {!isLoading && !searching && matches.length > 0 && (
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>เลือกซื้อได้ ({matches.length})</div>
+        {!isLoading && matches.length > 0 && (
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>Feature ที่ปรากฎ ({matches.length})</div>
         )}
         {searching && matches.length === 0 && !isLoading && (
           <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบ Feature ที่ตรงกับที่ค้นหา</div>
