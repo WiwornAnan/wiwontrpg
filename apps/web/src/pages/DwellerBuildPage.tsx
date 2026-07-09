@@ -245,6 +245,8 @@ function StepShell({
         <WrittenStep character={character} patch={patch} kind="step6-questions" respKey="step6" answersKey="step6Answers" title="คำถามปลายเปิด (ชุดที่ 2)" />
       ) : step === 7 ? (
         <Step7Purchase character={character} patch={patch} />
+      ) : step === 8 ? (
+        <Step8Magic character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1527,7 +1529,9 @@ function Step7Purchase({
   const purchases = character.data.step7Purchases && typeof character.data.step7Purchases === 'object' ? (character.data.step7Purchases as Record<string, number>) : {};
   const qlConverted = numData(character.data.qlConverted);
   const spentFeatures = Object.values(purchases).reduce((s, n) => s + n, 0);
-  const availableQL = totalQL - spentFeatures - qlConverted;
+  const spentMagic = character.data.step8Magic && typeof character.data.step8Magic === 'object'
+    ? Object.values(character.data.step8Magic as Record<string, number>).reduce((s, n) => s + n, 0) : 0;
+  const availableQL = totalQL - spentFeatures - qlConverted - spentMagic;
 
   const walletIC = numData(character.data.walletIC);
   const rb: RoyalBond[] = Array.isArray(character.data.walletRB) ? (character.data.walletRB as RoyalBond[]) : [];
@@ -1563,6 +1567,7 @@ function Step7Purchase({
           <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
           <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
           {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลก Feature: {spentFeatures} QL</span>}
+          {spentMagic > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลกเวทมนตร์: {spentMagic} QL</span>}
           {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
         </div>
 
@@ -1759,6 +1764,208 @@ function FeatureBuySearch({
         {searching && matches.length === 0 && !isLoading && (
           <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบ Feature ที่ตรงกับที่ค้นหา</div>
         )}
+        {matches.map(row)}
+      </div>
+
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && (
+          info.description
+            ? <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
+            : <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ── Step 8: เวทมนตร์ — Ehen organ/core + exchange Magic with QL ──
+const EHEN_TYPES = [
+  { key: 'organ', label: 'มี Ehen Organ' },
+  { key: 'core', label: 'มี Ehen Core' },
+  { key: 'none', label: 'ไม่มีอยู่ในร่างกาย' },
+];
+const EHEN_SIZES = [
+  { key: 'small', label: 'เล็ก' },
+  { key: 'medium', label: 'กลาง' },
+  { key: 'large', label: 'ใหญ่' },
+];
+const CORE_PRODUCTION_DIE: Record<string, string> = { small: 'd6', medium: 'd8', large: 'd12' };
+const MAGIC_RARITIES = ['Common', 'Uncommon'];
+
+// Fetch every actual Magic (non-Feature) in the Wiwon, paging the catalog.
+async function fetchMagicSpells(wiwonIds: string[]): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
+  if (wiwonIds.length) params.set('relatedWiwon', wiwonIds.join(','));
+  const out: CatalogItem[] = [];
+  for (let page = 1; page < 50; page++) {
+    params.set('page', String(page));
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/magic?${params.toString()}`);
+    out.push(...d.items);
+    if (d.items.length === 0 || out.length >= d.total) break;
+  }
+  return out;
+}
+
+function Step8Magic({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const wiwonIds = wiwonIdsOf(character);
+
+  const { data: step4 } = useQuery({
+    queryKey: ['step4-questions', 'global'],
+    queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global'),
+  });
+  const answers4 = character.data.step4Answers && typeof character.data.step4Answers === 'object' ? (character.data.step4Answers as Record<string, string>) : {};
+  const totalQL = (step4?.step4.questions ?? []).reduce((s, q) => s + (q.options.find((o) => o.id === answers4[q.id])?.ql ?? 0), 0);
+  const sink = (k: string) => (character.data[k] && typeof character.data[k] === 'object' ? Object.values(character.data[k] as Record<string, number>).reduce((s, n) => s + n, 0) : 0);
+  const magicBought = character.data.step8Magic && typeof character.data.step8Magic === 'object' ? (character.data.step8Magic as Record<string, number>) : {};
+  const spentMagic = Object.values(magicBought).reduce((s, n) => s + n, 0);
+  const availableQL = totalQL - sink('step7Purchases') - numData(character.data.qlConverted) - spentMagic;
+
+  const ehenType = typeof character.data.ehenType === 'string' ? (character.data.ehenType as string) : '';
+  const ehenSize = typeof character.data.ehenSize === 'string' ? (character.data.ehenSize as string) : '';
+
+  const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
+  const pickType = (key: string) => setData(key === 'none' ? { ehenType: key, ehenSize: '' } : { ehenType: key });
+  const toggleMagic = (m: CatalogItem, cost: number) => {
+    const next = { ...magicBought };
+    if (m.id in next) delete next[m.id];
+    else { if (availableQL < cost) return; next[m.id] = cost; }
+    setData({ step8Magic: next });
+  };
+
+  const pill = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
+  const chip = (on: boolean): React.CSSProperties => ({ border: `1.5px solid ${on ? '#e07a5f' : 'var(--border-soft)'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#3c3a33', borderRadius: 10, padding: '10px 16px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' });
+
+  return (
+    <>
+      <div style={cardPlain}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เวทมนตร์</h1>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>อวัยวะที่เกี่ยวข้องกับเอเฮนในร่างกายของคุณ</p>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {EHEN_TYPES.map((t) => (
+            <button key={t.key} onClick={() => pickType(t.key)} style={chip(ehenType === t.key)}>{t.label}</button>
+          ))}
+        </div>
+
+        {(ehenType === 'organ' || ehenType === 'core') && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33', marginBottom: 10 }}>
+              {ehenType === 'organ' ? 'Organ Size' : 'Core Size'}
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {EHEN_SIZES.map((s) => (
+                <button key={s.key} onClick={() => setData({ ehenSize: s.key })} style={chip(ehenSize === s.key)}>
+                  {s.label}
+                  {ehenType === 'core' && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: ehenSize === s.key ? '#c15a3f' : '#9a978e' }}>{CORE_PRODUCTION_DIE[s.key]}</span>}
+                </button>
+              ))}
+            </div>
+            {ehenType === 'core' && ehenSize && (
+              <div style={{ marginTop: 12, fontSize: 13, color: '#3c3a33', background: '#faf9f7', borderRadius: 10, padding: '10px 14px' }}>
+                ความสามารถในการผลิต <b>A particle of Ehen</b>: <b style={{ color: '#c15a3f' }}>{CORE_PRODUCTION_DIE[ehenSize]}</b>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Magic you know ── */}
+      <div style={{ ...cardPlain, marginTop: 16 }}>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>เวทมนตร์ที่คุณรู้จัก</h2>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 14px' }}>ใช้ QL ที่เหลือแลกเวทมนตร์ (เฉพาะ Common และ Uncommon) — ราคาคือค่า Quality of Life ที่ระบุใน Magic</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+          <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
+          <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
+          {spentMagic > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้แลกเวทมนตร์: {spentMagic} QL</span>}
+        </div>
+        <MagicBuySearch wiwonIds={wiwonIds} purchases={magicBought} availableQL={availableQL} onToggle={toggleMagic} />
+      </div>
+    </>
+  );
+}
+
+function MagicBuySearch({
+  wiwonIds,
+  purchases,
+  availableQL,
+  onToggle,
+}: {
+  wiwonIds: string[];
+  purchases: Record<string, number>;
+  availableQL: number;
+  onToggle: (m: CatalogItem, cost: number) => void;
+}) {
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+  const [query, setQuery] = useState('');
+
+  const { data: all, isLoading } = useQuery({
+    queryKey: ['step8-magic', wiwonIds.join(',')],
+    queryFn: () => fetchMagicSpells(wiwonIds),
+  });
+  const pool = (all ?? []).filter((m) => MAGIC_RARITIES.includes(String(m.fields.rarity ?? '')));
+
+  const q = query.trim().toLowerCase();
+  const owned = pool.filter((m) => m.id in purchases);
+  const matches = pool.filter((m) => {
+    if (m.id in purchases) return false;
+    if (q && !(m.name.toLowerCase().includes(q) || (m.subtitle ?? '').toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  const row = (m: CatalogItem) => {
+    const cost = qlCostOf(m);
+    const isOwned = m.id in purchases;
+    const canAfford = isOwned || availableQL >= cost;
+    const rarity = String(m.fields.rarity ?? '');
+    return (
+      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${isOwned ? '#2f7d4f' : 'var(--border-soft)'}`, background: isOwned ? '#f2f8f4' : '#fff' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{m.name}</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
+            {rarity && <span style={{ fontSize: 10.5, color: '#8d8a82', background: '#f2efe9', borderRadius: 6, padding: '1px 7px' }}>{rarity}</span>}
+            {m.subtitle && <span style={{ fontSize: 11.5, color: '#9a978e' }}>{m.subtitle}</span>}
+          </div>
+        </div>
+        <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>
+        <button onClick={() => setInfo(m)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
+        <button
+          onClick={() => onToggle(m, cost)}
+          disabled={!canAfford}
+          style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: isOwned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: isOwned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
+        >
+          {isOwned ? 'แลกแล้ว ✓' : 'แลก'}
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="🔍 ค้นหาเวทมนตร์…"
+        style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '10px 13px', fontSize: 13.5, background: '#fff', marginTop: 6 }}
+      />
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && pool.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ยังไม่มีเวทมนตร์ Common/Uncommon ใน Wiwon ที่เลือก</div>}
+
+      {owned.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 8 }}>แลกแล้ว ({owned.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{owned.map(row)}</div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {!isLoading && matches.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>เวทมนตร์ที่ปรากฎ ({matches.length})</div>}
+        {q && matches.length === 0 && !isLoading && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบเวทมนตร์ที่ตรงกับที่ค้นหา</div>}
         {matches.map(row)}
       </div>
 
