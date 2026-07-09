@@ -429,10 +429,11 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
   });
   const features = data?.grant.features ?? [];
 
+  // Ancestry supplementary Features come only from the "Flaws"-tagged pool.
   const { data: pool } = useQuery({
     enabled: isDev,
-    queryKey: ['feature-pool', wiwonIds.join(',')],
-    queryFn: () => fetchFeaturesByTag('', wiwonIds),
+    queryKey: ['feature-pool', 'Flaws', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Flaws', wiwonIds),
   });
 
   const save = useMutation({
@@ -472,7 +473,7 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
       {isDev && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, background: '#fff' }}>
-            <option value="">— เลือก Feature เพื่อเพิ่ม —</option>
+            <option value="">— เลือก Feature (แท็ก Flaws) เพื่อเพิ่ม —</option>
             {(pool ?? []).filter((f) => !features.some((x) => x.featureId === f.id)).map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
