@@ -374,6 +374,12 @@ function RaceStep({
         <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} poolTags={['Flaws']} title="Feature เสริม (จาก Ancestry)" />
       )}
 
+      {showAncestry && ancestryChosen && (
+        <div style={{ ...cardPlain, marginTop: 16 }}>
+          <CoreAttributes path="ancestry-core" refId={ancestryChosen} title="Core Attribute (จาก Ancestry)" />
+        </div>
+      )}
+
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && (
           <div>
@@ -745,6 +751,7 @@ function GradeBadge({ grade }: { grade: string }) {
 }
 function Step3Core({ character }: { character: Character }) {
   const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
   const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
 
   const { data: aData } = useQuery({
@@ -752,31 +759,40 @@ function Step3Core({ character }: { character: Character }) {
     queryKey: ['race-core', raceId],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/race-core/${encodeURIComponent(raceId)}`),
   });
+  const { data: bData } = useQuery({
+    enabled: !!ancestryId,
+    queryKey: ['ancestry-core', ancestryId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/ancestry-core/${encodeURIComponent(ancestryId)}`),
+  });
   const { data: cData } = useQuery({
     enabled: !!classValue,
     queryKey: ['class-core', classValue],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
   });
   const gradeOf = (attrs: CoreAttr[] | undefined, name: string) => attrs?.find((a) => a.name === name)?.grade ?? '—';
+  const headStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 };
+  const cellStyle: React.CSSProperties = { display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' };
 
   return (
     <div style={cardPlain}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Core Attribute ของตัวละคร</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (เผ่าพันธุ์) และ Step 2 (Class)</p>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>ค่าหลักทั้งหมด — รวมเกรดจาก Step 1 (เผ่าพันธุ์ + Ancestry) และ Step 2 (Class)</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 18px', alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0 18px', alignItems: 'center' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>เผ่าพันธุ์</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', textAlign: 'center', paddingBottom: 6 }}>Class</div>
+        <div style={headStyle}>เผ่าพันธุ์</div>
+        <div style={headStyle}>Ancestry</div>
+        <div style={headStyle}>Class</div>
         {CORE_ATTR_OPTIONS.map((attr) => (
           <div key={attr} style={{ display: 'contents' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33', padding: '8px 0', borderTop: '1px solid #efece6' }}>{attr}</div>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' }}><GradeBadge grade={gradeOf(aData?.core.attributes, attr)} /></div>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '1px solid #efece6' }}><GradeBadge grade={gradeOf(cData?.core.attributes, attr)} /></div>
+            <div style={cellStyle}><GradeBadge grade={gradeOf(aData?.core.attributes, attr)} /></div>
+            <div style={cellStyle}><GradeBadge grade={gradeOf(bData?.core.attributes, attr)} /></div>
+            <div style={cellStyle}><GradeBadge grade={gradeOf(cData?.core.attributes, attr)} /></div>
           </div>
         ))}
       </div>
-      <p style={{ fontSize: 12, color: '#bdbab2', margin: '16px 0 0' }}>“—” = ยังไม่ได้กำหนดค่านี้ในเผ่าพันธุ์/คลาสที่เลือก</p>
+      <p style={{ fontSize: 12, color: '#bdbab2', margin: '16px 0 0' }}>“—” = ยังไม่ได้กำหนดค่านี้ (หรือไม่มีในเผ่า/สายเลือด/คลาสที่เลือก)</p>
     </div>
   );
 }
