@@ -515,9 +515,10 @@ function WeaponProficiency({
   });
   const options = data?.weapons.options ?? [];
 
+  // Weapon options come only from the "Weapon Proficiency"-tagged pool.
   const { data: pool } = useQuery({
-    queryKey: ['feature-pool', wiwonIds.join(',')],
-    queryFn: () => fetchFeaturesByTag('', wiwonIds),
+    queryKey: ['feature-pool', 'Weapon Proficiency', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Weapon Proficiency', wiwonIds),
   });
 
   const selected = Array.isArray(character.data.weaponProficiencies) ? (character.data.weaponProficiencies as string[]) : [];
@@ -581,7 +582,7 @@ function WeaponProficiency({
       {isDev && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, background: '#fff' }}>
-            <option value="">— เลือก Feature อาวุธเพื่อเพิ่ม —</option>
+            <option value="">— เลือก Feature (แท็ก Weapon Proficiency) เพื่อเพิ่ม —</option>
             {(pool ?? []).filter((f) => !options.some((o) => o.featureId === f.id)).map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
