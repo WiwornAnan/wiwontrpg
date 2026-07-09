@@ -1957,18 +1957,25 @@ function MagicBuySearch({
 }) {
   const [info, setInfo] = useState<CatalogItem | null>(null);
   const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const { data: all, isLoading } = useQuery({
     queryKey: ['step8-magic', wiwonIds.join(',')],
     queryFn: () => fetchMagicSpells(wiwonIds),
   });
   const pool = (all ?? []).filter((m) => MAGIC_RARITIES.includes(String(m.fields.rarity ?? '')));
+  // All tags present in the pool (colour, school, etc.) → filter chips.
+  const allTags = Array.from(new Set(pool.flatMap((m) => m.tags))).sort();
 
   const q = query.trim().toLowerCase();
+  // Searchable haystack: name + subtitle + tags + plain-text description.
+  const haystack = (m: CatalogItem) =>
+    `${m.name} ${m.subtitle ?? ''} ${m.tags.join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
   const owned = pool.filter((m) => m.id in purchases);
   const matches = pool.filter((m) => {
     if (m.id in purchases) return false;
-    if (q && !(m.name.toLowerCase().includes(q) || (m.subtitle ?? '').toLowerCase().includes(q))) return false;
+    if (tagFilter && !m.tags.includes(tagFilter)) return false;
+    if (q && !haystack(m).includes(q)) return false;
     return true;
   });
 
@@ -2004,9 +2011,19 @@ function MagicBuySearch({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="🔍 ค้นหาเวทมนตร์…"
+        placeholder="🔍 ค้นหาเวทมนตร์ (ชื่อ, คำอธิบาย หรือแท็ก)…"
         style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '10px 13px', fontSize: 13.5, background: '#fff', marginTop: 6 }}
       />
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          {allTags.map((t) => {
+            const on = tagFilter === t;
+            return (
+              <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? '#e07a5f' : '#e0ded7'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#8d8a82', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{t}</button>
+            );
+          })}
+        </div>
+      )}
       {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
       {!isLoading && pool.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ยังไม่มีเวทมนตร์ Common/Uncommon ใน Wiwon ที่เลือก</div>}
 
@@ -2019,7 +2036,7 @@ function MagicBuySearch({
 
       <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {!isLoading && matches.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>เวทมนตร์ที่ปรากฎ ({matches.length})</div>}
-        {q && matches.length === 0 && !isLoading && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบเวทมนตร์ที่ตรงกับที่ค้นหา</div>}
+        {(q || tagFilter) && matches.length === 0 && !isLoading && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '10px 0' }}>ไม่พบเวทมนตร์ที่ตรงกับที่ค้นหา</div>}
         {matches.map(row)}
       </div>
 
