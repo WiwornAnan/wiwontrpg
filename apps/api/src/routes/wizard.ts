@@ -285,6 +285,34 @@ wizardRouter.put('/step5-questions/:refId', requireDev, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Step 6 written answers — same shape as Step 5, separate global question set.
+wizardRouter.get('/step6-questions/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'step6-questions', refId: req.params.refId } },
+  });
+  let questions: z.infer<typeof step5Schema>['questions'] = [];
+  if (row) {
+    const parsed = step5Schema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) questions = parsed.data.questions;
+  }
+  res.json({ step6: { questions } });
+});
+
+wizardRouter.put('/step6-questions/:refId', requireDev, async (req, res) => {
+  const parsed = step5Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'step6-questions', refId: req.params.refId } },
+    create: { kind: 'step6-questions', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});
+
 // Ancestry Core Attributes (Step 1) — same shape, keyed by the Ancestry id.
 wizardRouter.get('/ancestry-core/:refId', async (req, res) => {
   const row = await prisma.wizardTemplate.findUnique({

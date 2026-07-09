@@ -240,7 +240,9 @@ function StepShell({
       ) : step === 4 ? (
         <Step4Questions character={character} patch={patch} />
       ) : step === 5 ? (
-        <Step5Written character={character} patch={patch} />
+        <WrittenStep character={character} patch={patch} kind="step5-questions" respKey="step5" answersKey="step5Answers" title="คำถามปลายเปิด" />
+      ) : step === 6 ? (
+        <WrittenStep character={character} patch={patch} kind="step6-questions" respKey="step6" answersKey="step6Answers" title="คำถามปลายเปิด (ชุดที่ 2)" />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1340,8 +1342,6 @@ function Step4Questions({
 
 // ── Step 5: dev-authored open-ended prompts; players write free-form answers ──
 interface Step5Question { id: string; prompt: string }
-const step5AnswersOf = (c: Character): Record<string, string> =>
-  c.data.step5Answers && typeof c.data.step5Answers === 'object' ? (c.data.step5Answers as Record<string, string>) : {};
 
 // A textarea that grows with its content and commits its value on blur.
 function GrowingAnswer({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
@@ -1365,12 +1365,23 @@ function GrowingAnswer({ value, onCommit }: { value: string; onCommit: (v: strin
   );
 }
 
-function Step5Written({
+// Generic open-ended written-answer step (used by Step 5 and Step 6). Each is
+// backed by its own global question template + its own answer bag on the
+// character, so the two steps stay independent.
+function WrittenStep({
   character,
   patch,
+  kind,
+  respKey,
+  answersKey,
+  title,
 }: {
   character: Character;
   patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+  kind: string; // e.g. 'step5-questions'
+  respKey: string; // e.g. 'step5'
+  answersKey: string; // e.g. 'step5Answers'
+  title: string;
 }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
@@ -1378,16 +1389,18 @@ function Step5Written({
   const [draft, setDraft] = useState<Step5Question[]>([]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['step5-questions', 'global'],
-    queryFn: () => api.get<{ step5: { questions: Step5Question[] } }>('/wizard/step5-questions/global'),
+    queryKey: [kind, 'global'],
+    queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>(`/wizard/${kind}/global`),
   });
-  const questions = data?.step5.questions ?? [];
-  const answers = step5AnswersOf(character);
+  const questions = data?.[respKey]?.questions ?? [];
+  const answers = character.data[answersKey] && typeof character.data[answersKey] === 'object'
+    ? (character.data[answersKey] as Record<string, string>)
+    : {};
 
   const save = useMutation({
-    mutationFn: () => api.put('/wizard/step5-questions/global', { questions: draft }),
+    mutationFn: () => api.put(`/wizard/${kind}/global`, { questions: draft }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['step5-questions', 'global'] });
+      qc.invalidateQueries({ queryKey: [kind, 'global'] });
       setEditing(false);
     },
   });
@@ -1396,7 +1409,7 @@ function Step5Written({
     const next = { ...answers };
     if (text.trim()) next[qId] = text;
     else delete next[qId];
-    patch.mutate({ data: { ...character.data, step5Answers: next } });
+    patch.mutate({ data: { ...character.data, [answersKey]: next } });
   };
 
   const startEdit = () => {
@@ -1411,7 +1424,7 @@ function Step5Written({
     <div style={cardPlain}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>คำถามปลายเปิด</h1>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>{title}</h1>
           <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 0' }}>เขียนคำตอบได้อย่างอิสระ ยาวเท่าที่ต้องการ — ระบบบันทึกเมื่อคลิกออกจากช่อง</p>
         </div>
         {isDev && !editing && (
