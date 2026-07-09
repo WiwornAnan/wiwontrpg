@@ -724,7 +724,7 @@ interface CoreAttr {
   grade: 'A' | 'B' | 'C' | 'D' | 'X';
 }
 const GRADE_COLOR: Record<string, string> = { A: '#2f7d4f', B: '#2a5fbd', C: '#8d7a2a', D: '#b06a2a', X: '#a03a3a' };
-// The die a Core Attribute grade rolls with (X = cannot roll).
+// The die a Core Attribute grade rolls with. X still rolls — it just always yields 0.
 const GRADE_DIE: Record<string, string> = { A: 'd8', B: 'd6', C: 'd4', D: 'd2', X: '0' };
 // Grade scale, low → high. Index is the numeric value (X=0 … A=4).
 const GRADE_ORDER = ['X', 'D', 'C', 'B', 'A'] as const;
@@ -1070,7 +1070,7 @@ function SkillsTable({ effByAbbr }: { effByAbbr: Record<string, string> }) {
                   <div style={{ ...rowCell, justifyContent: 'flex-end' }}>
                     <span style={{
                       minWidth: 38, textAlign: 'center', padding: '4px 9px', borderRadius: 7,
-                      background: die === '0' ? '#f2efe9' : dieColor, color: die === '0' ? '#b0ada4' : '#fff',
+                      background: dieColor, color: grade in GRADE_COLOR ? '#fff' : '#b0ada4',
                       fontSize: 12.5, fontWeight: 800,
                     }}>{die}</span>
                   </div>
