@@ -43,8 +43,13 @@ catalogRouter.get('/:category', async (req, res) => {
   const where: Record<string, unknown> = { category, isFeature };
   if (scope === 'official') where.isHomebrew = false;
   else if (scope === 'homebrew') where.isHomebrew = true;
+  // ?relatedWiwon=id  or  ?relatedWiwon=id1,id2  — matches any of the given Wiwon
+  // (the character wizard filters by the several Wiwon the player picked).
   const relatedWiwon = (req.query.relatedWiwon as string) || '';
-  if (relatedWiwon) where.relatedWiwonId = relatedWiwon;
+  if (relatedWiwon) {
+    const ids = relatedWiwon.split(',').map((s) => s.trim()).filter(Boolean);
+    if (ids.length) where.relatedWiwonId = ids.length > 1 ? { in: ids } : ids[0];
+  }
 
   const rows = await prisma.catalogItem.findMany({ where, include: { owner: true }, orderBy: { createdAt: 'asc' } });
   let items = rows.map(toCatalogItem);
