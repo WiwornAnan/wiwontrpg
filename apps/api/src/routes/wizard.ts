@@ -94,3 +94,41 @@ wizardRouter.put('/class-levels/:refId', requireDev, async (req, res) => {
   });
   res.json({ ok: true });
 });
+
+// ── Class weapon proficiencies: dev lists the options a class may pick from,
+//    and the player chooses which to be proficient in. ─────────────────────────
+const weaponsSchema = z.object({
+  options: z.array(z.object({
+    id: z.string(),
+    featureId: z.string().nullable().default(null),
+    featureName: z.string().nullable().default(null),
+    text: z.string().default(''),
+  })),
+});
+
+wizardRouter.get('/class-weapons/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'class-weapons', refId: req.params.refId } },
+  });
+  let weapons = { options: [] as z.infer<typeof weaponsSchema>['options'] };
+  if (row) {
+    const parsed = weaponsSchema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) weapons = parsed.data;
+  }
+  res.json({ weapons });
+});
+
+wizardRouter.put('/class-weapons/:refId', requireDev, async (req, res) => {
+  const parsed = weaponsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'class-weapons', refId: req.params.refId } },
+    create: { kind: 'class-weapons', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});

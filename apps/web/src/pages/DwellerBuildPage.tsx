@@ -484,6 +484,127 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
   );
 }
 
+// ── Weapon proficiencies a class may take. Dev lists the options; the player
+//    picks which to be proficient in. Each linked Feature has a floating popup. ──
+interface WeaponOption {
+  id: string;
+  featureId: string | null;
+  featureName: string | null;
+  text: string;
+}
+function WeaponProficiency({
+  classValue,
+  wiwonIds,
+  character,
+  patch,
+}: {
+  classValue: string;
+  wiwonIds: string[];
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const [addId, setAddId] = useState('');
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['class-weapons', classValue],
+    queryFn: () => api.get<{ weapons: { options: WeaponOption[] } }>(`/wizard/class-weapons/${encodeURIComponent(classValue)}`),
+  });
+  const options = data?.weapons.options ?? [];
+
+  const { data: pool } = useQuery({
+    queryKey: ['feature-pool', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('', wiwonIds),
+  });
+
+  const selected = Array.isArray(character.data.weaponProficiencies) ? (character.data.weaponProficiencies as string[]) : [];
+  const toggle = (id: string) => {
+    const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+    patch.mutate({ data: { ...character.data, weaponProficiencies: next } });
+  };
+
+  const save = useMutation({
+    mutationFn: (next: WeaponOption[]) => api.put(`/wizard/class-weapons/${encodeURIComponent(classValue)}`, { options: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['class-weapons', classValue] }),
+  });
+  const addOpt = () => {
+    const f = (pool ?? []).find((x) => x.id === addId);
+    if (!f || options.some((o) => o.featureId === f.id)) return;
+    save.mutate([...options, { id: crypto.randomUUID(), featureId: f.id, featureName: f.name, text: '' }]);
+    setAddId('');
+  };
+  const removeOpt = (id: string) => {
+    save.mutate(options.filter((o) => o.id !== id));
+    if (selected.includes(id)) patch.mutate({ data: { ...character.data, weaponProficiencies: selected.filter((x) => x !== id) } });
+  };
+  const openInfo = (o: WeaponOption) => {
+    const f = (pool ?? []).find((x) => x.id === o.featureId);
+    if (f) setInfo(f);
+  };
+
+  return (
+    <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>อาวุธที่เชี่ยวชาญ (Weapon Proficiency)</div>
+      <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
+        {isDev ? 'ผู้พัฒนากำหนดตัวเลือกของคลาสนี้ — ผู้เล่นเลือกได้เอง' : 'เลือกอาวุธที่คุณเชี่ยวชาญ (เลือกได้หลายอย่าง)'}
+      </div>
+
+      {options.length === 0 && (
+        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'คลาสนี้ยังไม่ได้กำหนดอาวุธที่เชี่ยวชาญ'}</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {options.map((o) => {
+          const on = selected.includes(o.id);
+          return (
+            <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9, border: `1.5px solid ${on ? 'var(--coral)' : '#e8e5df'}`, background: on ? 'var(--coral-bg)' : '#fff' }}>
+              <div onClick={() => toggle(o.id)} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <span style={{ width: 18, height: 18, borderRadius: 5, flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                  {on ? '✓' : ''}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#2f2c25' }}>⚔ {o.featureName ?? o.text ?? 'อาวุธ'}</span>
+              </div>
+              {o.featureId && (
+                <button onClick={() => openInfo(o)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>ⓘ ดูข้อมูล</button>
+              )}
+              {isDev && (
+                <button onClick={() => removeOpt(o.id)} title="ลบ" style={{ flex: 'none', border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 28, height: 28, cursor: 'pointer' }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {isDev && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, background: '#fff' }}>
+            <option value="">— เลือก Feature อาวุธเพื่อเพิ่ม —</option>
+            {(pool ?? []).filter((f) => !options.some((o) => o.featureId === f.id)).map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <Button variant="coral" disabled={!addId || save.isPending} onClick={addOpt}>+ เพิ่ม</Button>
+        </div>
+      )}
+
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && (
+          <div>
+            {info.subtitle && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>{info.subtitle}</div>}
+            {info.description ? (
+              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
+            ) : (
+              <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 // ── Step 2: เลือกคลาส (Features tagged "Class") → Lv 1–15 reward table ──
 const claimsOf = (c: Character): Record<string, string> =>
   c.data.levelClaims && typeof c.data.levelClaims === 'object' ? (c.data.levelClaims as Record<string, string>) : {};
@@ -643,6 +764,9 @@ function LevelTable({
         ตารางเลเวล Lv 1–15 — {isDev && editing ? 'ผู้พัฒนากำหนดตัวเลือกที่ผู้เล่นจะได้รับต่อเลเวล' : 'กด “รับ” เพื่อเลือกของ 1 อย่างต่อเลเวล'}
       </p>
 
+      <WeaponProficiency classValue={classValue} wiwonIds={wiwonIds} character={character} patch={patch} />
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, margin: '20px 0 10px' }}>ตาราง Lv 1–15</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {view.map((level) => {
           const claimedOpt = claims[String(level.lv)];
