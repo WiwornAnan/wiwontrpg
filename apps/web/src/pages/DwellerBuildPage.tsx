@@ -243,6 +243,8 @@ function StepShell({
         <WrittenStep character={character} patch={patch} kind="step5-questions" respKey="step5" answersKey="step5Answers" title="คำถามปลายเปิด" />
       ) : step === 6 ? (
         <WrittenStep character={character} patch={patch} kind="step6-questions" respKey="step6" answersKey="step6Answers" title="คำถามปลายเปิด (ชุดที่ 2)" />
+      ) : step === 7 ? (
+        <Step7Purchase character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1474,6 +1476,217 @@ function WrittenStep({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Step 7: spend Quality-of-Life (QL) on Features + a coin wallet ──
+// Coin ladder, all expressed in the base unit (IC): 10 IC = 1 CC, 10 CC = 1 SC,
+// 10 SC = 1 GC, 10 GC = 1 PC. Royal Bonds (RB) carry a player-set value.
+const COIN_DEFS = [
+  { key: 'PC', label: 'Platinum', ic: 10000, color: '#5a6b86' },
+  { key: 'GC', label: 'Gold', ic: 1000, color: '#c79a2e' },
+  { key: 'SC', label: 'Silver', ic: 100, color: '#9aa0a6' },
+  { key: 'CC', label: 'Copper', ic: 10, color: '#b06a2a' },
+  { key: 'IC', label: 'Iron', ic: 1, color: '#7a7a72' },
+] as const;
+const QL_TO_IC = 500; // 1 QL = 5 SC = 500 IC
+const PURCHASE_TAGS = ['Life lesson', 'Local Knowledge', 'Social', 'Specialization', 'Language', 'Weapon Proficiency'];
+const qlCostOf = (f: CatalogItem) => parseInt(String(f.fields.ql ?? '').replace(/[^0-9]/g, ''), 10) || 0;
+const decomposeIC = (total: number) => {
+  let rest = Math.max(0, Math.round(total));
+  const out: Record<string, number> = {};
+  for (const c of COIN_DEFS) { out[c.key] = Math.floor(rest / c.ic); rest -= out[c.key] * c.ic; }
+  return out;
+};
+const numData = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+
+interface RoyalBond { id: string; price: number } // price in GC
+
+function Step7Purchase({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const wiwonIds = wiwonIdsOf(character);
+  const [qlInput, setQlInput] = useState(1);
+
+  // Total QL comes from the Step 4 answers.
+  const { data: step4 } = useQuery({
+    queryKey: ['step4-questions', 'global'],
+    queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global'),
+  });
+  const answers4 = character.data.step4Answers && typeof character.data.step4Answers === 'object' ? (character.data.step4Answers as Record<string, string>) : {};
+  const totalQL = (step4?.step4.questions ?? []).reduce((s, q) => s + (q.options.find((o) => o.id === answers4[q.id])?.ql ?? 0), 0);
+
+  const purchases = character.data.step7Purchases && typeof character.data.step7Purchases === 'object' ? (character.data.step7Purchases as Record<string, number>) : {};
+  const qlConverted = numData(character.data.qlConverted);
+  const spentFeatures = Object.values(purchases).reduce((s, n) => s + n, 0);
+  const availableQL = totalQL - spentFeatures - qlConverted;
+
+  const walletIC = numData(character.data.walletIC);
+  const rb: RoyalBond[] = Array.isArray(character.data.walletRB) ? (character.data.walletRB as RoyalBond[]) : [];
+  const coins = decomposeIC(walletIC);
+  const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
+  const grandGC = walletIC / 1000 + rbTotalGC;
+
+  const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
+  const toggleBuy = (feat: CatalogItem, cost: number) => {
+    const next = { ...purchases };
+    if (feat.id in next) delete next[feat.id];
+    else { if (availableQL < cost) return; next[feat.id] = cost; }
+    setData({ step7Purchases: next });
+  };
+  const adjustCoin = (deltaIC: number) => setData({ walletIC: Math.max(0, walletIC + deltaIC) });
+  const convertQL = () => {
+    const amt = Math.max(0, Math.min(Math.floor(qlInput || 0), availableQL));
+    if (amt <= 0) return;
+    setData({ walletIC: walletIC + amt * QL_TO_IC, qlConverted: qlConverted + amt });
+  };
+  const addBond = () => setData({ walletRB: [...rb, { id: crypto.randomUUID(), price: 0 }] });
+  const setBond = (id: string, price: number) => setData({ walletRB: rb.map((b) => (b.id === id ? { ...b, price } : b)) });
+  const removeBond = (id: string) => setData({ walletRB: rb.filter((b) => b.id !== id) });
+
+  const pill = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
+
+  return (
+    <>
+      <div style={cardPlain}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ใช้ Quality of Life ซื้อ Feature</h1>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>ใช้ QL ที่สะสมจาก Step 4 ซื้อ Feature ตามแท็ก — ราคาคือค่า Quality of Life ที่ระบุใน Feature</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span style={pill('#eef4fb', '#2a5fbd', '#d3e2f5')}>QL ทั้งหมด: {totalQL}</span>
+          <span style={pill(availableQL > 0 ? '#eef6f0' : '#f9eeea', availableQL > 0 ? '#2f7d4f' : '#b0552f', availableQL > 0 ? '#cfe6d6' : '#f0d8ce')}>คงเหลือ: {availableQL} QL</span>
+          {spentFeatures > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>ใช้ซื้อ Feature: {spentFeatures} QL</span>}
+          {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 18 }}>
+          {PURCHASE_TAGS.map((t) => (
+            <TagBuyFrame key={t} tag={t} wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Currency wallet ── */}
+      <div style={{ ...cardPlain, marginTop: 16 }}>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>กระเป๋าเงิน</h2>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
+          10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
+        </p>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          {COIN_DEFS.map((c) => (
+            <div key={c.key} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px', minWidth: 96, textAlign: 'center', background: '#fff' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: c.color }}>{c.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#2f2c25', margin: '2px 0 6px' }}>{coins[c.key]}<span style={{ fontSize: 12, color: '#b0ada4', fontWeight: 700 }}> {c.key}</span></div>
+              <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
+                <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
+                <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* QL → money */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16, padding: '12px 14px', background: '#faf9f7', borderRadius: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#3c3a33' }}>แลก QL เป็นเงิน</span>
+          <span style={{ fontSize: 12, color: '#9a978e' }}>(1 QL = 5 SC)</span>
+          <input type="number" min={1} value={qlInput} onChange={(e) => setQlInput(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={{ width: 76, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
+          <span style={{ fontSize: 12.5, color: '#8d8a82' }}>QL → {(qlInput || 0) * 5} SC</span>
+          <button onClick={convertQL} disabled={availableQL < 1 || qlInput < 1} style={{ border: 'none', background: availableQL >= 1 && qlInput >= 1 ? '#e07a5f' : '#e5cfc7', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: availableQL >= 1 && qlInput >= 1 ? 'pointer' : 'not-allowed' }}>แลก</button>
+        </div>
+
+        {/* Royal Bonds */}
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: '#3c3a33' }}>Royal Bond (RB) — ใบรับรองกำหนดราคาเองได้</span>
+            <button onClick={addBond} style={{ border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ เพิ่มใบ</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {rb.length === 0 && <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีใบรับรอง</div>}
+            {rb.map((b, i) => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#5a6b86', flex: 'none' }}>RB #{i + 1}</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8d8a82' }}>
+                  มูลค่า
+                  <input type="number" min={0} value={b.price} onChange={(e) => setBond(b.id, Math.max(0, Number(e.target.value) || 0))} style={{ width: 92, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 9px', fontSize: 13.5 }} />
+                  GC
+                </label>
+                <button onClick={() => removeBond(b.id)} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #efece6', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#a8a59d' }}>มูลค่ารวมโดยประมาณ</span>
+          <span style={{ fontSize: 20, fontWeight: 800, color: '#c79a2e' }}>{Number.isInteger(grandGC) ? grandGC : grandGC.toFixed(2)} GC</span>
+          {rbTotalGC > 0 && <span style={{ fontSize: 12, color: '#9a978e' }}>(เหรียญ {(walletIC / 1000).toFixed(2)} GC + RB {rbTotalGC} GC)</span>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function TagBuyFrame({
+  tag,
+  wiwonIds,
+  purchases,
+  availableQL,
+  onToggle,
+}: {
+  tag: string;
+  wiwonIds: string[];
+  purchases: Record<string, number>;
+  availableQL: number;
+  onToggle: (f: CatalogItem, cost: number) => void;
+}) {
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+  const { data: feats, isLoading } = useQuery({
+    queryKey: ['step7-feats', tag, wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag(tag, wiwonIds),
+  });
+  const items = feats ?? [];
+
+  return (
+    <div style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#faf9f7' }}>
+      <div style={{ fontSize: 14.5, fontWeight: 800, color: '#2f2c25', marginBottom: 10 }}>{tag}</div>
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '8px 0' }}>กำลังโหลด…</div>}
+      {!isLoading && items.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5 }}>ยังไม่มี Feature แท็กนี้ใน Wiwon ที่เลือก</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((f) => {
+          const cost = qlCostOf(f);
+          const owned = f.id in purchases;
+          const canAfford = owned || availableQL >= cost;
+          return (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${owned ? '#2f7d4f' : 'var(--border-soft)'}`, background: owned ? '#f2f8f4' : '#fff' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{f.name}</div>
+                {f.subtitle && <div style={{ fontSize: 11.5, color: '#9a978e' }}>{f.subtitle}</div>}
+              </div>
+              <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>
+              <button onClick={() => setInfo(f)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
+              <button
+                onClick={() => onToggle(f, cost)}
+                disabled={!canAfford}
+                style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: owned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: owned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
+              >
+                {owned ? 'ซื้อแล้ว ✓' : 'ซื้อ'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && (
+          info.description
+            ? <div style={{ fontSize: 13.5, lineHeight: 1.7, color: '#3c3a33' }} dangerouslySetInnerHTML={{ __html: info.description }} />
+            : <div style={{ fontSize: 13, color: '#a8a59d' }}>ยังไม่มีคำอธิบายเพิ่มเติม</div>
+        )}
+      </Modal>
     </div>
   );
 }
