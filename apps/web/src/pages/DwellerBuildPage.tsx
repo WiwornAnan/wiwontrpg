@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
+import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
 
 const TOTAL_STEPS = 12;
 // Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
@@ -235,6 +236,8 @@ function StepShell({
         <ClassStep character={character} patch={patch} />
       ) : step === 3 ? (
         <Step3Core character={character} patch={patch} />
+      ) : step === 4 ? (
+        <SkillsStep />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -856,8 +859,7 @@ function Step3Core({
 
   // The primary ("ค่าหลัก") comes from the Ancestry for Ancestry races, otherwise the Race.
   const baseAttrs = isAncestryRace ? bData?.core.attributes : aData?.core.attributes;
-  const raceGrade = (attr: string) => gradeOf(aData?.core.attributes, attr);
-  const ancestryGrade = (attr: string) => gradeOf(bData?.core.attributes, attr);
+  const baseGrade = (attr: string) => gradeOf(baseAttrs, attr);
   const classGrade = (attr: string) => gradeOf(cData?.core.attributes, attr);
   const combinedOf = (attr: string) => combineGrade(gradeOf(baseAttrs, attr), classGrade(attr));
 
@@ -948,10 +950,9 @@ function Step3Core({
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,1fr) auto auto auto auto minmax(132px,auto)', gap: '0 16px', alignItems: 'center', minWidth: 560 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,1fr) auto auto auto minmax(132px,auto)', gap: '0 16px', alignItems: 'center', minWidth: 500 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', paddingBottom: 6 }}>ATTRIBUTE</div>
           <div style={headStyle}>เผ่าพันธุ์</div>
-          <div style={headStyle}>Ancestry</div>
           <div style={headStyle}>Class</div>
           <div style={headStyle}>ผลรวม</div>
           <div style={{ ...headStyle, textAlign: 'right' }}>สุดท้าย</div>
@@ -964,8 +965,7 @@ function Step3Core({
             return (
               <div key={attr} style={{ display: 'contents' }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#3c3a33', padding: '10px 0', borderTop: '1px solid #efece6' }}>{attr}</div>
-                <div style={cellStyle}><GradeBadge grade={raceGrade(attr)} /></div>
-                <div style={cellStyle}><GradeBadge grade={ancestryGrade(attr)} /></div>
+                <div style={cellStyle}><GradeBadge grade={baseGrade(attr)} /></div>
                 <div style={cellStyle}><GradeBadge grade={classGrade(attr)} /></div>
                 <div style={cellStyle}><span style={{ color: '#cfccc4', fontSize: 14 }}>→</span></div>
                 <div style={{ ...cellStyle, justifyContent: 'flex-end', gap: 6 }}>
@@ -998,6 +998,78 @@ function Step3Core({
         <li>ค่าที่เป็น X จากการคำนวณ เปลี่ยนไม่ได้ — แต่ถ้าปรับค่าใดลงจนถึง X เอง จะตั้งค่าอื่นให้เป็น A ได้ 1 ค่า</li>
         <li>“—” = เผ่า/สายเลือด/คลาสไม่ได้กำหนดค่านี้ (ค่าที่เหลือหลังคำนวณจะกลายเป็น D)</li>
       </ul>
+    </div>
+  );
+}
+
+// ── Step 4: Dweller skills — reference list, grouped by category. Hover a skill
+//    to reveal its description; the colored tag is its governing Core Attribute.
+function SkillsStep() {
+  const [hover, setHover] = useState<string | null>(null);
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>สกิลของ Dweller</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 20px' }}>
+        ทักษะทั้งหมดแบ่งตามหมวด — ชี้ (hover) ที่สกิลเพื่อดูคำอธิบาย ตัวอักษรในกรอบสีคือ Core Attribute ที่ใช้ทอย
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
+        {(Object.keys(SKILL_ATTR_COLOR) as (keyof typeof SKILL_ATTR_COLOR)[]).map((a) => (
+          <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#8d8a82' }}>
+            <span style={{ width: 22, height: 20, borderRadius: 6, background: SKILL_ATTR_COLOR[a], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{a}</span>
+          </span>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+        {DWELLER_SKILLS.map((cat) => (
+          <section key={cat.en}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</h2>
+              <span style={{ fontSize: 12.5, color: '#a8a59d', fontStyle: 'italic' }}>{cat.en}</span>
+            </div>
+            <p style={{ fontSize: 12.5, color: '#9a978e', lineHeight: 1.6, margin: '4px 0 0' }}>{cat.desc}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+              {cat.skills.map((s, i) => {
+                const id = `${cat.en}-${i}`;
+                const on = hover === id;
+                return (
+                  <div
+                    key={id}
+                    style={{ position: 'relative' }}
+                    onMouseEnter={() => setHover(id)}
+                    onMouseLeave={() => setHover((h) => (h === id ? null : h))}
+                    onClick={() => setHover((h) => (h === id ? null : id))}
+                  >
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'help',
+                      padding: '6px 12px 6px 6px', borderRadius: 10,
+                      border: `1.5px solid ${on ? '#d9d5cc' : 'var(--border-soft)'}`,
+                      background: on ? '#faf9f7' : '#fff',
+                    }}>
+                      <span style={{ width: 24, height: 22, borderRadius: 6, flex: 'none', background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.attr}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{s.name}</span>
+                      <span style={{ fontSize: 11.5, color: '#b0ada4' }}>{s.en}</span>
+                    </div>
+                    {on && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30,
+                        width: 300, maxWidth: '82vw', background: '#2f2c25', color: '#f3f1ec',
+                        padding: '10px 13px', borderRadius: 10, fontSize: 12.5, lineHeight: 1.65,
+                        boxShadow: '0 10px 26px rgba(0,0,0,.22)', pointerEvents: 'none',
+                      }}>
+                        <span style={{ fontWeight: 800, color: SKILL_ATTR_COLOR[s.attr] === '#8a5a2a' ? '#e0b487' : '#fff' }}>{s.name} </span>
+                        <span style={{ color: '#b8b4ac', fontSize: 11.5 }}>({s.en})</span>
+                        <div style={{ marginTop: 5 }}>{s.desc}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
