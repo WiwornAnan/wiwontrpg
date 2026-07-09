@@ -33,6 +33,7 @@ export function WiwonPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editCoverId, setEditCoverId] = useState<string | null>(null);
+  const [renameSet, setRenameSet] = useState<{ name: string; ids: string[] } | null>(null);
   const [form, setForm] = useState({ name: '', setName: '', heroTitle: '', heroSubtitle: '', updateDateLabel: '' });
 
   // The URL carries both levels: ?set=<ชุด> then ?book=<เล่ม>. So every
@@ -160,7 +161,14 @@ export function WiwonPage() {
           empty={sets.length === 0 ? 'ยังไม่มีวิวรณ์บนชั้น' : undefined}
         >
           {sets.map((s) => (
-            <SetTile key={s.name} name={s.name} items={s.items} onOpen={() => openSet(s.name)} />
+            <SetTile
+              key={s.name}
+              name={s.name}
+              items={s.items}
+              isDev={isDev}
+              onOpen={() => openSet(s.name)}
+              onRename={() => setRenameSet({ name: s.name, ids: s.items.map((c) => c.id) })}
+            />
           ))}
           {isDev && <AddTile label="เพิ่มวิวรณ์" onClick={() => openAdd()} />}
         </Bookcase>
@@ -218,7 +226,50 @@ export function WiwonPage() {
           onSaved={() => qc.invalidateQueries({ queryKey: ['wiwon-covers'] })}
         />
       )}
+
+      {renameSet && (
+        <RenameSetModal
+          set={renameSet}
+          onClose={() => setRenameSet(null)}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['wiwon-covers'] })}
+        />
+      )}
     </>
+  );
+}
+
+// Rename a whole ชุด — updates setName on every cover in it at once.
+function RenameSetModal({ set, onClose, onSaved }: { set: { name: string; ids: string[] }; onClose: () => void; onSaved: () => void }) {
+  const [value, setValue] = useState(set.name === DEFAULT_SET ? '' : set.name);
+  const save = useMutation({
+    mutationFn: () => api.post('/wiwon-covers/rename-set', { ids: set.ids, setName: value.trim() || null }),
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="เปลี่ยนชื่อชุดหนังสือ"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            ยกเลิก
+          </Button>
+          <Button variant="coral" onClick={() => save.mutate()} disabled={save.isPending}>
+            บันทึก
+          </Button>
+        </>
+      }
+    >
+      <div>
+        <label style={labelStyle}>ชื่อชุด</label>
+        <input style={inputStyle} value={value} onChange={(e) => setValue(e.target.value)} placeholder={`เว้นว่าง = ${DEFAULT_SET}`} autoFocus />
+        <div style={{ fontSize: 12, color: '#9a978e', marginTop: 8 }}>จะย้ายทั้ง {set.ids.length} เล่มในชุด “{set.name}” ไปใช้ชื่อชุดใหม่นี้</div>
+      </div>
+    </Modal>
   );
 }
 
@@ -282,7 +333,7 @@ const coverFace = (c: WiwonCover) =>
 
 // A ชุด on the shelf: the first cover as a face, with offset cards stacked
 // behind it to read as a collection, plus a "N เล่ม" badge.
-function SetTile({ name, items, onOpen }: { name: string; items: WiwonCover[]; onOpen: () => void }) {
+function SetTile({ name, items, isDev, onOpen, onRename }: { name: string; items: WiwonCover[]; isDev: boolean; onOpen: () => void; onRename: () => void }) {
   const face = items[0];
   return (
     <div onClick={onOpen} style={{ width: 150, height: 212, boxSizing: 'border-box', padding: '0 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
@@ -291,6 +342,15 @@ function SetTile({ name, items, onOpen }: { name: string; items: WiwonCover[]; o
         {items.length > 2 && <div style={{ position: 'absolute', inset: 0, transform: 'translate(4.5px,3px)', borderRadius: '4px 7px 7px 4px', background: '#e4d9c3', border: '1px solid rgba(0,0,0,.12)' }} />}
         <div style={{ position: 'absolute', inset: 0, borderRadius: '4px 7px 7px 4px', border: '1px solid rgba(0,0,0,.14)', boxShadow: '0 13px 11px -8px rgba(70,45,20,.5)', background: face ? coverFace(face) : 'linear-gradient(160deg,#ded6c6,#cbc1ab)' }}>
           <div style={{ position: 'absolute', left: 6, top: 0, bottom: 0, width: 3, background: 'rgba(0,0,0,.10)', borderRadius: '4px 0 0 4px' }} />
+          {isDev && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRename(); }}
+              title="เปลี่ยนชื่อชุด"
+              style={{ position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: '50%', background: 'rgba(21,20,15,.55)', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}
+            >
+              ✎
+            </button>
+          )}
           <span style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', fontSize: 11, fontWeight: 600, color: '#5c3a1e', background: 'rgba(255,255,255,.82)', borderRadius: 5, padding: '2px 9px', whiteSpace: 'nowrap' }}>{items.length} เล่ม</span>
         </div>
       </div>

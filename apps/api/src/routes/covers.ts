@@ -54,6 +54,19 @@ coversRouter.post('/', requireDev, async (req, res) => {
   res.status(201).json({ cover: toCover(row) });
 });
 
+// Rename a whole ชุด: set setName on every given cover at once.
+coversRouter.post('/rename-set', requireDev, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? (req.body.ids as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  const raw = req.body?.setName;
+  const setName = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  if (!ids.length) {
+    res.status(400).json({ error: 'ไม่มีเล่มในชุด' });
+    return;
+  }
+  await prisma.wiwonCover.updateMany({ where: { id: { in: ids } }, data: { setName } });
+  res.json({ ok: true });
+});
+
 coversRouter.patch('/:id', requireDev, async (req, res) => {
   const existing = await prisma.wiwonCover.findUnique({ where: { id: req.params.id } });
   if (!existing) {
