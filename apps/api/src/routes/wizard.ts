@@ -249,6 +249,42 @@ wizardRouter.put('/step4-questions/:refId', requireDev, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Step 5 written answers: dev-authored open-ended prompts; players write
+//    free-form text (unlimited length). Global set, keyed by 'global'. ─────────
+const step5Schema = z.object({
+  questions: z.array(z.object({
+    id: z.string(),
+    prompt: z.string().default(''),
+  })),
+});
+
+wizardRouter.get('/step5-questions/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'step5-questions', refId: req.params.refId } },
+  });
+  let questions: z.infer<typeof step5Schema>['questions'] = [];
+  if (row) {
+    const parsed = step5Schema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) questions = parsed.data.questions;
+  }
+  res.json({ step5: { questions } });
+});
+
+wizardRouter.put('/step5-questions/:refId', requireDev, async (req, res) => {
+  const parsed = step5Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'step5-questions', refId: req.params.refId } },
+    create: { kind: 'step5-questions', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});
+
 // Ancestry Core Attributes (Step 1) — same shape, keyed by the Ancestry id.
 wizardRouter.get('/ancestry-core/:refId', async (req, res) => {
   const row = await prisma.wizardTemplate.findUnique({

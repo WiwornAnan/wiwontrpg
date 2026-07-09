@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLevel, WizardLevelOption } from '@wiwonanant/shared';
@@ -239,6 +239,8 @@ function StepShell({
         <Step3Core character={character} patch={patch} />
       ) : step === 4 ? (
         <Step4Questions character={character} patch={patch} />
+      ) : step === 5 ? (
+        <Step5Written character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -1330,6 +1332,133 @@ function Step4Questions({
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Step 5: dev-authored open-ended prompts; players write free-form answers ──
+interface Step5Question { id: string; prompt: string }
+const step5AnswersOf = (c: Character): Record<string, string> =>
+  c.data.step5Answers && typeof c.data.step5Answers === 'object' ? (c.data.step5Answers as Record<string, string>) : {};
+
+// A textarea that grows with its content and commits its value on blur.
+function GrowingAnswer({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { setText(value); }, [value]);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
+  }, [text]);
+  return (
+    <textarea
+      ref={ref}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => { if (text !== value) onCommit(text); }}
+      placeholder="เขียนคำตอบของคุณ…"
+      rows={3}
+      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '11px 13px', fontSize: 13.5, lineHeight: 1.7, fontFamily: 'inherit', color: '#2f2c25', background: '#fff', resize: 'none', overflow: 'hidden', minHeight: 72 }}
+    />
+  );
+}
+
+function Step5Written({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Step5Question[]>([]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['step5-questions', 'global'],
+    queryFn: () => api.get<{ step5: { questions: Step5Question[] } }>('/wizard/step5-questions/global'),
+  });
+  const questions = data?.step5.questions ?? [];
+  const answers = step5AnswersOf(character);
+
+  const save = useMutation({
+    mutationFn: () => api.put('/wizard/step5-questions/global', { questions: draft }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['step5-questions', 'global'] });
+      setEditing(false);
+    },
+  });
+
+  const commitAnswer = (qId: string, text: string) => {
+    const next = { ...answers };
+    if (text.trim()) next[qId] = text;
+    else delete next[qId];
+    patch.mutate({ data: { ...character.data, step5Answers: next } });
+  };
+
+  const startEdit = () => {
+    setDraft(questions.map((q) => ({ ...q })));
+    setEditing(true);
+  };
+  const addQuestion = () => setDraft((d) => [...d, { id: crypto.randomUUID(), prompt: '' }]);
+  const removeQuestion = (qId: string) => setDraft((d) => d.filter((q) => q.id !== qId));
+  const setPrompt = (qId: string, prompt: string) => setDraft((d) => d.map((q) => (q.id === qId ? { ...q, prompt } : q)));
+
+  return (
+    <div style={cardPlain}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>คำถามปลายเปิด</h1>
+          <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 0' }}>เขียนคำตอบได้อย่างอิสระ ยาวเท่าที่ต้องการ — ระบบบันทึกเมื่อคลิกออกจากช่อง</p>
+        </div>
+        {isDev && !editing && (
+          <button onClick={startEdit} style={{ flex: 'none', border: '1px solid #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            ✎ แก้ไขคำถาม (ผู้พัฒนา)
+          </button>
+        )}
+      </div>
+
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
+
+      {editing ? (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {draft.map((q, qi) => (
+            <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid #eae7e0', borderRadius: 12, padding: 12, background: '#faf9f7' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#a8a59d', flex: 'none', paddingTop: 10 }}>ข้อ {qi + 1}</span>
+              <textarea
+                value={q.prompt}
+                onChange={(e) => setPrompt(q.id, e.target.value)}
+                placeholder="ข้อความคำถาม"
+                rows={2}
+                style={{ flex: 1, boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, lineHeight: 1.6, fontFamily: 'inherit', background: '#fff', resize: 'vertical' }}
+              />
+              <button onClick={() => removeQuestion(q.id)} style={{ flex: 'none', border: '1px solid #e6cfcf', background: '#fff', color: '#a04a4a', borderRadius: 8, padding: '9px 11px', fontSize: 12, cursor: 'pointer' }}>ลบ</button>
+            </div>
+          ))}
+          <button onClick={addQuestion} style={{ alignSelf: 'flex-start', border: '1px dashed #c3a184', background: 'rgba(255,255,255,.5)', color: '#a06a44', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>+ เพิ่มคำถาม</button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="coral" disabled={save.isPending} onClick={() => save.mutate()}>บันทึก</Button>
+            <Button variant="ghost" disabled={save.isPending} onClick={() => setEditing(false)}>ยกเลิก</Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {!isLoading && questions.length === 0 && (
+            <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>
+              ยังไม่มีคำถาม{isDev ? ' — กด “แก้ไขคำถาม” เพื่อเพิ่ม' : ''}
+            </div>
+          )}
+          {questions.map((q, qi) => (
+            <div key={q.id}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#2f2c25', marginBottom: 10 }}>
+                <span style={{ color: '#b0ada4' }}>{qi + 1}. </span>{q.prompt || '(ยังไม่มีคำถาม)'}
+              </div>
+              <GrowingAnswer value={answers[q.id] ?? ''} onCommit={(v) => commitAnswer(q.id, v)} />
+            </div>
+          ))}
         </div>
       )}
     </div>
