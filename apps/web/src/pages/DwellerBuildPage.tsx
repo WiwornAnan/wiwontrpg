@@ -281,62 +281,52 @@ function RaceStep({
 }) {
   const wiwonIds = wiwonIdsOf(character);
   const chosen = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const ancestryChosen = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
   const [info, setInfo] = useState<CatalogItem | null>(null);
 
   const { data: races, isLoading } = useQuery({
     queryKey: ['race-options', wiwonIds.join(',')],
     queryFn: () => fetchFeaturesByTag('Race', wiwonIds),
   });
+  // Ancestry is a second layer, shown once a race is picked (e.g. Wolf Lineage).
+  const { data: ancestries, isLoading: ancLoading } = useQuery({
+    enabled: !!chosen,
+    queryKey: ['ancestry-options', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Ancestry', wiwonIds),
+  });
 
-  const pick = (r: CatalogItem) =>
-    patch.mutate({ data: { ...character.data, race: r.id, raceName: r.name } });
-
-  const fv = (it: CatalogItem, k: string) => (it.fields[k] != null ? String(it.fields[k]) : '');
+  const pickRace = (r: CatalogItem) => patch.mutate({ data: { ...character.data, race: r.id, raceName: r.name } });
+  const pickAncestry = (a: CatalogItem) => patch.mutate({ data: { ...character.data, ancestry: a.id, ancestryName: a.name } });
 
   return (
-    <div style={cardPlain}>
-      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เลือกเผ่าพันธุ์ของคุณ</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>
-        เลือกเผ่าพันธุ์ 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Race” ใน Wiwon ที่เลือกไว้)
-      </p>
+    <>
+      <FeaturePicker
+        title="เลือกเผ่าพันธุ์ของคุณ"
+        hint="เลือกเผ่าพันธุ์ 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Race” ใน Wiwon ที่เลือกไว้)"
+        items={races ?? []}
+        isLoading={isLoading}
+        emptyText="ยังไม่มี Feature แท็ก “Race” ใน Wiwon ที่เลือก — ผู้พัฒนาเพิ่มได้ในหน้า Magic & Feature"
+        chosenId={chosen}
+        onPick={pickRace}
+        onInfo={setInfo}
+      />
 
-      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
-      {!isLoading && (races?.length ?? 0) === 0 && (
-        <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>
-          ยังไม่มี Feature แท็ก “Race” ใน Wiwon ที่เลือก — ผู้พัฒนาเพิ่มได้ในหน้า Magic &amp; Feature (แท็ก Race + เลือก Wiwon ที่เกี่ยวข้อง)
+      {chosen && (
+        <div style={{ marginTop: 16 }}>
+          <FeaturePicker
+            title="เลือก Ancestry (สายเลือด)"
+            hint="เลือก Ancestry 1 อย่าง (แสดงเฉพาะ Feature แท็ก “Ancestry”) — เลือกแล้วจะมี Feature เสริมของสายเลือดนั้น"
+            items={ancestries ?? []}
+            isLoading={ancLoading}
+            emptyText="ยังไม่มี Feature แท็ก “Ancestry” ใน Wiwon ที่เลือก"
+            chosenId={ancestryChosen}
+            onPick={pickAncestry}
+            onInfo={setInfo}
+          />
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {(races ?? []).map((r) => {
-          const on = chosen === r.id;
-          return (
-            <div
-              key={r.id}
-              onClick={() => pick(r)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff' }}
-            >
-              <span style={{ width: 20, height: 20, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800 }}>
-                {on ? '✓' : ''}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 700, color: '#2f2c25' }}>{r.name}</div>
-                <div style={{ fontSize: 12, color: '#9a978e', marginTop: 2 }}>
-                  {[r.subtitle, fv(r, 'rarity') && `Capacity: ${fv(r, 'rarity')}`].filter(Boolean).join(' · ') || 'เผ่าพันธุ์'}
-                </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setInfo(r); }}
-                style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                ⓘ ดูข้อมูล
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {chosen && <RaceGrants raceId={chosen} wiwonIds={wiwonIds} />}
+      {ancestryChosen && <FeatureGrants refId={ancestryChosen} wiwonIds={wiwonIds} />}
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && (
@@ -355,23 +345,87 @@ function RaceStep({
           </div>
         )}
       </Modal>
+    </>
+  );
+}
+
+// Single-select list of Features (used for both เผ่าพันธุ์ and Ancestry), each
+// with a floating "ⓘ ดูข้อมูล" info popup.
+function FeaturePicker({
+  title,
+  hint,
+  items,
+  isLoading,
+  emptyText,
+  chosenId,
+  onPick,
+  onInfo,
+}: {
+  title: string;
+  hint: string;
+  items: CatalogItem[];
+  isLoading: boolean;
+  emptyText: string;
+  chosenId: string;
+  onPick: (it: CatalogItem) => void;
+  onInfo: (it: CatalogItem) => void;
+}) {
+  const fv = (it: CatalogItem, k: string) => (it.fields[k] != null ? String(it.fields[k]) : '');
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>{title}</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 18px' }}>{hint}</p>
+
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 13, padding: 20, textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && items.length === 0 && (
+        <div style={{ color: '#a8a59d', fontSize: 13.5, padding: '24px 16px', textAlign: 'center', background: '#faf9f7', borderRadius: 10 }}>{emptyText}</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((it) => {
+          const on = chosenId === it.id;
+          return (
+            <div
+              key={it.id}
+              onClick={() => onPick(it)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '13px 15px', borderRadius: 12, border: `1.5px solid ${on ? 'var(--coral)' : 'var(--border-soft)'}`, background: on ? 'var(--coral-bg)' : '#fff' }}
+            >
+              <span style={{ width: 20, height: 20, borderRadius: '50%', flex: 'none', border: `2px solid ${on ? 'var(--coral)' : '#cbc8c0'}`, background: on ? 'var(--coral)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800 }}>
+                {on ? '✓' : ''}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: '#2f2c25' }}>{it.name}</div>
+                <div style={{ fontSize: 12, color: '#9a978e', marginTop: 2 }}>
+                  {[it.subtitle, fv(it, 'rarity') && `Capacity: ${fv(it, 'rarity')}`].filter(Boolean).join(' · ') || 'Feature'}
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); onInfo(it); }}
+                style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                ⓘ ดูข้อมูล
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ── Features a race grants the player. Dev curates the list; players receive it. ──
+// ── Supplementary Features an Ancestry grants. Dev curates; players receive. ──
 interface RaceGrant {
   featureId: string;
   featureName: string | null;
 }
-function RaceGrants({ raceId, wiwonIds }: { raceId: string; wiwonIds: string[] }) {
+function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] }) {
   const { isDev } = useAuth();
   const qc = useQueryClient();
   const [addId, setAddId] = useState('');
 
   const { data } = useQuery({
-    queryKey: ['race-grant', raceId],
-    queryFn: () => api.get<{ grant: { features: RaceGrant[] } }>(`/wizard/race-grant/${raceId}`),
+    queryKey: ['feature-grant', refId],
+    queryFn: () => api.get<{ grant: { features: RaceGrant[] } }>(`/wizard/race-grant/${refId}`),
   });
   const features = data?.grant.features ?? [];
 
@@ -382,8 +436,8 @@ function RaceGrants({ raceId, wiwonIds }: { raceId: string; wiwonIds: string[] }
   });
 
   const save = useMutation({
-    mutationFn: (next: RaceGrant[]) => api.put(`/wizard/race-grant/${raceId}`, { features: next }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['race-grant', raceId] }),
+    mutationFn: (next: RaceGrant[]) => api.put(`/wizard/race-grant/${refId}`, { features: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feature-grant', refId] }),
   });
   const add = () => {
     const f = (pool ?? []).find((x) => x.id === addId);
@@ -394,14 +448,14 @@ function RaceGrants({ raceId, wiwonIds }: { raceId: string; wiwonIds: string[] }
   const remove = (fid: string) => save.mutate(features.filter((x) => x.featureId !== fid));
 
   return (
-    <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Feature ที่เผ่าพันธุ์นี้มอบให้</div>
+    <div style={{ ...cardPlain, marginTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Feature เสริม (จาก Ancestry)</div>
       <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
-        {isDev ? 'ผู้พัฒนากำหนดได้ — ผู้เล่นจะได้รับทั้งหมดนี้อัตโนมัติ' : 'คุณจะได้รับ Feature เหล่านี้จากเผ่าพันธุ์'}
+        {isDev ? 'ผู้พัฒนากำหนดได้ — ผู้เล่นจะได้รับทั้งหมดนี้อัตโนมัติ' : 'คุณจะได้รับ Feature เหล่านี้จากสายเลือดที่เลือก'}
       </div>
 
       {features.length === 0 && (
-        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'เผ่าพันธุ์นี้ยังไม่มี Feature เพิ่มเติม'}</div>
+        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'สายเลือดนี้ยังไม่มี Feature เสริม'}</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
