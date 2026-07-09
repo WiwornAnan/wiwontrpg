@@ -487,6 +487,13 @@ function FeatureGrants({ refId, wiwonIds }: { refId: string; wiwonIds: string[] 
 
 // ── Weapon proficiencies a class may take. Dev lists the options; the player
 //    picks which to be proficient in. Each linked Feature has a floating popup. ──
+const LIFESTYLE_TAGS = ['Specialization', 'Social', 'Local Knowledge', 'Life lesson'];
+const GRANT_HEADING: Record<string, string> = {
+  weapon: 'เลือกอาวุธที่เชี่ยวชาญเพิ่ม (ที่ยังไม่เคยเลือก)',
+  language: 'เลือกภาษาที่เรียนรู้เพิ่ม (ที่ยังไม่เคยเลือก)',
+  lifestyle: 'เลือกวิถีชีวิตเพิ่ม (ที่ยังไม่เคยเลือก)',
+};
+const GRANT_BADGE: Record<string, string> = { weapon: '⚔ +อาวุธ', language: '🗣 +ภาษา', lifestyle: '🌿 +วิถีชีวิต' };
 interface WeaponOption {
   id: string;
   featureId: string | null;
@@ -778,11 +785,33 @@ function LevelTable({
   });
   const levels = tplData?.template.levels ?? [];
 
+  // All Features in the chosen Wiwon — feeds the dev editor and the per-grant
+  // pickers (language / lifestyle pools are derived from here).
   const { data: pool } = useQuery({
-    enabled: isDev,
     queryKey: ['feature-pool', wiwonIds.join(',')],
     queryFn: () => fetchFeaturesByTag('', wiwonIds),
   });
+  const languagePool = (pool ?? []).filter((f) => f.tags.includes('Language'));
+  const lifestylePool = (pool ?? []).filter(
+    (f) => f.tags.some((t) => LIFESTYLE_TAGS.includes(t)) && ['Common', 'Uncommon'].includes(String(f.fields.rarity ?? '')),
+  );
+
+  // The class's weapon-proficiency options (for grantType = weapon).
+  const { data: weaponsData } = useQuery({
+    queryKey: ['class-weapons', classValue],
+    queryFn: () => api.get<{ weapons: { options: WeaponOption[] } }>(`/wizard/class-weapons/${encodeURIComponent(classValue)}`),
+  });
+  const classWeapons = weaponsData?.weapons.options ?? [];
+  const chosenWeapons = Array.isArray(character.data.weaponProficiencies) ? (character.data.weaponProficiencies as string[]) : [];
+
+  // Extra picks made from grant-type level options: { levelOptionId → pickedId }.
+  const grantPicks = character.data.levelGrantPicks && typeof character.data.levelGrantPicks === 'object' ? (character.data.levelGrantPicks as Record<string, string>) : {};
+  const setGrantPick = (optId: string, value: string) => {
+    const next = { ...grantPicks };
+    if (value) next[optId] = value;
+    else delete next[optId];
+    patch.mutate({ data: { ...character.data, levelGrantPicks: next } });
+  };
 
   const save = useMutation({
     mutationFn: () => api.put(`/wizard/class-levels/${encodeURIComponent(classValue)}`, { levels: draft }),
@@ -808,9 +837,12 @@ function LevelTable({
     patch.mutate({ data: { ...character.data, levelClaims: { ...claims, [String(lv)]: optId } } });
   const doCancel = () => {
     if (cancelTarget == null) return;
+    const claimedOptId = claims[String(cancelTarget)];
     const next = { ...claims };
     delete next[String(cancelTarget)];
-    patch.mutate({ data: { ...character.data, levelClaims: next } }, { onSuccess: () => setCancelTarget(null) });
+    const nextPicks = { ...grantPicks };
+    if (claimedOptId) delete nextPicks[claimedOptId];
+    patch.mutate({ data: { ...character.data, levelClaims: next, levelGrantPicks: nextPicks } }, { onSuccess: () => setCancelTarget(null) });
   };
 
   // Changing LV: if lowering below a level that's already claimed, confirm first
@@ -822,7 +854,7 @@ function LevelTable({
   };
   const confirmLevelDown = () => {
     if (pendingLevel == null) return;
-    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {} } }, { onSuccess: () => setPendingLevel(null) });
+    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {}, levelGrantPicks: {} } }, { onSuccess: () => setPendingLevel(null) });
   };
 
   const view = editing ? draft : levels;
@@ -913,24 +945,69 @@ function LevelTable({
                             ))}
                           </select>
                           <input value={o.text} onChange={(e) => setOption(level.lv, o.id, { text: e.target.value })} placeholder="ข้อความ เช่น +1 HP" style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 12, background: '#fff' }} />
+                          <select value={o.grantType ?? 'none'} onChange={(e) => setOption(level.lv, o.id, { grantType: e.target.value as WizardLevelOption['grantType'] })} title="เมื่อรับ ให้ผู้เล่นเลือกเพิ่มจาก…" style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: (o.grantType && o.grantType !== 'none') ? 'var(--coral-ink)' : '#8d8a82', borderRadius: 7, height: 30, padding: '0 6px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                            <option value="none">— ไม่ให้เลือกเพิ่ม —</option>
+                            <option value="weapon">+ อาวุธ</option>
+                            <option value="language">+ ภาษา</option>
+                            <option value="lifestyle">+ วิถีชีวิต</option>
+                          </select>
                           <button onClick={() => removeOption(level.lv, o.id)} title="ลบตัวเลือก" style={{ flex: 'none', border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 30, height: 30, cursor: 'pointer' }}>×</button>
                         </div>
                       );
                     }
+                    const gt = o.grantType && o.grantType !== 'none' ? o.grantType : null;
+                    const otherPicks = Object.entries(grantPicks).filter(([k]) => k !== o.id).map(([, v]) => v);
+                    let grantItems: { value: string; label: string; group?: string }[] = [];
+                    if (gt === 'weapon') {
+                      const used = new Set<string>([...chosenWeapons, ...otherPicks]);
+                      grantItems = classWeapons.filter((w) => !used.has(w.id)).map((w) => ({ value: w.id, label: w.featureName ?? w.text ?? 'อาวุธ' }));
+                    } else if (gt === 'language') {
+                      const used = new Set(otherPicks);
+                      grantItems = languagePool.filter((f) => !used.has(f.id)).map((f) => ({ value: f.id, label: f.name }));
+                    } else if (gt === 'lifestyle') {
+                      const used = new Set(otherPicks);
+                      grantItems = lifestylePool.filter((f) => !used.has(f.id)).map((f) => ({ value: f.id, label: f.name, group: LIFESTYLE_TAGS.find((t) => f.tags.includes(t)) ?? 'อื่น ๆ' }));
+                    }
+                    const currentGrant = grantPicks[o.id] ?? '';
+                    const lifestyleGroups = gt === 'lifestyle'
+                      ? grantItems.reduce<Record<string, typeof grantItems>>((acc, it) => { (acc[it.group ?? 'อื่น ๆ'] ??= []).push(it); return acc; }, {})
+                      : {};
                     return (
-                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${claimedThis ? 'var(--coral)' : '#e8e5df'}`, background: claimedThis ? 'var(--coral-bg)' : '#fff', opacity: lockedOut ? 0.5 : 1 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
-                          {o.featureName && <span style={{ fontWeight: 700, color: '#2f2c25' }}>{o.featureName}</span>}
-                          {o.featureName && o.text && <span style={{ color: '#c9c6bf' }}> · </span>}
-                          {o.text && <span style={{ color: '#5f5c54' }}>{o.text}</span>}
-                          {!o.featureName && !o.text && <span style={{ color: '#bdbab2' }}>(ตัวเลือกว่าง)</span>}
+                      <div key={o.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${claimedThis ? 'var(--coral)' : '#e8e5df'}`, background: claimedThis ? 'var(--coral-bg)' : '#fff', opacity: lockedOut ? 0.5 : 1 }}>
+                          <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
+                            {o.featureName && <span style={{ fontWeight: 700, color: '#2f2c25' }}>{o.featureName}</span>}
+                            {o.featureName && o.text && <span style={{ color: '#c9c6bf' }}> · </span>}
+                            {o.text && <span style={{ color: '#5f5c54' }}>{o.text}</span>}
+                            {!o.featureName && !o.text && <span style={{ color: '#bdbab2' }}>(ตัวเลือกว่าง)</span>}
+                            {gt && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#b4513a', fontWeight: 700 }}>{GRANT_BADGE[gt]}</span>}
+                          </div>
+                          {claimedThis ? (
+                            <button onClick={() => setCancelTarget(level.lv)} style={{ flex: 'none', border: 'none', background: 'var(--coral)', color: '#fff', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>รับแล้ว ✓</button>
+                          ) : lockedOut ? (
+                            <button disabled style={{ flex: 'none', border: '1px solid #e8e5df', background: '#f4f2ee', color: '#b6b3aa', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'not-allowed' }}>ไม่ได้เลือก</button>
+                          ) : (
+                            <button onClick={() => claim(level.lv, o.id)} style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>กดรับ</button>
+                          )}
                         </div>
-                        {claimedThis ? (
-                          <button onClick={() => setCancelTarget(level.lv)} style={{ flex: 'none', border: 'none', background: 'var(--coral)', color: '#fff', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>รับแล้ว ✓</button>
-                        ) : lockedOut ? (
-                          <button disabled style={{ flex: 'none', border: '1px solid #e8e5df', background: '#f4f2ee', color: '#b6b3aa', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'not-allowed' }}>ไม่ได้เลือก</button>
-                        ) : (
-                          <button onClick={() => claim(level.lv, o.id)} style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>กดรับ</button>
+                        {claimedThis && gt && (
+                          <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING[gt]}</div>
+                            {grantItems.length === 0 && !currentGrant ? (
+                              <div style={{ fontSize: 12, color: '#a8a59d' }}>ไม่มีตัวเลือกที่ยังไม่ถูกเลือก (หรือยังไม่ได้กำหนดในหน้า Magic &amp; Feature)</div>
+                            ) : (
+                              <select value={currentGrant} onChange={(e) => setGrantPick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
+                                <option value="">— เลือก —</option>
+                                {gt === 'lifestyle'
+                                  ? Object.entries(lifestyleGroups).map(([g, its]) => (
+                                      <optgroup key={g} label={g}>
+                                        {its.map((it) => <option key={it.value} value={it.value}>{it.label}</option>)}
+                                      </optgroup>
+                                    ))
+                                  : grantItems.map((it) => <option key={it.value} value={it.value}>{it.label}</option>)}
+                              </select>
+                            )}
+                          </div>
                         )}
                       </div>
                     );

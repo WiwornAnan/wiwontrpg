@@ -117,6 +117,7 @@ export interface WizardLevelOption {
   featureId: string | null;
   featureName: string | null;
   text: string;
+  grantType?: 'none' | 'weapon' | 'language' | 'lifestyle';
 }
 export interface WizardLevel {
   lv: number;
