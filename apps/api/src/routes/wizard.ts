@@ -48,6 +48,38 @@ wizardRouter.get('/class-levels/:refId', async (req, res) => {
   res.json({ template: { levels } });
 });
 
+// ── Race grants: Features a race hands the player (dev adds/removes) ──────────
+const grantSchema = z.object({
+  features: z.array(z.object({ featureId: z.string(), featureName: z.string().nullable().default(null) })),
+});
+
+wizardRouter.get('/race-grant/:refId', async (req, res) => {
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'race-grant', refId: req.params.refId } },
+  });
+  let grant = { features: [] as { featureId: string; featureName: string | null }[] };
+  if (row) {
+    const parsed = grantSchema.safeParse((() => { try { return JSON.parse(row.data); } catch { return {}; } })());
+    if (parsed.success) grant = parsed.data;
+  }
+  res.json({ grant });
+});
+
+wizardRouter.put('/race-grant/:refId', requireDev, async (req, res) => {
+  const parsed = grantSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const data = JSON.stringify(parsed.data);
+  await prisma.wizardTemplate.upsert({
+    where: { kind_refId: { kind: 'race-grant', refId: req.params.refId } },
+    create: { kind: 'race-grant', refId: req.params.refId, data },
+    update: { data },
+  });
+  res.json({ ok: true });
+});
+
 wizardRouter.put('/class-levels/:refId', requireDev, async (req, res) => {
   const parsed = templateSchema.safeParse(req.body);
   if (!parsed.success) {

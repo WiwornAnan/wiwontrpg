@@ -329,7 +329,7 @@ function RaceStep({
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); setInfo(r); }}
-                style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
                 ⓘ ดูข้อมูล
               </button>
@@ -337,6 +337,8 @@ function RaceStep({
           );
         })}
       </div>
+
+      {chosen && <RaceGrants raceId={chosen} wiwonIds={wiwonIds} />}
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && (
@@ -355,6 +357,77 @@ function RaceStep({
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// ── Features a race grants the player. Dev curates the list; players receive it. ──
+interface RaceGrant {
+  featureId: string;
+  featureName: string | null;
+}
+function RaceGrants({ raceId, wiwonIds }: { raceId: string; wiwonIds: string[] }) {
+  const { isDev } = useAuth();
+  const qc = useQueryClient();
+  const [addId, setAddId] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['race-grant', raceId],
+    queryFn: () => api.get<{ grant: { features: RaceGrant[] } }>(`/wizard/race-grant/${raceId}`),
+  });
+  const features = data?.grant.features ?? [];
+
+  const { data: pool } = useQuery({
+    enabled: isDev,
+    queryKey: ['feature-pool', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('', wiwonIds),
+  });
+
+  const save = useMutation({
+    mutationFn: (next: RaceGrant[]) => api.put(`/wizard/race-grant/${raceId}`, { features: next }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['race-grant', raceId] }),
+  });
+  const add = () => {
+    const f = (pool ?? []).find((x) => x.id === addId);
+    if (!f || features.some((x) => x.featureId === f.id)) return;
+    save.mutate([...features, { featureId: f.id, featureName: f.name }]);
+    setAddId('');
+  };
+  const remove = (fid: string) => save.mutate(features.filter((x) => x.featureId !== fid));
+
+  return (
+    <div style={{ marginTop: 18, borderTop: '1px solid #efece6', paddingTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Feature ที่เผ่าพันธุ์นี้มอบให้</div>
+      <div style={{ fontSize: 12, color: '#a8a59d', marginBottom: 10 }}>
+        {isDev ? 'ผู้พัฒนากำหนดได้ — ผู้เล่นจะได้รับทั้งหมดนี้อัตโนมัติ' : 'คุณจะได้รับ Feature เหล่านี้จากเผ่าพันธุ์'}
+      </div>
+
+      {features.length === 0 && (
+        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>{isDev ? 'ยังไม่มี — เพิ่มด้านล่าง' : 'เผ่าพันธุ์นี้ยังไม่มี Feature เพิ่มเติม'}</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {features.map((f) => (
+          <div key={f.featureId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9, background: '#f6f2ea', border: '1px solid #e8e0d0' }}>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#5c4a2e' }}>✦ {f.featureName ?? '(Feature)'}</span>
+            {isDev && (
+              <button onClick={() => remove(f.featureId)} title="ลบ" style={{ flex: 'none', border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 28, height: 28, cursor: 'pointer' }}>×</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {isDev && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, background: '#fff' }}>
+            <option value="">— เลือก Feature เพื่อเพิ่ม —</option>
+            {(pool ?? []).filter((f) => !features.some((x) => x.featureId === f.id)).map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <Button variant="coral" disabled={!addId || save.isPending} onClick={add}>+ เพิ่ม</Button>
+        </div>
+      )}
     </div>
   );
 }
