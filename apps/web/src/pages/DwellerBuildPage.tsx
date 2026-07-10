@@ -255,7 +255,9 @@ function CharacterSheet({
   const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
   const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
-  const languages = featIds.map((id) => featById.get(id)).filter((f): f is CatalogItem => !!f && f.tags.includes('Language')).map((f) => f.name);
+  // Language options = every Feature tagged "Language" in the catalog (not just this
+  // character's purchases), matching the old design. Empty until such Features exist.
+  const languages = (features ?? []).filter((f) => f.tags.includes('Language')).map((f) => f.name);
   // Proficiency = Features tagged "Specialization" the player picks via the + button.
   const specPool = (features ?? []).filter((f) => f.tags.includes('Specialization'));
   const proficiencies: string[] = Array.isArray(sheet.proficiencies) ? (sheet.proficiencies as string[]) : [];
