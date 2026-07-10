@@ -127,6 +127,8 @@ function CharacterSheet({
   const [editCamp, setEditCamp] = useState(false);
   const [editXp, setEditXp] = useState(false);
   const [rollFaces, setRollFaces] = useState<number | null>(null);
+  const [sanAmt, setSanAmt] = useState(0);
+  const [scrAmt, setScrAmt] = useState(0);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -199,33 +201,60 @@ function CharacterSheet({
   const bluePill: React.CSSProperties = { background: '#dfeaf5', border: '1px solid #cbd9ea', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 800, color: '#2a5fbd', textAlign: 'center', minWidth: 44 };
   const plus = <span style={{ fontSize: 16, color: '#c9c5bd', fontWeight: 700 }}>+</span>;
 
-  const woundLevel = sv('woundLevel', 0);
-  const lastBreath = sv('lastBreath', 0);
-  const LB_MAX = 16;
+  // ── Sanity / Scratch pools ──
+  const sanTemp = sv('sanTemp', 0);
+  const sanCur = sv('sanCur', sanityMax);
+  const scrTemp = sv('scratchTemp', 0);
+  const scrCur = sv('scratchCur', scratchMax);
+  const sanRatio = sanityMax > 0 ? sanCur / sanityMax : 1;
+  const sanStatuses = [
+    ...(sanRatio < 0.5 ? ['เครียด'] : []),
+    ...(sanRatio < 0.3 ? ['บาดแผลทางจิตใจ'] : []),
+    ...(sanRatio < 0.1 ? ['จิตผิดปกติ'] : []),
+  ];
+  const healPool = (curKey: string, cur: number, max: number, amt: number) => setSheet({ [curKey]: Math.min(max, cur + amt) });
+  const damagePool = (curKey: string, tempKey: string, cur: number, temp: number, amt: number) => {
+    let a = amt; let t = temp; const d = Math.min(t, a); t -= d; a -= d;
+    setSheet({ [tempKey]: t, [curKey]: Math.max(0, cur - a) });
+  };
 
-  const pooRow = (label: string, cur: number, max: number, temp: number, curKey: string, tempKey: string, recoverLabel: string, damageLabel: string, tempLabel = 'TEMP') => (
+  // ── Wounds: 4 green ("Have no impact") + 5 red levels, ticked left→right ──
+  const woundTicks = sv('woundTicks', 0); // 0..9
+  const GREEN_SLOTS = 4;
+  const redLevel = Math.max(0, woundTicks - GREEN_SLOTS); // 0..5 (1=First Blood … 5=Death's Door)
+  const WOUND_DEBUFFS = ['อ่อนแอต่อพิษ', 'อ่อนกำลัง', 'อ่อนล้า', 'หมดแรง'];
+  const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(redLevel, 4));
+  const deathDoor = woundTicks >= GREEN_SLOTS + 5;
+  const tickWound = (i: number) => setSheet({ woundTicks: woundTicks === i + 1 ? i : i + 1 });
+
+  // ── The Last Breath: 5 green (revive) + 5 red (death) ──
+  const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
+  const lbRed: boolean[] = Array.isArray(sheet.lbRed) ? (sheet.lbRed as boolean[]) : [false, false, false, false, false];
+  const reviveActive = lbGreen.filter(Boolean).length >= 5;
+  const showDeathOverlay = deathDoor && !reviveActive;
+  const toggleLB = (which: 'lbGreen' | 'lbRed', arr: boolean[], i: number) => { const nx = [...arr]; nx[i] = !nx[i]; setSheet({ [which]: nx }); };
+
+  const linkBtn = (color: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 700, color, background: 'none', border: 'none', cursor: 'pointer', padding: 0 });
+  const amtInput: React.CSSProperties = { width: 44, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 4px', fontSize: 13, background: '#faf9f7' };
+
+  const poolBox = (title: string, tempLabel: string, temp: number, tempKey: string, cur: number, max: number, healLabel: string, dmgLabel: string, amt: number, setAmt: (v: number) => void, onHeal: () => void, onDamage: () => void) => (
     <div style={box}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-        <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+        <div style={{ textAlign: 'center', flex: 'none' }}>
           <div style={secTitle}>{tempLabel}</div>
-          <div style={{ ...bluePill, marginTop: 4 }}>
-            <NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={44} />
-          </div>
+          <div style={{ ...bluePill, marginTop: 4, minWidth: 74 }}><NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={58} /></div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'baseline', justifyContent: 'flex-end' }}>
-            <span style={{ fontSize: 11, color: '#9a978e' }}>ปัจจุบัน</span>
-            <span style={{ fontSize: 26, fontWeight: 800, color: '#2f2c25' }}><NumField value={cur} onCommit={(v) => setSheet({ [curKey]: v })} width={54} /></span>
-            <span style={{ fontSize: 20, color: '#cfccc4', fontWeight: 700 }}>/</span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: '#8d8a82' }}>{max}</span>
-            <span style={{ fontSize: 11, color: '#9a978e' }}>สูงสุด</span>
-          </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8 }}>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>ปัจจุบัน</div><div style={{ fontSize: 32, fontWeight: 800, color: '#2f2c25', lineHeight: 1 }}>{cur}</div></div>
+          <span style={{ fontSize: 26, color: '#cfccc4', fontWeight: 700, paddingBottom: 2 }}>/</span>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>สูงสุด</div><div style={{ fontSize: 32, fontWeight: 800, color: '#8d8a82', lineHeight: 1 }}>{max}</div></div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: '#9a978e' }}>
-        <span>{label}</span>
-        <span style={{ marginLeft: 'auto' }}>{recoverLabel}</span>
-        <span>{damageLabel}</span>
+      <div style={{ fontSize: 13, fontWeight: 800, color: '#5c4a2e', marginTop: 8 }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, justifyContent: 'center' }}>
+        <button onClick={onHeal} style={linkBtn('#2f7d4f')}>{healLabel}</button>
+        <input type="number" value={amt} onChange={(e) => setAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={amtInput} />
+        <button onClick={onDamage} style={linkBtn('#c0432a')}>{dmgLabel}</button>
       </div>
     </div>
   );
@@ -344,36 +373,69 @@ function CharacterSheet({
         <div style={{ display: 'grid', gridTemplateColumns: '290px 300px 1fr', gap: 12, alignItems: 'start' }}>
           {/* Left */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {pooRow('SANITY', sv('sanCur', sanityMax), sanityMax, sv('sanTemp', 0), 'sanCur', 'sanTemp', 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ', 'SAN TEMP')}
-            <div style={{ ...box, padding: '10px 14px', fontSize: 12, color: '#9a978e' }}>สถานะค่าสติปัจจุบัน: <b style={{ color: '#3c3a33' }}>{svs('sanStatus', '—')}</b></div>
-            {pooRow('SCRATCH POINT', sv('scratchCur', scratchMax), scratchMax, sv('scratchTemp', 0), 'scratchCur', 'scratchTemp', 'ฟื้นฟู', 'บาดเจ็บ')}
-            <div style={box}>
-              <div style={secTitle}>WOUNDS POINT</div>
-              <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
-                {(() => {
-                  const woundBtn = (i: number) => (
-                    <button key={WOUND_LEVELS[i].label} onClick={() => setSheet({ woundLevel: i })} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: woundLevel === i ? '#faf6ef' : 'transparent', borderRadius: 7, padding: '3px 4px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: WOUND_LEVELS[i].color, flex: 'none' }} />
-                      <span style={{ fontSize: 12, fontWeight: woundLevel === i ? 800 : 500, color: woundLevel === i ? '#2f2c25' : '#8d8a82' }}>{WOUND_LEVELS[i].label}</span>
-                    </button>
-                  );
-                  return (
-                    <>
-                      <div style={{ flex: 'none' }}>{woundBtn(0)}</div>
-                      <div style={{ flex: 1 }}>{[1, 2, 3, 4, 5].map((i) => woundBtn(i))}</div>
-                    </>
-                  );
-                })()}
+            {poolBox('SANITY', 'SAN TEMP', sanTemp, 'sanTemp', sanCur, sanityMax, 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ', sanAmt, setSanAmt, () => healPool('sanCur', sanCur, sanityMax, sanAmt), () => damagePool('sanCur', 'sanTemp', sanCur, sanTemp, sanAmt))}
+            <div style={{ ...box, padding: '10px 14px', fontSize: 12, color: '#9a978e', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              สถานะค่าสติปัจจุบัน:
+              {sanStatuses.length === 0 ? <b style={{ color: '#3c3a33' }}>ปกติ</b> : sanStatuses.map((s) => <span key={s} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 7, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{s}</span>)}
+            </div>
+            {poolBox('SCRATCH POINT', 'TEMP', scrTemp, 'scratchTemp', scrCur, scratchMax, 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scratchMax, scrAmt), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
+            <div style={{ ...box, position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={secTitle}>WOUNDS POINT</span>
+                <span style={{ display: 'flex', gap: 5 }}>
+                  <button onClick={() => setSheet({ woundTicks: Math.max(0, woundTicks - 1) })} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>−</button>
+                  <button onClick={() => setSheet({ woundTicks: Math.min(GREEN_SLOTS + 5, woundTicks + 1) })} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                </span>
               </div>
+              <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+                <div style={{ flex: 'none' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#5aa06a', marginBottom: 5 }}>Have no impact</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {Array.from({ length: GREEN_SLOTS }).map((_, i) => (
+                      <button key={i} onClick={() => tickWound(i)} title="Have no impact" style={{ width: 18, height: 18, borderRadius: 5, border: '1px solid #bfe0c6', background: i < woundTicks ? '#7bc48a' : '#eaf5ec', cursor: 'pointer' }} />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {[1, 2, 3, 4, 5].map((lv) => {
+                    const idx = GREEN_SLOTS + lv - 1;
+                    const on = woundTicks > idx;
+                    const w = WOUND_LEVELS[lv];
+                    return (
+                      <button key={w.label} onClick={() => tickWound(idx)} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
+                        <span style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${w.color}`, background: on ? w.color : 'transparent', flex: 'none' }} />
+                        <span style={{ fontSize: 12, fontWeight: on ? 800 : 500, color: on ? '#2f2c25' : '#8d8a82' }}>{w.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {showDeathOverlay && (
+                <div style={{ position: 'absolute', inset: 0, borderRadius: 12, background: 'rgba(26,20,24,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#f0c8c8', fontWeight: 800, fontSize: 15 }}>
+                  <span>☠</span> ลมหายใจเฮือกสุดท้าย
+                </div>
+              )}
             </div>
             <div style={box}>
               <div style={secTitle}>THE LAST BREATH</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 5, margin: '8px 0 6px' }}>
-                {Array.from({ length: LB_MAX }).map((_, i) => (
-                  <button key={i} onClick={() => setSheet({ lastBreath: lastBreath === i + 1 ? i : i + 1 })} style={{ height: 20, borderRadius: 5, border: '1px solid #eecfcb', background: i < lastBreath ? '#e7a7a0' : '#fbeeec', cursor: 'pointer' }} />
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '8px 0 6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, flex: 1 }}>
+                    {lbGreen.map((on, i) => (
+                      <button key={i} onClick={() => toggleLB('lbGreen', lbGreen, i)} title="มีชีวิต" style={{ height: 22, borderRadius: 6, border: '1px solid #bfe0c6', background: on ? '#7bc48a' : '#eaf5ec', color: '#1c5a2a', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{on ? '✚' : ''}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 10.5, color: '#5aa06a', fontWeight: 700, flex: 'none' }}>ฟื้นกลับมา</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, flex: 1 }}>
+                    {lbRed.map((on, i) => (
+                      <button key={i} onClick={() => toggleLB('lbRed', lbRed, i)} title="ความตาย" style={{ height: 22, borderRadius: 6, border: '1px solid #eecfcb', background: on ? '#d9736b' : '#fbeeec', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{on ? '☠' : ''}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 10.5, color: '#c0432a', fontWeight: 700, flex: 'none' }}>สิ้นใจ</span>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#a8a59d' }}><span>ฟื้นกลับมา</span><span>สิ้นใจ</span></div>
             </div>
           </div>
 
@@ -385,6 +447,12 @@ function CharacterSheet({
             </div>
             <div style={box}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>สถานะผิดปกติ (Debuff)</span>{plus}</div>
+              {(activeWoundDebuffs.length > 0 || deathDoor) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {activeWoundDebuffs.map((db) => <span key={db} style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{db}</span>)}
+                  {deathDoor && <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 10px', borderRadius: 8, background: '#2f2c25', color: '#f0c8c8' }}>☠ ลมหายใจเฮือกสุดท้าย</span>}
+                </div>
+              )}
               <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('debuff')} onCommit={(v) => setSheet({ debuff: v })} /></div>
             </div>
             <div style={box}>
