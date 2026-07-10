@@ -147,6 +147,7 @@ function CharacterSheet({
   const setSheet = (partial: Record<string, unknown>) => patch.mutate({ data: { ...d, sheet: { ...sheet, ...partial } } });
   const xp = sv('xp', 0);
   const xpMax = level * 10000;
+  const xpPct = Math.round(Math.min(100, xpMax > 0 ? (xp / xpMax) * 100 : 0));
   const canLevelUp = xp >= xpMax && xpMax > 0;
   const levelUp = () => patch.mutate({ step: 2 }, { onSuccess: () => navigate(`/dweller/build/${character.id}`) });
 
@@ -264,23 +265,24 @@ function CharacterSheet({
             <div title={wiwonSets.join(', ')} style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Wiwon: {wiwonSets.join(', ') || '—'}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
               <span style={{ fontSize: 11, color: '#c9c5bd', fontWeight: 700 }}>XP</span>
-              <div style={{ width: 120, height: 8, borderRadius: 6, background: '#3a382f', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(100, xpMax > 0 ? (xp / xpMax) * 100 : 0)}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)' }} />
+              <div title={`${xpPct}%`} style={{ position: 'relative', width: 180, height: 12, borderRadius: 7, background: '#3a382f', overflow: 'hidden' }}>
+                <div style={{ width: `${xpPct}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)', transition: 'width .3s' }} />
+                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: xpPct > 55 ? '#fff' : '#d8d4c8' }}>{xpPct}%</span>
               </div>
               <button onClick={canLevelUp ? levelUp : undefined} disabled={!canLevelUp} title={canLevelUp ? 'เลเวลอัพ — ไปเลือกรางวัลใน Step 2' : 'ยังไม่ถึงเกณฑ์เลเวลอัพ'} style={{ fontSize: 10, fontWeight: 800, color: canLevelUp ? '#15140f' : '#8a7a4a', background: canLevelUp ? '#f7dca0' : 'transparent', border: '1px solid #6a5a2a', borderRadius: 6, padding: '2px 7px', cursor: canLevelUp ? 'pointer' : 'default' }}>LV UP</button>
             </div>
-            <div style={{ fontSize: 11, color: '#a8a49a', marginTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 6, fontSize: 11, color: '#a8a49a' }}>
+              <span>{xp.toLocaleString()} / {xpMax.toLocaleString()} XP</span>
               {editXp ? (
                 <input
-                  autoFocus type="number"
-                  defaultValue={xp}
-                  onBlur={(e) => { setSheet({ xp: Math.max(0, Math.round(Number(e.target.value) || 0)) }); setEditXp(false); }}
+                  autoFocus type="number" placeholder="+EXP"
+                  onBlur={(e) => { const add = Math.round(Number(e.target.value) || 0); if (add) setSheet({ xp: Math.max(0, xp + add) }); setEditXp(false); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditXp(false); }}
-                  style={{ width: 90, fontSize: 12, border: 'none', borderRadius: 6, padding: '2px 6px', textAlign: 'right' }}
+                  style={{ width: 76, fontSize: 11.5, border: 'none', borderRadius: 6, padding: '3px 7px', textAlign: 'right' }}
                 />
               ) : (
-                <span onClick={() => setEditXp(true)} title="กดเพื่อแก้จำนวน EXP" style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{xp.toLocaleString()}</span>
-              )} / {xpMax.toLocaleString()} XP
+                <button onClick={() => setEditXp(true)} title="เพิ่ม EXP" style={{ fontSize: 10.5, fontWeight: 800, color: '#fff', background: '#e07a5f', border: 'none', borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>＋ EXP</button>
+              )}
             </div>
           </div>
         </div>
