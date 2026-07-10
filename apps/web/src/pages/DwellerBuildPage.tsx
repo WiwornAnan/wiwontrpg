@@ -127,6 +127,7 @@ function CharacterSheet({
   const [endAmt, setEndAmt] = useState(0);
   const [profPicker, setProfPicker] = useState(false);
   const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
+  const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -608,7 +609,11 @@ function CharacterSheet({
                           return (
                             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ec' }}>
                               <span style={{ width: 26, height: 22, borderRadius: 6, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
-                              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                              <span
+                                onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setSkillTip({ name: s.name, desc: s.desc, x: Math.min(r.left, window.innerWidth - 336), y: r.bottom }); }}
+                                onMouseLeave={() => setSkillTip(null)}
+                                style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help' }}
+                              >{s.name}</span>
                               {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
                               {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
                               <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
@@ -668,6 +673,14 @@ function CharacterSheet({
         </div>
       </div>
       <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} onClose={() => setRoll(null)} />
+
+      {/* ── hover description for Dweller Skill rows ── */}
+      {skillTip && (
+        <div style={{ position: 'fixed', left: skillTip.x, top: skillTip.y + 6, zIndex: 400, width: 320, background: '#221f1a', color: '#f3ede1', borderRadius: 10, padding: '10px 13px', boxShadow: '0 10px 28px rgba(0,0,0,.3)', pointerEvents: 'none' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{skillTip.name}</div>
+          <div style={{ fontSize: 12, lineHeight: 1.55, color: '#cbc3b4' }}>{skillTip.desc}</div>
+        </div>
+      )}
 
       {/* ── "ท้าทาย" per-skill challenge popup ── */}
       <Modal open={!!challengeSkill} onClose={() => setChallengeSkill(null)} title="ท้าทาย">
