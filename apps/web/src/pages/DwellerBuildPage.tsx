@@ -189,13 +189,13 @@ function CharacterSheet({
 
   const woundLevel = sv('woundLevel', 0);
   const lastBreath = sv('lastBreath', 0);
-  const LB_MAX = 10;
+  const LB_MAX = 16;
 
-  const pooRow = (label: string, cur: number, max: number, temp: number, curKey: string, tempKey: string, recoverLabel: string, damageLabel: string) => (
+  const pooRow = (label: string, cur: number, max: number, temp: number, curKey: string, tempKey: string, recoverLabel: string, damageLabel: string, tempLabel = 'TEMP') => (
     <div style={box}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div>
-          <div style={secTitle}>TEMP</div>
+          <div style={secTitle}>{tempLabel}</div>
           <div style={{ ...bluePill, marginTop: 4 }}>
             <NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={44} />
           </div>
@@ -251,46 +251,56 @@ function CharacterSheet({
               const name = attr.replace(/\s*\(.*\)/, '');
               const g = byAbbr[abbr] ?? '—';
               return (
-                <div key={attr} style={{ position: 'relative', border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 8px 12px', textAlign: 'center', background: '#fff' }}>
-                  <span style={{ position: 'absolute', top: -10, left: 8, background: '#e07a5f', color: '#fff', fontSize: 12, fontWeight: 800, borderRadius: 7, padding: '3px 8px' }}>d{STEP10_FACES[g] ?? '?'}</span>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#8d8a82', textAlign: 'right' }}>{abbr}</div>
-                  <div style={{ fontSize: 40, fontWeight: 800, color: '#3c3a33', lineHeight: 1.1, margin: '2px 0 6px' }}>{g}</div>
-                  <div style={{ fontSize: 11, color: '#9a978e' }}>{name}</div>
+                <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '16px 10px 12px', textAlign: 'center' }}>
+                  <span style={{ position: 'absolute', top: -11, left: 10, background: '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: '3px 9px' }}>d{STEP10_FACES[g] ?? '?'}</span>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#8d8a82', textAlign: 'right' }}>{abbr}</div>
+                  <div style={{ fontSize: 58, fontWeight: 800, color: '#35322b', lineHeight: 1, margin: '2px 0 10px' }}>{g}</div>
+                  <div style={{ fontSize: 12.5, color: '#9a978e' }}>{name}</div>
                 </div>
               );
             })}
           </div>
-          <div style={{ flex: 'none', width: 210 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82', textAlign: 'center', marginBottom: 6 }}>— ได้รับการอวยพร —</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ flex: 'none', width: 250 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#8d8a82', fontWeight: 700, justifyContent: 'center', marginBottom: 8 }}>
+              <span style={{ flex: 1, height: 1, background: '#e0ded7' }} />ได้รับการอวยพร<span style={{ flex: 1, height: 1, background: '#e0ded7' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {[0, 1, 2].map((i) => (
-                <div key={i} style={{ height: 34, borderRadius: 10, background: '#f6ecae', border: '1px solid #e6d485', display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#7a6a2a' }}>{virtues[i] ?? ''}</div>
+                <div key={i} style={{ height: 42, borderRadius: 12, background: '#f6ecae', border: '1px solid #e6d485', display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#7a6a2a' }}>{virtues[i] ?? ''}</div>
               ))}
             </div>
           </div>
         </div>
 
         {/* ── Body: 3 columns ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '245px minmax(240px, 1fr) minmax(360px, 1.55fr)', gap: 12, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '290px 300px 1fr', gap: 12, alignItems: 'start' }}>
           {/* Left */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {pooRow('SANITY', sv('sanCur', sanityMax), sanityMax, sv('sanTemp', 0), 'sanCur', 'sanTemp', 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ')}
+            {pooRow('SANITY', sv('sanCur', sanityMax), sanityMax, sv('sanTemp', 0), 'sanCur', 'sanTemp', 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ', 'SAN TEMP')}
             <div style={{ ...box, padding: '10px 14px', fontSize: 12, color: '#9a978e' }}>สถานะค่าสติปัจจุบัน: <b style={{ color: '#3c3a33' }}>{svs('sanStatus', '—')}</b></div>
             {pooRow('SCRATCH POINT', sv('scratchCur', scratchMax), scratchMax, sv('scratchTemp', 0), 'scratchCur', 'scratchTemp', 'ฟื้นฟู', 'บาดเจ็บ')}
             <div style={box}>
               <div style={secTitle}>WOUNDS POINT</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
-                {WOUND_LEVELS.map((w, i) => (
-                  <button key={w.label} onClick={() => setSheet({ woundLevel: i })} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: woundLevel === i ? '#faf6ef' : 'transparent', borderRadius: 7, padding: '3px 6px', cursor: 'pointer', textAlign: 'left' }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: w.color, flex: 'none' }} />
-                    <span style={{ fontSize: 12, fontWeight: woundLevel === i ? 800 : 500, color: woundLevel === i ? '#2f2c25' : '#8d8a82' }}>{w.label}</span>
-                  </button>
-                ))}
+              <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+                {(() => {
+                  const woundBtn = (i: number) => (
+                    <button key={WOUND_LEVELS[i].label} onClick={() => setSheet({ woundLevel: i })} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: woundLevel === i ? '#faf6ef' : 'transparent', borderRadius: 7, padding: '3px 4px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: WOUND_LEVELS[i].color, flex: 'none' }} />
+                      <span style={{ fontSize: 12, fontWeight: woundLevel === i ? 800 : 500, color: woundLevel === i ? '#2f2c25' : '#8d8a82' }}>{WOUND_LEVELS[i].label}</span>
+                    </button>
+                  );
+                  return (
+                    <>
+                      <div style={{ flex: 'none' }}>{woundBtn(0)}</div>
+                      <div style={{ flex: 1 }}>{[1, 2, 3, 4, 5].map((i) => woundBtn(i))}</div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <div style={box}>
               <div style={secTitle}>THE LAST BREATH</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, margin: '8px 0 6px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 5, margin: '8px 0 6px' }}>
                 {Array.from({ length: LB_MAX }).map((_, i) => (
                   <button key={i} onClick={() => setSheet({ lastBreath: lastBreath === i + 1 ? i : i + 1 })} style={{ height: 20, borderRadius: 5, border: '1px solid #eecfcb', background: i < lastBreath ? '#e7a7a0' : '#fbeeec', cursor: 'pointer' }} />
                 ))}
