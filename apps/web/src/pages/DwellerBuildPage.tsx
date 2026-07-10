@@ -198,7 +198,6 @@ function CharacterSheet({
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
   const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: '.03em', color: '#6b6860' };
-  const bluePill: React.CSSProperties = { background: '#dfeaf5', border: '1px solid #cbd9ea', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 800, color: '#2a5fbd', textAlign: 'center', minWidth: 44 };
   const plus = <span style={{ fontSize: 16, color: '#c9c5bd', fontWeight: 700 }}>+</span>;
 
   // ── Sanity / Scratch pools (max defaults to Step 10 but is editable) ──
@@ -223,7 +222,7 @@ function CharacterSheet({
   // ── Wounds: red levels cumulative-tick 1→5; green "Have no impact" is a buffer
   //    whose slot count is added/removed with +/- (starts at 0, hidden). ──
   const woundLevel = sv('woundLevel', 0); // 0..5
-  const woundGreen = sv('woundGreen', 0); // 0..4 buffer slots
+  const woundGreen = sv('woundGreen', 1); // 1..4 "Have no impact" slots
   const greenTicked = sv('woundGreenTicked', 0);
   const WOUND_DEBUFFS = ['อ่อนแอต่อพิษ', 'อ่อนกำลัง', 'อ่อนล้า', 'หมดแรง'];
   const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(woundLevel, 4));
@@ -231,7 +230,7 @@ function CharacterSheet({
   const tickWound = (lv: number) => setSheet({ woundLevel: woundLevel === lv ? lv - 1 : lv });
   const tickGreen = (i: number) => setSheet({ woundGreenTicked: greenTicked === i + 1 ? i : i + 1 });
   const addGreen = () => setSheet({ woundGreen: Math.min(4, woundGreen + 1) });
-  const subGreen = () => { const ng = Math.max(0, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
+  const subGreen = () => { const ng = Math.max(1, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
 
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
@@ -243,35 +242,30 @@ function CharacterSheet({
   const amtInput: React.CSSProperties = { width: 46, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 8, padding: '5px 4px', fontSize: 13, background: '#fff' };
   const actBtn = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 800, color, background: bg, border: `1px solid ${brd}`, borderRadius: 8, padding: '5px 11px', cursor: 'pointer', whiteSpace: 'nowrap' });
 
-  const poolBox = (title: string, accent: string, tempLabel: string, temp: number, tempKey: string, cur: number, max: number, maxKey: string, healLabel: string, dmgLabel: string, amt: number, setAmt: (v: number) => void, onHeal: () => void, onDamage: () => void) => {
-    const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
-    return (
-      <div style={{ ...box, padding: '14px 16px', background: 'linear-gradient(#ffffff,#fcfbf9)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 800, color: accent }}>{title}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d' }}>{tempLabel}</div>
-              <div style={{ ...bluePill, minWidth: 52, fontSize: 15, padding: '3px 6px' }}><NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={40} /></div>
-            </div>
+  const bigNum: React.CSSProperties = { fontSize: 36, fontWeight: 800, lineHeight: 1, border: 'none', background: 'transparent', padding: 0, width: 58 };
+  const poolBox = (title: string, accent: string, tempLabel: string, temp: number, tempKey: string, cur: number, max: number, maxKey: string, healLabel: string, dmgLabel: string, amt: number, setAmt: (v: number) => void, onHeal: () => void, onDamage: () => void) => (
+    <div style={{ ...box, padding: '16px 18px', borderRadius: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ textAlign: 'center', flex: 'none' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#8d8a82', letterSpacing: '.03em' }}>{tempLabel}</div>
+          <div style={{ marginTop: 5, background: '#dbe9f7', border: '1px solid #c3d6ec', borderRadius: 11, padding: '5px 8px', minWidth: 86, display: 'flex', justifyContent: 'center' }}>
+            <NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={70} style={{ fontSize: 22, fontWeight: 800, color: '#2a5fbd', border: 'none', background: 'transparent', padding: 0 }} />
           </div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: accent, marginTop: 8 }}>{title}</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 10 }}>
-          <div style={{ textAlign: 'center' }}><div style={secTitle}>ปัจจุบัน</div><div style={{ fontSize: 34, fontWeight: 800, color: accent, lineHeight: 1 }}>{cur}</div></div>
-          <span style={{ fontSize: 26, color: '#d8d4cc', fontWeight: 700, paddingBottom: 3 }}>/</span>
-          <div style={{ textAlign: 'center' }}><div style={secTitle}>สูงสุด</div><div style={{ fontSize: 20, fontWeight: 800, color: '#8d8a82', lineHeight: 1 }}><NumField value={max} onCommit={(v) => setSheet({ [maxKey]: v })} width={48} /></div></div>
-        </div>
-        <div style={{ height: 7, borderRadius: 5, background: '#eee9e1', overflow: 'hidden', margin: '10px 0 10px' }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: pct < 30 ? '#d9736b' : pct < 50 ? '#e0a24a' : accent, transition: 'width .25s' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
-          <button onClick={onHeal} style={actBtn('#eef6f0', '#2f7d4f', '#cfe6d6')}>{healLabel}</button>
-          <input type="number" value={amt} onChange={(e) => setAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={amtInput} />
-          <button onClick={onDamage} style={actBtn('#f9eeea', '#c0432a', '#f0d0c4')}>{dmgLabel}</button>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, paddingTop: 2 }}>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>ปัจจุบัน</div><div style={{ ...bigNum, color: accent, width: 'auto', minWidth: 40 }}>{cur}</div></div>
+          <span style={{ fontSize: 30, color: '#d8d4cc', fontWeight: 700, marginTop: 16 }}>/</span>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>สูงสุด</div><NumField value={max} onCommit={(v) => setSheet({ [maxKey]: v })} style={{ ...bigNum, color: '#8d8a82' }} /></div>
         </div>
       </div>
-    );
-  };
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, justifyContent: 'center' }}>
+        <button onClick={onHeal} style={actBtn('#eef6f0', '#2f7d4f', '#cfe6d6')}>{healLabel}</button>
+        <input type="number" value={amt} onChange={(e) => setAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={amtInput} />
+        <button onClick={onDamage} style={actBtn('#f9eeea', '#c0432a', '#f0d0c4')}>{dmgLabel}</button>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
@@ -397,7 +391,7 @@ function CharacterSheet({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={secTitle}>WOUNDS POINT</span>
                 <span style={{ display: 'flex', gap: 5 }}>
-                  <button onClick={subGreen} disabled={woundGreen === 0} title="ลดช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen === 0 ? '#f5f3ef' : '#fff', color: woundGreen === 0 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen === 0 ? 'not-allowed' : 'pointer' }}>−</button>
+                  <button onClick={subGreen} disabled={woundGreen <= 1} title="ลดช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen <= 1 ? '#f5f3ef' : '#fff', color: woundGreen <= 1 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen <= 1 ? 'not-allowed' : 'pointer' }}>−</button>
                   <button onClick={addGreen} disabled={woundGreen >= 4} title="เพิ่มช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen >= 4 ? '#f5f3ef' : '#fff', color: woundGreen >= 4 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen >= 4 ? 'not-allowed' : 'pointer' }}>+</button>
                 </span>
               </div>
@@ -433,22 +427,22 @@ function CharacterSheet({
             </div>
             <div style={box}>
               <div style={secTitle}>THE LAST BREATH</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '8px 0 6px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, flex: 1 }}>
                     {lbGreen.map((on, i) => (
-                      <button key={i} onClick={() => toggleLB('lbGreen', lbGreen, i)} title="มีชีวิต" style={{ height: 22, borderRadius: 6, border: '1px solid #bfe0c6', background: on ? '#7bc48a' : '#eaf5ec', color: '#1c5a2a', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{on ? '✚' : ''}</button>
+                      <button key={i} onClick={() => toggleLB('lbGreen', lbGreen, i)} title="มีชีวิต" style={{ height: 30, borderRadius: 9, border: `1.5px solid ${on ? '#5aa06a' : '#cfe6d3'}`, background: on ? '#7bc48a' : '#eef7f0', color: on ? '#fff' : '#bcd7c1', fontSize: 15, fontWeight: 800, cursor: 'pointer', transition: 'all .12s' }}>{on ? '✚' : ''}</button>
                     ))}
                   </div>
-                  <span style={{ fontSize: 10.5, color: '#5aa06a', fontWeight: 700, flex: 'none' }}>ฟื้นกลับมา</span>
+                  <span style={{ width: 54, flex: 'none', fontSize: 11, color: '#2f7d4f', fontWeight: 800, textAlign: 'left' }}>ฟื้นกลับมา</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, flex: 1 }}>
                     {lbRed.map((on, i) => (
-                      <button key={i} onClick={() => toggleLB('lbRed', lbRed, i)} title="ความตาย" style={{ height: 22, borderRadius: 6, border: '1px solid #eecfcb', background: on ? '#d9736b' : '#fbeeec', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>{on ? '☠' : ''}</button>
+                      <button key={i} onClick={() => toggleLB('lbRed', lbRed, i)} title="ความตาย" style={{ height: 30, borderRadius: 9, border: `1.5px solid ${on ? '#c0432a' : '#f0d0c9'}`, background: on ? '#d9736b' : '#fbeeec', color: on ? '#fff' : '#e3b7b1', fontSize: 15, fontWeight: 800, cursor: 'pointer', transition: 'all .12s' }}>{on ? '☠' : ''}</button>
                     ))}
                   </div>
-                  <span style={{ fontSize: 10.5, color: '#c0432a', fontWeight: 700, flex: 'none' }}>สิ้นใจ</span>
+                  <span style={{ width: 54, flex: 'none', fontSize: 11, color: '#c0432a', fontWeight: 800, textAlign: 'left' }}>สิ้นใจ</span>
                 </div>
               </div>
             </div>
@@ -2852,7 +2846,7 @@ const facesOf = (byAbbr: Record<string, string>, abbr: string) => STEP10_FACES[b
 const rollDie = (faces: number) => (faces > 0 ? 1 + Math.floor(Math.random() * faces) : 0);
 
 // A number field that keeps local focus while typing and commits on blur.
-function NumField({ value, onCommit, width = 76 }: { value: number; onCommit: (v: number) => void; width?: number }) {
+function NumField({ value, onCommit, width = 76, style }: { value: number; onCommit: (v: number) => void; width?: number; style?: React.CSSProperties }) {
   const [t, setT] = useState(String(value));
   useEffect(() => { setT(String(value)); }, [value]);
   return (
@@ -2861,7 +2855,7 @@ function NumField({ value, onCommit, width = 76 }: { value: number; onCommit: (v
       value={t}
       onChange={(e) => setT(e.target.value)}
       onBlur={() => { const v = Math.round(Number(t) || 0); setT(String(v)); if (v !== value) onCommit(v); }}
-      style={{ width, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 14, textAlign: 'center', background: '#fff' }}
+      style={{ width, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 14, textAlign: 'center', background: '#fff', ...style }}
     />
   );
 }
