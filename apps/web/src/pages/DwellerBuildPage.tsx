@@ -126,6 +126,7 @@ function CharacterSheet({
   const [editName, setEditName] = useState(false);
   const [editCamp, setEditCamp] = useState(false);
   const [editXp, setEditXp] = useState(false);
+  const [rollFaces, setRollFaces] = useState<number | null>(null);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -150,6 +151,7 @@ function CharacterSheet({
   const xpPct = Math.round(Math.min(100, xpMax > 0 ? (xp / xpMax) * 100 : 0));
   const canLevelUp = xp >= xpMax && xpMax > 0;
   const levelUp = () => patch.mutate({ step: 2 }, { onSuccess: () => navigate(`/dweller/build/${character.id}`) });
+  const blessings: boolean[] = Array.isArray(sheet.blessings) ? (sheet.blessings as boolean[]) : [false, false, false];
 
   // Derived stats (mirror Step 10).
   const s10 = d.step10 && typeof d.step10 === 'object' ? (d.step10 as Record<string, number>) : {};
@@ -288,30 +290,52 @@ function CharacterSheet({
         </div>
 
         {/* ── Attributes row + Blessings ── */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 9 }}>
             {CORE_ATTR_OPTIONS.map((attr) => {
               const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
               const name = attr.replace(/\s*\(.*\)/, '');
               const g = byAbbr[abbr] ?? '—';
+              const dFaces = STEP10_FACES[g] ?? 0;
               return (
-                <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '16px 10px 12px', textAlign: 'center' }}>
-                  <span style={{ position: 'absolute', top: -11, left: 10, background: '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, borderRadius: 8, padding: '3px 9px' }}>d{STEP10_FACES[g] ?? '?'}</span>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#8d8a82', textAlign: 'right' }}>{abbr}</div>
-                  <div style={{ fontSize: 58, fontWeight: 800, color: '#35322b', lineHeight: 1, margin: '2px 0 10px' }}>{g}</div>
-                  <div style={{ fontSize: 12.5, color: '#9a978e' }}>{name}</div>
+                <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '18px 8px 12px', minHeight: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => dFaces > 0 && setRollFaces(dFaces)}
+                    title={`ทอย ${abbr} (d${dFaces})`}
+                    style={{ position: 'absolute', top: -13, left: 10, background: '#e07a5f', color: '#fff', fontSize: 14, fontWeight: 800, borderRadius: 9, padding: '5px 11px', border: '2px solid #fff', boxShadow: '0 3px 8px rgba(224,122,95,.45)', cursor: dFaces > 0 ? 'pointer' : 'default', lineHeight: 1 }}
+                  >d{dFaces || '?'}</button>
+                  <div style={{ position: 'absolute', top: 9, right: 11, fontSize: 13, fontWeight: 800, color: '#8d8a82' }}>{abbr}</div>
+                  <div style={{ fontSize: 56, fontWeight: 800, color: '#35322b', lineHeight: 1 }}>{g}</div>
+                  <div style={{ fontSize: 12.5, color: '#9a978e', marginTop: 8 }}>{name}</div>
                 </div>
               );
             })}
           </div>
-          <div style={{ flex: 'none', width: 250 }}>
+          <div style={{ flex: 'none', width: 240, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#8d8a82', fontWeight: 700, justifyContent: 'center', marginBottom: 8 }}>
               <span style={{ flex: 1, height: 1, background: '#e0ded7' }} />ได้รับการอวยพร<span style={{ flex: 1, height: 1, background: '#e0ded7' }} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {[0, 1, 2].map((i) => (
-                <div key={i} style={{ height: 42, borderRadius: 12, background: '#f6ecae', border: '1px solid #e6d485', display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#7a6a2a' }}>{virtues[i] ?? ''}</div>
-              ))}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 9, justifyContent: 'space-between' }}>
+              {[0, 1, 2].map((i) => {
+                const on = !!blessings[i];
+                return (
+                  <button
+                    key={i}
+                    onClick={() => { const nb = [...blessings]; nb[i] = !on; setSheet({ blessings: nb }); }}
+                    title={on ? 'กดเพื่อเอาพรออก' : 'กดเพื่อรับพร'}
+                    style={{
+                      flex: 1, minHeight: 34, borderRadius: 12, cursor: 'pointer',
+                      background: on ? 'linear-gradient(90deg,#f7e27a,#f3d24e)' : '#f8f3d6',
+                      border: `1.5px solid ${on ? '#d9b53a' : '#e6d99a'}`,
+                      boxShadow: on ? '0 0 0 3px rgba(243,210,78,.28), 0 3px 10px rgba(200,160,40,.3)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: on ? '#6a4e08' : '#c4b775', fontSize: 13, fontWeight: 800,
+                      transition: 'all .15s',
+                    }}
+                  >
+                    {on ? <><span style={{ fontSize: 17 }}>✦</span><span>{virtues[i] || 'ได้รับพร'}</span><span style={{ fontSize: 17 }}>✦</span></> : <span style={{ fontSize: 15, opacity: .6 }}>＋</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -514,6 +538,7 @@ function CharacterSheet({
           </div>
         </div>
       </div>
+      <DiceRoller open={rollFaces !== null} egoFaces={rollFaces ?? 20} onClose={() => setRollFaces(null)} />
     </div>
   );
 }
