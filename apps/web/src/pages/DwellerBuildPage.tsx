@@ -805,10 +805,11 @@ function CharacterSheet({
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                           {bgTopics.map((t, i) => {
                             const on = t.id === activeId;
+                            const label = t.prompt?.trim() ? (t.prompt.length > 26 ? `${t.prompt.slice(0, 26)}…` : t.prompt) : `หัวข้อ ${i + 1}`;
                             return (
                               <button key={t.id} onClick={() => setBgTopic(t.id)} title={t.prompt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: on ? 700 : 600, padding: '5px 11px', borderRadius: 16, cursor: 'pointer', border: `1px solid ${on ? '#e07a5f' : '#eae7e0'}`, background: on ? '#fdeee9' : '#fff', color: on ? '#c15a3f' : '#8d8a82' }}>
                                 <span style={{ width: 6, height: 6, borderRadius: '50%', flex: 'none', background: t.answered ? '#5aa06a' : '#d5d2ca' }} />
-                                หัวข้อ {i + 1}
+                                {label}
                               </button>
                             );
                           })}
