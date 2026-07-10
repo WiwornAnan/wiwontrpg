@@ -73,7 +73,7 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   if (mode === 'sheet') {
     return (
       <Shell back={back}>
-        <CharacterSheet character={character} covers={covers} />
+        <CharacterSheet character={character} covers={covers} patch={patch} />
       </Shell>
     );
   }
@@ -96,10 +96,29 @@ function sheetSkillDie(byAbbr: Record<string, string>, attr: string, hasTalent: 
   return faces === 0 ? '0' : `d${faces}`;
 }
 
-function CharacterSheet({ character, covers }: { character: Character; covers: WiwonCover[] }) {
+const WOUND_LEVELS = [
+  { label: 'Have no impact', color: '#5aa06a' },
+  { label: 'First Blood', color: '#e6a3a8' },
+  { label: 'Impaired', color: '#dd8f96' },
+  { label: 'Suppressed', color: '#c0555f' },
+  { label: 'Desperate Edge', color: '#8f2f38' },
+  { label: "Death's Door", color: '#3a1418' },
+];
+const SHEET_TABS = ['ช่องเก็บของ', 'Dweller Skill', 'Magic', 'Feature', 'ภูมิหลัง', 'จัดการสินทรัพย์', 'พิเศษ', 'บันทึกประจำวัน'];
+
+function CharacterSheet({
+  character,
+  covers,
+  patch,
+}: {
+  character: Character;
+  covers: WiwonCover[];
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; status?: 'draft' | 'complete' }>>;
+}) {
   const byAbbr = useEffectiveGrades(character);
   const wiwonIds = wiwonIdsOf(character);
   const d = character.data;
+  const [tab, setTab] = useState('ช่องเก็บของ');
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -109,7 +128,15 @@ function CharacterSheet({ character, covers }: { character: Character; covers: W
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
   const wiwonNames = wiwonIds.map((wid) => covers.find((c) => c.id === wid)?.name).filter(Boolean) as string[];
   const raceName = str('raceName');
+  const ancestryName = str('ancestryName');
   const isAncestry = raceHasAncestry(raceName);
+  const level = numData(d.level) || 1;
+
+  // Sheet-only trackers persist under data.sheet.
+  const sheet = d.sheet && typeof d.sheet === 'object' ? (d.sheet as Record<string, unknown>) : {};
+  const sv = (k: string, def = 0) => (sheet[k] !== undefined ? numData(sheet[k]) : def);
+  const svs = (k: string, def = '') => (typeof sheet[k] === 'string' ? (sheet[k] as string) : def);
+  const setSheet = (partial: Record<string, unknown>) => patch.mutate({ data: { ...d, sheet: { ...sheet, ...partial } } });
 
   // Derived stats (mirror Step 10).
   const s10 = d.step10 && typeof d.step10 === 'object' ? (d.step10 as Record<string, number>) : {};
@@ -117,15 +144,12 @@ function CharacterSheet({ character, covers }: { character: Character; covers: W
   const n = (k: string) => numData(s10[k]);
   const a = (k: string) => (isAncestry ? numData(adj[k]) : 0);
   const faces = (abbr: string) => facesOf(byAbbr, abbr);
-  const derived = [
-    { label: 'Scratch Point', value: n('baseScratch') + n('scratchRollEND') + a('scratch') },
-    { label: 'Wound Point', value: n('wound') + a('wound') },
-    { label: 'Nature Defense', value: n('natureBase') + faces('DEX') + faces('PER') + a('natureDef') },
-    { label: 'Sanity Point', value: n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity') },
-    { label: 'Movement', value: n('movement') + a('movement') },
-    { label: 'Initiative', value: 10 + n('initRollDEX') + n('initRollCVN') + a('initiative') },
-    { label: 'Willpower', value: n('willpower') + a('willpower') },
-  ];
+  const scratchMax = n('baseScratch') + n('scratchRollEND') + a('scratch');
+  const sanityMax = n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity');
+  const natureDef = n('natureBase') + faces('DEX') + faces('PER') + a('natureDef');
+  const movement = n('movement') + a('movement');
+  const initiative = 10 + n('initRollDEX') + n('initRollCVN') + a('initiative');
+  const willpowerMax = n('willpower') + a('willpower');
 
   // Ehen
   const ehenType = str('ehenType');
@@ -143,6 +167,10 @@ function CharacterSheet({ character, covers }: { character: Character; covers: W
   const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
   const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
+  const skillNameByKey = new Map<string, string>();
+  DWELLER_SKILLS.forEach((cat) => cat.skills.forEach((s) => skillNameByKey.set(skillKey(cat.en, s.en), s.name)));
+  const profNames = prof.map((k) => skillNameByKey.get(k) ?? k);
+  const languages = featIds.map((id) => featById.get(id)).filter((f): f is CatalogItem => !!f && f.tags.includes('Language')).map((f) => f.name);
 
   // Wallet
   const walletIC = numData(d.walletIC);
@@ -150,136 +178,284 @@ function CharacterSheet({ character, covers }: { character: Character; covers: W
   const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
 
-  const card: React.CSSProperties = { ...cardPlain, marginBottom: 16 };
-  const h2: React.CSSProperties = { margin: '0 0 12px', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20 };
-  const chip = (_label: string, bg = '#f6f2ea', color = '#5c4a2e', brd = '#e8e0d0'): React.CSSProperties => ({ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
-  const meta = [raceName && (isAncestry && str('ancestryName') ? `${raceName} · ${str('ancestryName')}` : raceName), str('className'), d.level ? `Lv ${numData(d.level)}` : ''].filter(Boolean) as string[];
+  // Styles
+  const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
+  const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: '.03em', color: '#6b6860' };
+  const bluePill: React.CSSProperties = { background: '#dfeaf5', border: '1px solid #cbd9ea', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 800, color: '#2a5fbd', textAlign: 'center', minWidth: 44 };
+  const plus = <span style={{ fontSize: 16, color: '#c9c5bd', fontWeight: 700 }}>+</span>;
+
+  const woundLevel = sv('woundLevel', 0);
+  const lastBreath = sv('lastBreath', 0);
+  const LB_MAX = 10;
+
+  const pooRow = (label: string, cur: number, max: number, temp: number, curKey: string, tempKey: string, recoverLabel: string, damageLabel: string) => (
+    <div style={box}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div>
+          <div style={secTitle}>TEMP</div>
+          <div style={{ ...bluePill, marginTop: 4 }}>
+            <NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={44} />
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'baseline', justifyContent: 'flex-end' }}>
+            <span style={{ fontSize: 11, color: '#9a978e' }}>ปัจจุบัน</span>
+            <span style={{ fontSize: 26, fontWeight: 800, color: '#2f2c25' }}><NumField value={cur} onCommit={(v) => setSheet({ [curKey]: v })} width={54} /></span>
+            <span style={{ fontSize: 20, color: '#cfccc4', fontWeight: 700 }}>/</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: '#8d8a82' }}>{max}</span>
+            <span style={{ fontSize: 11, color: '#9a978e' }}>สูงสุด</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: '#9a978e' }}>
+        <span>{label}</span>
+        <span style={{ marginLeft: 'auto' }}>{recoverLabel}</span>
+        <span>{damageLabel}</span>
+      </div>
+    </div>
+  );
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ width: 58, height: 58, borderRadius: 14, background: '#15140f', color: '#f7dca0', fontSize: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>🧝</div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 28 }}>{character.name || 'ตัวละครใหม่'}</h1>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-            {meta.map((m) => <span key={m} style={chip(m)}>{m}</span>)}
-            {wiwonNames.map((w) => <span key={w} style={chip(w, '#eef4fb', '#2a5fbd', '#d3e2f5')}>{w}</span>)}
+    <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+      <div style={{ minWidth: 1020, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* ── Header (dark) ── */}
+        <div style={{ background: '#15140f', borderRadius: 18, padding: '18px 22px', color: '#fff', display: 'flex', alignItems: 'center', gap: 18 }}>
+          <div style={{ width: 84, height: 84, borderRadius: 12, background: '#fff', flex: 'none' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff' }}>{character.name || 'ตัวละครใหม่'}</h1>
+            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: {raceName || '—'}{ancestryName ? ` | ${ancestryName}` : ''}</div>
+            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 3 }}>Class Feature: {str('className') || '—'} | LV. {level}</div>
+          </div>
+          <div style={{ flex: 'none', textAlign: 'right', minWidth: 230 }}>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#fff' }}>CAMPAIGN: {svs('campaign', 'ชื่อแคมเปญ')}</div>
+            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4 }}>Wiwon: {wiwonNames.join(', ') || '—'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#c9c5bd', fontWeight: 700 }}>XP</span>
+              <div style={{ width: 120, height: 8, borderRadius: 6, background: '#3a382f', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, (sv('xp', 0) / (level * 10000)) * 100)}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)' }} />
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#f7dca0', border: '1px solid #6a5a2a', borderRadius: 6, padding: '2px 7px' }}>LV UP</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#a8a49a', marginTop: 4 }}>{sv('xp', 1000).toLocaleString()} / {(level * 10000).toLocaleString()} XP</div>
           </div>
         </div>
-        <Link to={`/dweller/build/${character.id}`} style={{ ...backLink, flex: 'none' }}>✎ แก้ไข</Link>
-      </div>
 
-      {/* Core Attributes */}
-      <div style={card}>
-        <h2 style={h2}>Core Attributes</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
-          {CORE_ATTR_OPTIONS.map((attr) => {
-            const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
-            const g = byAbbr[abbr] ?? '—';
-            return (
-              <div key={attr} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{abbr}</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
-                  <GradeBadge grade={g} />
-                  <span style={{ fontSize: 13, fontWeight: 800, color: '#6b6860' }}>d{STEP10_FACES[g] ?? '—'}</span>
+        {/* ── Attributes row + Blessings ── */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+            {CORE_ATTR_OPTIONS.map((attr) => {
+              const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
+              const name = attr.replace(/\s*\(.*\)/, '');
+              const g = byAbbr[abbr] ?? '—';
+              return (
+                <div key={attr} style={{ position: 'relative', border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 8px 12px', textAlign: 'center', background: '#fff' }}>
+                  <span style={{ position: 'absolute', top: -10, left: 8, background: '#e07a5f', color: '#fff', fontSize: 12, fontWeight: 800, borderRadius: 7, padding: '3px 8px' }}>d{STEP10_FACES[g] ?? '?'}</span>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#8d8a82', textAlign: 'right' }}>{abbr}</div>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: '#3c3a33', lineHeight: 1.1, margin: '2px 0 6px' }}>{g}</div>
+                  <div style={{ fontSize: 11, color: '#9a978e' }}>{name}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ flex: 'none', width: 210 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82', textAlign: 'center', marginBottom: 6 }}>— ได้รับการอวยพร —</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{ height: 34, borderRadius: 10, background: '#f6ecae', border: '1px solid #e6d485', display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#7a6a2a' }}>{virtues[i] ?? ''}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Body: 3 columns ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '245px minmax(240px, 1fr) minmax(360px, 1.55fr)', gap: 12, alignItems: 'start' }}>
+          {/* Left */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {pooRow('SANITY', sv('sanCur', sanityMax), sanityMax, sv('sanTemp', 0), 'sanCur', 'sanTemp', 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ')}
+            <div style={{ ...box, padding: '10px 14px', fontSize: 12, color: '#9a978e' }}>สถานะค่าสติปัจจุบัน: <b style={{ color: '#3c3a33' }}>{svs('sanStatus', '—')}</b></div>
+            {pooRow('SCRATCH POINT', sv('scratchCur', scratchMax), scratchMax, sv('scratchTemp', 0), 'scratchCur', 'scratchTemp', 'ฟื้นฟู', 'บาดเจ็บ')}
+            <div style={box}>
+              <div style={secTitle}>WOUNDS POINT</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+                {WOUND_LEVELS.map((w, i) => (
+                  <button key={w.label} onClick={() => setSheet({ woundLevel: i })} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: woundLevel === i ? '#faf6ef' : 'transparent', borderRadius: 7, padding: '3px 6px', cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: w.color, flex: 'none' }} />
+                    <span style={{ fontSize: 12, fontWeight: woundLevel === i ? 800 : 500, color: woundLevel === i ? '#2f2c25' : '#8d8a82' }}>{w.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={box}>
+              <div style={secTitle}>THE LAST BREATH</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, margin: '8px 0 6px' }}>
+                {Array.from({ length: LB_MAX }).map((_, i) => (
+                  <button key={i} onClick={() => setSheet({ lastBreath: lastBreath === i + 1 ? i : i + 1 })} style={{ height: 20, borderRadius: 5, border: '1px solid #eecfcb', background: i < lastBreath ? '#e7a7a0' : '#fbeeec', cursor: 'pointer' }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#a8a59d' }}><span>ฟื้นกลับมา</span><span>สิ้นใจ</span></div>
+            </div>
+          </div>
+
+          {/* Middle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={box}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>สถานะเสริม (Buff)</span>{plus}</div>
+              <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('buff')} onCommit={(v) => setSheet({ buff: v })} /></div>
+            </div>
+            <div style={box}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>สถานะผิดปกติ (Debuff)</span>{plus}</div>
+              <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('debuff')} onCommit={(v) => setSheet({ debuff: v })} /></div>
+            </div>
+            <div style={box}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>ความชำนาญ / Proficiency</span>{plus}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {profNames.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : profNames.map((nm, i) => <span key={i} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}
+              </div>
+            </div>
+            <div style={box}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>ภาษา / Language</span>{plus}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {languages.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : languages.map((nm, i) => <span key={i} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{nm}</span>)}
+              </div>
+            </div>
+          </div>
+
+          {/* Right */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+              <div style={{ ...box, flex: '0 0 180px' }}>
+                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 600, color: '#2f2c25', marginBottom: 8 }}>INITIATIVE ROLL</div>
+                <div style={{ display: 'flex', gap: 14 }}>
+                  <div><div style={{ fontSize: 28, fontWeight: 800, color: '#2f2c25' }}>{natureDef}</div><div style={{ fontSize: 10.5, color: '#9a978e' }}>Natural Defense</div></div>
+                  <div><div style={{ fontSize: 28, fontWeight: 800, color: '#2f2c25' }}>{movement}</div><div style={{ fontSize: 10.5, color: '#9a978e' }}>M. Movement</div></div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 15 }}>{initiative}</b></div>
+              </div>
+              <div style={{ ...box, flex: 1 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {['Action', 'On Hand', 'Ehen', 'Short Rest', 'Long Rest'].map((t, i) => (
+                    <span key={t} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 16, background: i === 0 ? '#fdeee9' : '#f5f3ef', color: i === 0 ? '#c15a3f' : '#9a978e', border: `1px solid ${i === 0 ? '#f2cdbc' : '#eae7e0'}` }}>{t}</span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div>
+                    <div style={secTitle}>WILL-POWER</div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                      {Array.from({ length: Math.max(1, willpowerMax) }).map((_, i) => (
+                        <span key={i} style={{ width: 14, height: 22, borderRadius: 3, background: i < sv('wpCur', willpowerMax) ? '#7aa7c4' : '#dfeaf0' }} />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9a978e', marginTop: 4 }}>{sv('wpCur', willpowerMax)} / {willpowerMax}</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    <div style={{ fontSize: 11, color: '#9a978e' }}>Cal. สะสม</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#c79a2e' }}>{sv('calStored', 0)}</div>
+                    <div style={{ fontSize: 11, color: '#9a978e', marginTop: 4 }}>ดับหิว <b style={{ color: '#3c3a33' }}>{sv('calGoal', 0)}</b> Cal.</div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Derived stats */}
-      <div style={card}>
-        <h2 style={h2}>ค่าสถานะ</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
-          {derived.map((s) => (
-            <div key={s.label} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px' }}>
-              <div style={{ fontSize: 11.5, color: '#9a978e', fontWeight: 700 }}>{s.label}</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: '#e07a5f' }}>{s.value}</div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Ehen + Magic */}
-      {(ehenType || magicIds.length > 0) && (
-        <div style={card}>
-          <h2 style={h2}>เวทมนตร์</h2>
-          {ehenType && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: magicIds.length ? 14 : 0 }}>
-              <span style={chip(ehenLabel)}>{ehenLabel}</span>
-              {sizeLabel && <span style={chip(sizeLabel)}>ขนาด {sizeLabel}</span>}
-              {ehenColor && <span style={{ ...chip(ehenColor), display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: EHEN_COLOR_HEX[ehenColor], border: '1px solid rgba(0,0,0,.15)' }} />{ehenColor}</span>}
-              {ehenDie && <span style={chip(ehenDie, '#fdece2', '#c1502a', '#f2cdbc')}>ผลิต {ehenDie}</span>}
-            </div>
-          )}
-          {magicIds.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {magicIds.map((id) => <span key={id} style={chip(id, '#f3eefb', '#5b3fa0', '#e2d7f4')}>{magicById.get(id)?.name ?? '(เวทมนตร์)'}</span>)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Skills */}
-      <div style={card}>
-        <h2 style={h2}>Dweller Skill</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '4px 18px' }}>
-          {DWELLER_SKILLS.flatMap((cat) => cat.skills.map((s) => {
-            const key = skillKey(cat.en, s.en);
-            const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
-            return (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f4f1ec' }}>
-                <span style={{ width: 24, height: 20, borderRadius: 5, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
-                {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
-                <span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b6860', minWidth: 30, textAlign: 'right' }}>{die}</span>
+            {/* Tabbed area */}
+            <div style={box}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, borderBottom: '1px solid #efece6', paddingBottom: 10 }}>
+                {SHEET_TABS.map((t) => (
+                  <button key={t} onClick={() => setTab(t)} style={{ fontSize: 11.5, fontWeight: 700, padding: '5px 11px', borderRadius: 16, cursor: 'pointer', border: `1px solid ${tab === t ? '#e07a5f' : '#eae7e0'}`, background: tab === t ? '#fdeee9' : '#fff', color: tab === t ? '#c15a3f' : '#8d8a82' }}>{t}</button>
+                ))}
               </div>
-            );
-          }))}
-        </div>
-      </div>
 
-      {/* Features + Virtues/Flaws */}
-      {(featIds.length > 0 || virtues.length > 0 || flaws.length > 0) && (
-        <div style={card}>
-          <h2 style={h2}>Feature &amp; คุณลักษณะ</h2>
-          {featIds.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>Feature ที่ได้รับ</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{featIds.map((id) => <span key={id} style={chip(id)}>{featById.get(id)?.name ?? '(Feature)'}</span>)}</div>
-            </div>
-          )}
-          {virtues.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={chip(nm, '#eef6f0', '#2f7d4f', '#cfe6d6')}>{nm}</span>)}</div>
-            </div>
-          )}
-          {flaws.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={chip(nm, '#f9eeea', '#b0552f', '#f0d8ce')}>{nm}</span>)}</div>
-            </div>
-          )}
-        </div>
-      )}
+              {tab === 'ช่องเก็บของ' && (
+                <div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', marginBottom: 6 }}>Ready Slot</div>
+                      <div style={{ minHeight: 70, border: '1px dashed #e0ded7', borderRadius: 10, background: '#faf9f7' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', marginBottom: 6 }}>Party Slot</div>
+                      <div style={{ minHeight: 70, border: '1px dashed #e0ded7', borderRadius: 10, background: '#faf9f7' }} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '14px 0 6px' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>กระเป๋า</span>
+                    <span style={{ fontSize: 11, color: '#9a978e' }}>ของทั้งหมด {bag.length} ชิ้น</span>
+                  </div>
+                  {bag.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>ยังไม่มีของในกระเป๋า</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {bag.map((l) => <span key={l.lineId} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{l.name}</span>)}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#c79a2e', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 8, padding: '5px 11px' }}>💰 {coinStr(walletIC)}</span>
+                    {rbTotalGC > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: '#5a6b86', background: '#eef2f8', border: '1px solid #d5deea', borderRadius: 8, padding: '5px 11px' }}>RB {rbTotalGC} GC</span>}
+                  </div>
+                </div>
+              )}
 
-      {/* Wallet + Bag */}
-      <div style={card}>
-        <h2 style={h2}>เงิน &amp; ของในกระเป๋า</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: bag.length ? 14 : 0 }}>
-          <span style={chip(coinStr(walletIC), '#faf6ef', '#c79a2e', '#eaddc7')}>💰 {coinStr(walletIC)}</span>
-          {rbTotalGC > 0 && <span style={chip(`RB ${rbTotalGC} GC`, '#eef2f8', '#5a6b86', '#d5deea')}>RB {rbTotalGC} GC</span>}
-        </div>
-        {bag.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {bag.map((l) => <span key={l.lineId} style={chip(l.name)}>{l.name}</span>)}
+              {tab === 'Dweller Skill' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '2px 18px' }}>
+                  {DWELLER_SKILLS.flatMap((cat) => cat.skills.map((s) => {
+                    const key = skillKey(cat.en, s.en);
+                    const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
+                    return (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderBottom: '1px solid #f4f1ec' }}>
+                        <span style={{ width: 22, height: 18, borderRadius: 5, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                        {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 10, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                        {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 10, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#6b6860', minWidth: 28, textAlign: 'right' }}>{die}</span>
+                      </div>
+                    );
+                  }))}
+                </div>
+              )}
+
+              {tab === 'Magic' && (
+                <div>
+                  {ehenType && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{ehenLabel}</span>
+                      {sizeLabel && <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>ขนาด {sizeLabel}</span>}
+                      {ehenColor && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: EHEN_COLOR_HEX[ehenColor], border: '1px solid rgba(0,0,0,.15)' }} />{ehenColor}</span>}
+                      {ehenDie && <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc' }}>ผลิต {ehenDie}</span>}
+                    </div>
+                  )}
+                  {magicIds.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่รู้จักเวทมนตร์</div> : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{magicIds.map((id) => <span key={id} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f3eefb', color: '#5b3fa0', border: '1px solid #e2d7f4' }}>{magicById.get(id)?.name ?? '(เวทมนตร์)'}</span>)}</div>
+                  )}
+                </div>
+              )}
+
+              {tab === 'Feature' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>Feature ที่ได้รับ</div>
+                    {featIds.length === 0 ? <span style={{ fontSize: 12.5, color: '#bdbab2' }}>—</span> : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{featIds.map((id) => <span key={id} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{featById.get(id)?.name ?? '(Feature)'}</span>)}</div>}
+                  </div>
+                  {virtues.length > 0 && <div><div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}</div></div>}
+                  {flaws.length > 0 && <div><div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>{nm}</span>)}</div></div>}
+                </div>
+              )}
+
+              {tab === 'ภูมิหลัง' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, lineHeight: 1.7, color: '#3c3a33' }}>
+                  {(() => {
+                    const a5 = d.step5Answers && typeof d.step5Answers === 'object' ? Object.values(d.step5Answers as Record<string, string>) : [];
+                    const a6 = d.step6Answers && typeof d.step6Answers === 'object' ? Object.values(d.step6Answers as Record<string, string>) : [];
+                    const all = [...a5, ...a6].filter(Boolean);
+                    return all.length === 0 ? <span style={{ color: '#bdbab2' }}>ยังไม่มีเรื่องราวภูมิหลัง</span> : all.map((t, i) => <p key={i} style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{t}</p>);
+                  })()}
+                </div>
+              )}
+
+              {['จัดการสินทรัพย์', 'พิเศษ', 'บันทึกประจำวัน'].includes(tab) && (
+                <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '18px 0', textAlign: 'center' }}>ส่วน “{tab}” กำลังพัฒนา</div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
