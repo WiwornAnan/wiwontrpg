@@ -73,12 +73,7 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   if (mode === 'sheet') {
     return (
       <Shell back={back}>
-        <Card>
-          <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.5 }}>🧝</div>
-          <h1 style={cardTitle}>Character Sheet</h1>
-          <p style={{ color: '#8d8a82', fontSize: 14, margin: '10px 0 0' }}>ตัวละคร: {character.name || 'ตัวละครใหม่'}</p>
-          <p style={{ color: '#bdbab2', fontSize: 13, margin: '18px 0 0' }}>หน้าชีตตัวละครกำลังพัฒนาในเฟสถัดไป</p>
-        </Card>
+        <CharacterSheet character={character} covers={covers} />
       </Shell>
     );
   }
@@ -91,6 +86,202 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
         <StepShell character={character} covers={covers} patch={patch} />
       )}
     </Shell>
+  );
+}
+
+// ── Character Sheet: read-only summary of everything built across the wizard ──
+function sheetSkillDie(byAbbr: Record<string, string>, attr: string, hasTalent: boolean): string {
+  const idx = Math.min(DIE_LADDER.length - 1, (GRADE_LADDER_IDX[byAbbr[attr] ?? ''] ?? 0) + (hasTalent ? 1 : 0));
+  const faces = DIE_LADDER[idx];
+  return faces === 0 ? '0' : `d${faces}`;
+}
+
+function CharacterSheet({ character, covers }: { character: Character; covers: WiwonCover[] }) {
+  const byAbbr = useEffectiveGrades(character);
+  const wiwonIds = wiwonIdsOf(character);
+  const d = character.data;
+
+  const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
+  const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
+  const featById = new Map((features ?? []).map((f) => [f.id, f]));
+  const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
+
+  const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
+  const wiwonNames = wiwonIds.map((wid) => covers.find((c) => c.id === wid)?.name).filter(Boolean) as string[];
+  const raceName = str('raceName');
+  const isAncestry = raceHasAncestry(raceName);
+
+  // Derived stats (mirror Step 10).
+  const s10 = d.step10 && typeof d.step10 === 'object' ? (d.step10 as Record<string, number>) : {};
+  const adj = d.step10adj && typeof d.step10adj === 'object' ? (d.step10adj as Record<string, number>) : {};
+  const n = (k: string) => numData(s10[k]);
+  const a = (k: string) => (isAncestry ? numData(adj[k]) : 0);
+  const faces = (abbr: string) => facesOf(byAbbr, abbr);
+  const derived = [
+    { label: 'Scratch Point', value: n('baseScratch') + n('scratchRollEND') + a('scratch') },
+    { label: 'Wound Point', value: n('wound') + a('wound') },
+    { label: 'Nature Defense', value: n('natureBase') + faces('DEX') + faces('PER') + a('natureDef') },
+    { label: 'Sanity Point', value: n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity') },
+    { label: 'Movement', value: n('movement') + a('movement') },
+    { label: 'Initiative', value: 10 + n('initRollDEX') + n('initRollCVN') + a('initiative') },
+    { label: 'Willpower', value: n('willpower') + a('willpower') },
+  ];
+
+  // Ehen
+  const ehenType = str('ehenType');
+  const ehenSize = str('ehenSize');
+  const ehenColor = str('ehenColor');
+  const ehenLabel = ehenType === 'organ' ? 'Ehen Organ' : ehenType === 'core' ? 'Ehen Core' : ehenType === 'none' ? 'ไม่มีในร่างกาย' : '—';
+  const sizeLabel = ehenSize === 'small' ? 'เล็ก' : ehenSize === 'medium' ? 'กลาง' : ehenSize === 'large' ? 'ใหญ่' : '';
+  const ehenDie = ehenType === 'core' ? CORE_PRODUCTION_DIE[ehenSize] : ehenType === 'organ' ? (ORGAN_PRODUCTION_DIE[ehenSize] ? `${ORGAN_PRODUCTION_DIE[ehenSize]} / Long Rest` : '') : '';
+
+  // Selections
+  const magicIds = d.step8Magic && typeof d.step8Magic === 'object' ? Object.keys(d.step8Magic as Record<string, number>) : [];
+  const featIds = d.step7Purchases && typeof d.step7Purchases === 'object' ? Object.keys(d.step7Purchases as Record<string, number>) : [];
+  const s11 = d.step11 && typeof d.step11 === 'object' ? (d.step11 as { virtues?: string[]; flaws?: string[] }) : {};
+  const virtues = (s11.virtues ?? []).map((id) => featById.get(id)?.name ?? '(?)');
+  const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
+  const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
+  const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
+
+  // Wallet
+  const walletIC = numData(d.walletIC);
+  const rb: RoyalBond[] = Array.isArray(d.walletRB) ? (d.walletRB as RoyalBond[]) : [];
+  const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
+  const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
+
+  const card: React.CSSProperties = { ...cardPlain, marginBottom: 16 };
+  const h2: React.CSSProperties = { margin: '0 0 12px', fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20 };
+  const chip = (_label: string, bg = '#f6f2ea', color = '#5c4a2e', brd = '#e8e0d0'): React.CSSProperties => ({ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
+  const meta = [raceName && (isAncestry && str('ancestryName') ? `${raceName} · ${str('ancestryName')}` : raceName), str('className'), d.level ? `Lv ${numData(d.level)}` : ''].filter(Boolean) as string[];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ width: 58, height: 58, borderRadius: 14, background: '#15140f', color: '#f7dca0', fontSize: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>🧝</div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 28 }}>{character.name || 'ตัวละครใหม่'}</h1>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {meta.map((m) => <span key={m} style={chip(m)}>{m}</span>)}
+            {wiwonNames.map((w) => <span key={w} style={chip(w, '#eef4fb', '#2a5fbd', '#d3e2f5')}>{w}</span>)}
+          </div>
+        </div>
+        <Link to={`/dweller/build/${character.id}`} style={{ ...backLink, flex: 'none' }}>✎ แก้ไข</Link>
+      </div>
+
+      {/* Core Attributes */}
+      <div style={card}>
+        <h2 style={h2}>Core Attributes</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+          {CORE_ATTR_OPTIONS.map((attr) => {
+            const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
+            const g = byAbbr[abbr] ?? '—';
+            return (
+              <div key={attr} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{abbr}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+                  <GradeBadge grade={g} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#6b6860' }}>d{STEP10_FACES[g] ?? '—'}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Derived stats */}
+      <div style={card}>
+        <h2 style={h2}>ค่าสถานะ</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+          {derived.map((s) => (
+            <div key={s.label} style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11.5, color: '#9a978e', fontWeight: 700 }}>{s.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#e07a5f' }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Ehen + Magic */}
+      {(ehenType || magicIds.length > 0) && (
+        <div style={card}>
+          <h2 style={h2}>เวทมนตร์</h2>
+          {ehenType && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: magicIds.length ? 14 : 0 }}>
+              <span style={chip(ehenLabel)}>{ehenLabel}</span>
+              {sizeLabel && <span style={chip(sizeLabel)}>ขนาด {sizeLabel}</span>}
+              {ehenColor && <span style={{ ...chip(ehenColor), display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: EHEN_COLOR_HEX[ehenColor], border: '1px solid rgba(0,0,0,.15)' }} />{ehenColor}</span>}
+              {ehenDie && <span style={chip(ehenDie, '#fdece2', '#c1502a', '#f2cdbc')}>ผลิต {ehenDie}</span>}
+            </div>
+          )}
+          {magicIds.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {magicIds.map((id) => <span key={id} style={chip(id, '#f3eefb', '#5b3fa0', '#e2d7f4')}>{magicById.get(id)?.name ?? '(เวทมนตร์)'}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Skills */}
+      <div style={card}>
+        <h2 style={h2}>Dweller Skill</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '4px 18px' }}>
+          {DWELLER_SKILLS.flatMap((cat) => cat.skills.map((s) => {
+            const key = skillKey(cat.en, s.en);
+            const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f4f1ec' }}>
+                <span style={{ width: 24, height: 20, borderRadius: 5, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b6860', minWidth: 30, textAlign: 'right' }}>{die}</span>
+              </div>
+            );
+          }))}
+        </div>
+      </div>
+
+      {/* Features + Virtues/Flaws */}
+      {(featIds.length > 0 || virtues.length > 0 || flaws.length > 0) && (
+        <div style={card}>
+          <h2 style={h2}>Feature &amp; คุณลักษณะ</h2>
+          {featIds.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>Feature ที่ได้รับ</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{featIds.map((id) => <span key={id} style={chip(id)}>{featById.get(id)?.name ?? '(Feature)'}</span>)}</div>
+            </div>
+          )}
+          {virtues.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={chip(nm, '#eef6f0', '#2f7d4f', '#cfe6d6')}>{nm}</span>)}</div>
+            </div>
+          )}
+          {flaws.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={chip(nm, '#f9eeea', '#b0552f', '#f0d8ce')}>{nm}</span>)}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Wallet + Bag */}
+      <div style={card}>
+        <h2 style={h2}>เงิน &amp; ของในกระเป๋า</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: bag.length ? 14 : 0 }}>
+          <span style={chip(coinStr(walletIC), '#faf6ef', '#c79a2e', '#eaddc7')}>💰 {coinStr(walletIC)}</span>
+          {rbTotalGC > 0 && <span style={chip(`RB ${rbTotalGC} GC`, '#eef2f8', '#5a6b86', '#d5deea')}>RB {rbTotalGC} GC</span>}
+        </div>
+        {bag.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {bag.map((l) => <span key={l.lineId} style={chip(l.name)}>{l.name}</span>)}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2921,5 +3112,4 @@ function Card({ children }: { children: React.ReactNode }) {
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fff', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#5f5c54', textDecoration: 'none' };
 const cardPlain: React.CSSProperties = { background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: '22px 24px' };
-const cardTitle: React.CSSProperties = { margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 24 };
 const primaryBtn: React.CSSProperties = { background: '#e07a5f', color: '#fff', borderRadius: 11, padding: '11px 26px', fontSize: 14, fontWeight: 700, textDecoration: 'none' };
