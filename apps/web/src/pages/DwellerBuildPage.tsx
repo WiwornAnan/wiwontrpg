@@ -10,6 +10,7 @@ import { Button } from '../components/ui';
 import { DiceRoller } from '../components/DiceRoller';
 import layout from '../components/layout.module.css';
 import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
+import type { SkillAttr } from '../data/dwellerSkills';
 
 const TOTAL_STEPS = 11;
 // Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
@@ -93,12 +94,6 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
 }
 
 // ── Character Sheet: read-only summary of everything built across the wizard ──
-function sheetSkillDie(byAbbr: Record<string, string>, attr: string, hasTalent: boolean): string {
-  const idx = Math.min(DIE_LADDER.length - 1, (GRADE_LADDER_IDX[byAbbr[attr] ?? ''] ?? 0) + (hasTalent ? 1 : 0));
-  const faces = DIE_LADDER[idx];
-  return faces === 0 ? '0' : `d${faces}`;
-}
-
 const WOUND_LEVELS = [
   { label: 'Have no impact', color: '#5aa06a' },
   { label: 'First Blood', color: '#e6a3a8' },
@@ -126,10 +121,12 @@ function CharacterSheet({
   const [editName, setEditName] = useState(false);
   const [editCamp, setEditCamp] = useState(false);
   const [editXp, setEditXp] = useState(false);
-  const [rollFaces, setRollFaces] = useState<number | null>(null);
+  const [roll, setRoll] = useState<{ faces: number; adv: boolean } | null>(null);
   const [sanAmt, setSanAmt] = useState(0);
   const [scrAmt, setScrAmt] = useState(0);
+  const [endAmt, setEndAmt] = useState(0);
   const [profPicker, setProfPicker] = useState(false);
+  const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -248,6 +245,19 @@ function CharacterSheet({
   const showDeathOverlay = deathDoor && !reviveActive;
   const toggleLB = (which: 'lbGreen' | 'lbRed', arr: boolean[], i: number) => { const nx = [...arr]; nx[i] = !nx[i]; setSheet({ [which]: nx }); };
 
+  // ── Dweller Skill: Endeavor Points + per-skill "ท้าทาย" (10 cells + die level) ──
+  const endeavor = sv('endeavor', 0);
+  type Challenge = { cells: number[]; level: number };
+  const challenges: Record<string, Challenge> = sheet.challenge && typeof sheet.challenge === 'object' ? (sheet.challenge as Record<string, Challenge>) : {};
+  const getCh = (key: string): Challenge => challenges[key] ?? { cells: Array(10).fill(0), level: 0 };
+  const setCh = (key: string, ch: Challenge) => setSheet({ challenge: { ...challenges, [key]: ch } });
+  const skillInfo = (attr: string, hasTalent: boolean, level: number) => {
+    const base = GRADE_LADDER_IDX[byAbbr[attr] ?? ''] ?? 0;
+    const idx = Math.max(0, Math.min(DIE_LADDER.length - 1, base + (hasTalent ? 1 : 0) + level));
+    const faces = DIE_LADDER[idx];
+    return { label: faces === 0 ? '0' : `d${faces}`, roll: faces === 0 ? 2 : faces };
+  };
+
   const amtInput: React.CSSProperties = { width: 46, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 8, padding: '5px 4px', fontSize: 13, background: '#fff' };
   const actBtn = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 800, color, background: bg, border: `1px solid ${brd}`, borderRadius: 8, padding: '5px 11px', cursor: 'pointer', whiteSpace: 'nowrap' });
 
@@ -346,7 +356,7 @@ function CharacterSheet({
               return (
                 <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '18px 8px 12px', minHeight: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <button
-                    onClick={() => dFaces > 0 && setRollFaces(dFaces)}
+                    onClick={() => dFaces > 0 && setRoll({ faces: dFaces, adv: false })}
                     title={`ทอย ${abbr} (d${dFaces})`}
                     style={{ position: 'absolute', top: -13, left: 10, background: '#e07a5f', color: '#fff', fontSize: 14, fontWeight: 800, borderRadius: 9, padding: '5px 11px', border: '2px solid #fff', boxShadow: '0 3px 8px rgba(224,122,95,.45)', cursor: dFaces > 0 ? 'pointer' : 'default', lineHeight: 1 }}
                   >d{dFaces || '?'}</button>
@@ -576,24 +586,33 @@ function CharacterSheet({
               )}
 
               {tab === 'Dweller Skill' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 10, padding: '9px 14px' }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 800, color: '#8d6a4a' }}>Endeavor Points = <span style={{ color: '#c15a3f' }}>{endeavor}</span></span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input type="number" value={endAmt} onChange={(e) => setEndAmt(Math.round(Number(e.target.value) || 0))} style={{ width: 64, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 7, padding: '5px', fontSize: 13 }} />
+                      <button onClick={() => { if (endAmt) setSheet({ endeavor: Math.max(0, endeavor + endAmt) }); }} style={{ border: 'none', background: '#e07a5f', color: '#fff', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>＋ เพิ่ม</button>
+                    </span>
+                  </div>
                   {DWELLER_SKILLS.map((cat) => (
                     <div key={cat.en}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</span>
-                        <span style={{ fontSize: 10.5, color: '#b0ada4', fontStyle: 'italic' }}>{cat.en}</span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</span>
+                        <span style={{ fontSize: 11.5, color: '#b0ada4', fontStyle: 'italic' }}>{cat.en}</span>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0 16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '4px 20px' }}>
                         {cat.skills.map((s) => {
                           const key = skillKey(cat.en, s.en);
-                          const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
+                          const ch = getCh(key);
+                          const info = skillInfo(s.attr, talent.includes(key), ch.level);
                           return (
-                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', borderBottom: '1px solid #f4f1ec' }}>
-                              <span style={{ width: 20, height: 16, borderRadius: 4, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
-                              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                              {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 9.5, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
-                              {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 9.5, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
-                              <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b6860', minWidth: 26, textAlign: 'right' }}>{die}</span>
+                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ec' }}>
+                              <span style={{ width: 26, height: 22, borderRadius: 6, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                              {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                              {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
+                              <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
+                              <button onClick={() => setRoll({ faces: info.roll, adv: prof.includes(key) })} title={`ทอย ${info.label}${prof.includes(key) ? ' · Advantage' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
                             </div>
                           );
                         })}
@@ -648,7 +667,40 @@ function CharacterSheet({
           </div>
         </div>
       </div>
-      <DiceRoller open={rollFaces !== null} egoFaces={rollFaces ?? 20} onClose={() => setRollFaces(null)} />
+      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} onClose={() => setRoll(null)} />
+
+      {/* ── "ท้าทาย" per-skill challenge popup ── */}
+      <Modal open={!!challengeSkill} onClose={() => setChallengeSkill(null)} title="ท้าทาย">
+        {challengeSkill && (() => {
+          let sk: { attr: SkillAttr; name: string } | null = null;
+          for (const cat of DWELLER_SKILLS) for (const s of cat.skills) if (skillKey(cat.en, s.en) === challengeSkill) sk = s;
+          if (!sk) return null;
+          const ch = getCh(challengeSkill);
+          const info = skillInfo(sk.attr, talent.includes(challengeSkill), ch.level);
+          const cycle = (i: number) => { const cells = [...ch.cells]; cells[i] = (cells[i] + 1) % 3; setCh(challengeSkill, { ...ch, cells }); };
+          const cellColor = (c: number) => (c === 1 ? '#d9736b' : c === 2 ? '#7bc48a' : '#fff');
+          const cellBorder = (c: number) => (c === 1 ? '#c0432a' : c === 2 ? '#5aa06a' : '#d8d4cc');
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <span style={{ width: 28, height: 24, borderRadius: 6, background: SKILL_ATTR_COLOR[sk.attr], color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{sk.attr}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#2f2c25' }}>{sk.name}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 13, color: '#8d8a82' }}>ลูกเต๋า: <b style={{ color: '#e07a5f', fontSize: 15 }}>{info.label}</b> {ch.level !== 0 && <span style={{ color: '#9a978e' }}>(ระดับ {ch.level > 0 ? '+' : ''}{ch.level})</span>}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button onClick={() => setCh(challengeSkill!, { ...ch, level: ch.level - 1 })} style={{ flex: 'none', border: '1px solid #f0d0c4', background: '#f9eeea', color: '#c0432a', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>◄ ลดระดับ</button>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 5 }}>
+                  {ch.cells.map((c, i) => (
+                    <button key={i} onClick={() => cycle(i)} title="กดเปลี่ยนสี ขาว/แดง/เขียว" style={{ height: 30, borderRadius: 7, background: cellColor(c), border: `1.5px solid ${cellBorder(c)}`, cursor: 'pointer' }} />
+                  ))}
+                </div>
+                <button onClick={() => setCh(challengeSkill!, { ...ch, level: ch.level + 1 })} style={{ flex: 'none', border: '1px solid #cfe6d6', background: '#eef6f0', color: '#2f7d4f', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>เพิ่มระดับ ►</button>
+              </div>
+              <p style={{ fontSize: 11.5, color: '#a8a59d', margin: '12px 0 0' }}>เพิ่มระดับ → ลูกเต๋า +1 ขั้น · ลดระดับ → ลูกเต๋า −1 ขั้น · แต่ละช่องกดสลับ ขาว → แดง → เขียว</p>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
