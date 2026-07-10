@@ -204,6 +204,9 @@ function CharacterSheet({
   const { data: q6data } = useQuery({ queryKey: ['step6-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step6-questions/global') });
   const { data: equipment } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
   const equipById = new Map((equipment ?? []).map((e) => [e.id, e]));
+  // Language options — every Feature the catalog tags "Language" (matches tags[] or
+  // fields.tag on the server), across all Wiwon, so Official languages always show.
+  const { data: langFeatures } = useQuery({ queryKey: ['sheet-lang-features'], queryFn: () => fetchFeaturesByTag('Language', []) });
   const featById = new Map((features ?? []).map((f) => [f.id, f]));
   const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
 
@@ -255,9 +258,7 @@ function CharacterSheet({
   const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
   const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
-  // Language options = every Feature tagged "Language" in the catalog (not just this
-  // character's purchases), matching the old design. Empty until such Features exist.
-  const languages = (features ?? []).filter((f) => f.tags.includes('Language')).map((f) => f.name);
+  const languages = (langFeatures ?? []).map((f) => f.name);
   // Proficiency = Features tagged "Specialization" the player picks via the + button.
   const specPool = (features ?? []).filter((f) => f.tags.includes('Specialization'));
   const proficiencies: string[] = Array.isArray(sheet.proficiencies) ? (sheet.proficiencies as string[]) : [];
