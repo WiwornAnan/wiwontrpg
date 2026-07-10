@@ -11,7 +11,7 @@ import { DiceRoller } from '../components/DiceRoller';
 import layout from '../components/layout.module.css';
 import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 11;
 // Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
 const RACES_WITH_ANCESTRY = ['Animalea', 'Sprite'];
 const raceHasAncestry = (name: string) => RACES_WITH_ANCESTRY.some((r) => r.toLowerCase() === name.trim().toLowerCase());
@@ -250,6 +250,10 @@ function StepShell({
         <Step8Magic character={character} patch={patch} />
       ) : step === 9 ? (
         <Step9Money character={character} patch={patch} />
+      ) : step === 10 ? (
+        <Step10Details character={character} patch={patch} />
+      ) : step === 11 ? (
+        <Step11Traits character={character} patch={patch} />
       ) : (
         <div style={cardPlain}>
           <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ขั้นตอนที่ {step}</h1>
@@ -836,6 +840,45 @@ const coreAdjustOf = (c: Character): Record<string, number> =>
   c.data.coreAdjust && typeof c.data.coreAdjust === 'object' ? (c.data.coreAdjust as Record<string, number>) : {};
 const coreBoostOf = (c: Character): string[] =>
   Array.isArray(c.data.coreBoostA) ? (c.data.coreBoostA as string[]) : [];
+
+// Final Core Attribute grade per abbreviation (STR/DEX/…), applying the Step 3
+// combine formula plus the player's manual ±1 adjustments and A-boosts. Shared
+// by Step 3 (skills dice) and Step 10 (derived stats).
+function useEffectiveGrades(character: Character): Record<string, string> {
+  const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const raceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
+  const ancestryId = typeof character.data.ancestry === 'string' ? (character.data.ancestry as string) : '';
+  const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
+  const isAncestryRace = !!raceId && raceHasAncestry(raceName);
+
+  const { data: aData } = useQuery({
+    enabled: !!raceId && !isAncestryRace,
+    queryKey: ['race-core', raceId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/race-core/${encodeURIComponent(raceId)}`),
+  });
+  const { data: bData } = useQuery({
+    enabled: !!ancestryId,
+    queryKey: ['ancestry-core', ancestryId],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/ancestry-core/${encodeURIComponent(ancestryId)}`),
+  });
+  const { data: cData } = useQuery({
+    enabled: !!classValue,
+    queryKey: ['class-core', classValue],
+    queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
+  });
+
+  const gradeOf = (attrs: CoreAttr[] | undefined, name: string) => attrs?.find((a) => a.name === name)?.grade ?? '—';
+  const baseAttrs = isAncestryRace ? bData?.core.attributes : aData?.core.attributes;
+  const adjust = coreAdjustOf(character);
+  const boosts = coreBoostOf(character);
+  const byAbbr: Record<string, string> = {};
+  CORE_ATTR_OPTIONS.forEach((attr) => {
+    const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
+    const combined = combineGrade(gradeOf(baseAttrs, attr), gradeOf(cData?.core.attributes, attr));
+    byAbbr[abbr] = boosts.includes(attr) ? 'A' : gname(Math.max(0, Math.min(4, gval(combined) + (adjust[attr] ?? 0))));
+  });
+  return byAbbr;
+}
 
 function Step3Core({
   character,
@@ -2131,7 +2174,11 @@ function Step9Money({
     <>
       <div style={cardPlain}>
         <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>เงินและร้านค้า</h1>
-        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>รับเงินเริ่มต้น จัดการกระเป๋าเงิน และซื้อ/ขายอุปกรณ์จาก Equipment &amp; Items</p>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 14px' }}>รับเงินเริ่มต้น จัดการกระเป๋าเงิน และซื้อ/ขายอุปกรณ์จาก Equipment &amp; Items</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: '#eef4fb', color: '#2a5fbd', border: '1px solid #d3e2f5' }}>QL ทั้งหมด: {totalQL}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: availableQL > 0 ? '#eef6f0' : '#f9eeea', color: availableQL > 0 ? '#2f7d4f' : '#b0552f', border: `1px solid ${availableQL > 0 ? '#cfe6d6' : '#f0d8ce'}` }}>QL คงเหลือ: {availableQL}</span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 16px', background: '#faf9f7', borderRadius: 12 }}>
           <span style={{ fontSize: 22 }}>🪙</span>
           <div style={{ flex: 1, minWidth: 160 }}>
@@ -2251,6 +2298,243 @@ function ShopList({ walletIC, onBuy, onInfo }: { walletIC: number; onBuy: (m: Ca
         })}
       </div>
     </div>
+  );
+}
+
+// ── Step 10: name + derived stats (dice from Core Attributes) ──
+// Step 10 uses its own grade→die scale: A d10 · B d8 · C d6 · D d4 · X d2.
+const STEP10_FACES: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, X: 2 };
+const facesOf = (byAbbr: Record<string, string>, abbr: string) => STEP10_FACES[byAbbr[abbr] ?? ''] ?? 0;
+const rollDie = (faces: number) => (faces > 0 ? 1 + Math.floor(Math.random() * faces) : 0);
+
+// A number field that keeps local focus while typing and commits on blur.
+function NumField({ value, onCommit, width = 76 }: { value: number; onCommit: (v: number) => void; width?: number }) {
+  const [t, setT] = useState(String(value));
+  useEffect(() => { setT(String(value)); }, [value]);
+  return (
+    <input
+      type="number"
+      value={t}
+      onChange={(e) => setT(e.target.value)}
+      onBlur={() => { const v = Math.round(Number(t) || 0); setT(String(v)); if (v !== value) onCommit(v); }}
+      style={{ width, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 14, textAlign: 'center', background: '#fff' }}
+    />
+  );
+}
+
+// A derived-stat card: label + total, its parts, and (for Ancestry) a ± field.
+function StatCard({ title, total, isAncestry, adjVal, onAdj, children }: { title: string; total: number; isAncestry: boolean; adjVal: number; onAdj: (v: number) => void; children: React.ReactNode }) {
+  return (
+    <div style={{ border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 14.5, fontWeight: 800, color: '#2f2c25' }}>{title}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: '#e07a5f' }}>{total}</span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>{children}</div>
+      {isAncestry && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #eae7e0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: '#8d6a4a', fontWeight: 700 }}>ปรับ (Ancestry)</span>
+          <button onClick={() => onAdj(adjVal - 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>−</button>
+          <span style={{ minWidth: 30, textAlign: 'center', fontSize: 14, fontWeight: 800, color: adjVal === 0 ? '#b0ada4' : '#2f2c25' }}>{adjVal > 0 ? '+' : ''}{adjVal}</span>
+          <button onClick={() => onAdj(adjVal + 1)} style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Step10Details({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; name?: string }>>;
+}) {
+  const byAbbr = useEffectiveGrades(character);
+  const raceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
+  const isAncestry = raceHasAncestry(raceName);
+
+  const s10 = character.data.step10 && typeof character.data.step10 === 'object' ? (character.data.step10 as Record<string, number>) : {};
+  const adj = character.data.step10adj && typeof character.data.step10adj === 'object' ? (character.data.step10adj as Record<string, number>) : {};
+  const [name, setName] = useState(character.name ?? '');
+
+  const setS10 = (partial: Record<string, number>) => patch.mutate({ data: { ...character.data, step10: { ...s10, ...partial } } });
+  const setAdj = (key: string, v: number) => patch.mutate({ data: { ...character.data, step10adj: { ...adj, [key]: v } } });
+  const commitName = () => { if (name !== character.name) patch.mutate({ name }); };
+
+  const n = (k: string) => numData(s10[k]);
+  const a = (k: string) => (isAncestry ? numData(adj[k]) : 0);
+  // die-face bonuses
+  const faceDEX = facesOf(byAbbr, 'DEX');
+  const facePER = facesOf(byAbbr, 'PER');
+  const faceCVN = facesOf(byAbbr, 'CVN');
+
+  // totals
+  const scratchTotal = n('baseScratch') + n('scratchRollEND') + a('scratch');
+  const woundTotal = n('wound') + a('wound');
+  const natureTotal = n('natureBase') + faceDEX + facePER + a('natureDef');
+  const sanityTotal = n('sanityBase') + faceCVN + n('sanityRollINT') + a('sanity');
+  const moveTotal = n('movement') + a('movement');
+  const initTotal = 10 + n('initRollDEX') + n('initRollCVN') + a('initiative');
+  const wpTotal = n('willpower') + a('willpower');
+
+  const rollBtn = (faces: number): React.CSSProperties => ({ border: '1px solid #d9c3a8', background: '#fff8ef', color: '#a06a44', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, cursor: faces > 0 ? 'pointer' : 'not-allowed', opacity: faces > 0 ? 1 : 0.5, whiteSpace: 'nowrap' });
+  const dieOf = (abbr: string) => `d${facesOf(byAbbr, abbr)}`;
+  const lbl = (t: string) => <span style={{ fontSize: 12, color: '#9a978e' }}>{t}</span>;
+  const rollPart = (key: string, abbr: string) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {lbl(`ทอย ${abbr} (${dieOf(abbr)})`)}
+      <span style={{ minWidth: 26, textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#2f2c25' }}>{n(key)}</span>
+      <button onClick={() => setS10({ [key]: rollDie(facesOf(byAbbr, abbr)) })} style={rollBtn(facesOf(byAbbr, abbr))}>🎲 ทอย</button>
+    </span>
+  );
+
+  return (
+    <div style={cardPlain}>
+      <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ตั้งชื่อ &amp; รายละเอียด</h1>
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
+        ตั้งชื่อตัวละครและกำหนดค่าสำคัญ — ลูกเต๋าอ้างอิงเกรดสุดท้าย (A d10 · B d8 · C d6 · D d4 · X d2){isAncestry ? ' · เผ่า Ancestry ปรับ ± ได้เพิ่ม' : ''}
+      </p>
+
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82' }}>ชื่อตัวละคร</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName} placeholder="ตั้งชื่อตัวละคร…" style={{ display: 'block', marginTop: 6, width: '100%', maxWidth: 380, boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '10px 13px', fontSize: 14.5, background: '#fff' }} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+        <StatCard title="Scratch Point" total={scratchTotal} isAncestry={isAncestry} adjVal={a('scratch')} onAdj={(v) => setAdj('scratch', v)}>
+          {lbl('Base')}
+          <NumField value={n('baseScratch')} onCommit={(v) => setS10({ baseScratch: v })} />
+          {rollPart('scratchRollEND', 'END')}
+        </StatCard>
+
+        <StatCard title="Wound Point" total={woundTotal} isAncestry={isAncestry} adjVal={a('wound')} onAdj={(v) => setAdj('wound', v)}>
+          {lbl('ระบุเอง')}
+          <NumField value={n('wound')} onCommit={(v) => setS10({ wound: v })} />
+        </StatCard>
+
+        <StatCard title="Nature Defense" total={natureTotal} isAncestry={isAncestry} adjVal={a('natureDef')} onAdj={(v) => setAdj('natureDef', v)}>
+          {lbl('ระบุเอง')}
+          <NumField value={n('natureBase')} onCommit={(v) => setS10({ natureBase: v })} />
+          {lbl(`+ หน้า DEX (${dieOf('DEX')} = ${faceDEX})`)}
+          {lbl(`+ หน้า PER (${dieOf('PER')} = ${facePER})`)}
+        </StatCard>
+
+        <StatCard title="Sanity Point" total={sanityTotal} isAncestry={isAncestry} adjVal={a('sanity')} onAdj={(v) => setAdj('sanity', v)}>
+          {lbl('ค่าพื้นฐาน')}
+          <NumField value={n('sanityBase')} onCommit={(v) => setS10({ sanityBase: v })} />
+          {lbl(`+ หน้า CVN (${dieOf('CVN')} = ${faceCVN})`)}
+          {rollPart('sanityRollINT', 'INT')}
+        </StatCard>
+
+        <StatCard title="Movement" total={moveTotal} isAncestry={isAncestry} adjVal={a('movement')} onAdj={(v) => setAdj('movement', v)}>
+          {lbl('ระบุเอง')}
+          <NumField value={n('movement')} onCommit={(v) => setS10({ movement: v })} />
+        </StatCard>
+
+        <StatCard title="Initiative" total={initTotal} isAncestry={isAncestry} adjVal={a('initiative')} onAdj={(v) => setAdj('initiative', v)}>
+          {lbl('ฐาน 10')}
+          {rollPart('initRollDEX', 'DEX')}
+          {rollPart('initRollCVN', 'CVN')}
+        </StatCard>
+
+        <StatCard title="Willpower Point" total={wpTotal} isAncestry={isAncestry} adjVal={a('willpower')} onAdj={(v) => setAdj('willpower', v)}>
+          {lbl('ระบุเอง')}
+          <NumField value={n('willpower')} onCommit={(v) => setS10({ willpower: v })} />
+        </StatCard>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 11: choose Virtues (max 3) and Flaws — each Virtue needs a Flaw ──
+const MAX_VIRTUES = 3;
+
+function Step11Traits({
+  character,
+  patch,
+}: {
+  character: Character;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+}) {
+  const wiwonIds = wiwonIdsOf(character);
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+
+  const s11 = character.data.step11 && typeof character.data.step11 === 'object' ? (character.data.step11 as { virtues?: string[]; flaws?: string[] }) : {};
+  const virtues = Array.isArray(s11.virtues) ? s11.virtues : [];
+  const flaws = Array.isArray(s11.flaws) ? s11.flaws : [];
+
+  const { data: virtueItems, isLoading: vLoading } = useQuery({
+    queryKey: ['step11-feats', 'Virtues', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Virtues', wiwonIds),
+  });
+  const { data: flawItems, isLoading: fLoading } = useQuery({
+    queryKey: ['step11-feats', 'Flaws', wiwonIds.join(',')],
+    queryFn: () => fetchFeaturesByTag('Flaws', wiwonIds),
+  });
+
+  const commit = (nextVirtues: string[], nextFlaws: string[]) => patch.mutate({ data: { ...character.data, step11: { virtues: nextVirtues, flaws: nextFlaws } } });
+  const toggleVirtue = (id: string) => {
+    if (virtues.includes(id)) commit(virtues.filter((v) => v !== id), flaws);
+    else if (virtues.length < MAX_VIRTUES) commit([...virtues, id], flaws);
+  };
+  const toggleFlaw = (id: string) => {
+    if (flaws.includes(id)) commit(virtues, flaws.filter((f) => f !== id));
+    else commit(virtues, [...flaws, id]);
+  };
+
+  const needMoreFlaws = virtues.length > flaws.length;
+
+  const frame = (title: string, hint: string, items: CatalogItem[] | undefined, isLoading: boolean, chosen: string[], onToggle: (id: string) => void, atMax: boolean, accent: string) => (
+    <div style={{ ...cardPlain, flex: '1 1 300px', minWidth: 280 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 21 }}>{title}</h2>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: accent }}>{hint}</span>
+      </div>
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && (items?.length ?? 0) === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>ยังไม่มี Feature แท็กนี้ใน Wiwon ที่เลือก</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        {(items ?? []).map((f) => {
+          const on = chosen.includes(f.id);
+          const disabled = !on && atMax;
+          return (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${on ? accent : 'var(--border-soft)'}`, background: on ? '#faf9f7' : '#fff', opacity: disabled ? 0.5 : 1 }}>
+              <button onClick={() => onToggle(f.id)} disabled={disabled} title={on ? 'กดเพื่อเอาออก' : disabled ? 'เลือกครบแล้ว' : undefined} style={{ flex: 'none', width: 22, height: 22, borderRadius: 6, border: `2px solid ${on ? accent : '#cfccc4'}`, background: on ? accent : '#fff', color: '#fff', fontSize: 13, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{on ? '✓' : ''}</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{f.name}</div>
+                {f.subtitle && <div style={{ fontSize: 11.5, color: '#9a978e' }}>{f.subtitle}</div>}
+              </div>
+              <button onClick={() => setInfo(f)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div style={cardPlain}>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>Virtues &amp; Flaws</h1>
+        <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 12px' }}>
+          เลือกคุณธรรม (Virtues) และข้อด้อย (Flaws) ได้เอง — ไม่บังคับ แต่ทุก Virtue ต้องมี Flaw คู่กัน และเลือก Virtues ได้สูงสุด {MAX_VIRTUES}
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>Virtues: {virtues.length}/{MAX_VIRTUES}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>Flaws: {flaws.length}</span>
+          {needMoreFlaws && <span style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 20, background: '#fbe7e2', color: '#c0432a', border: '1px solid #f2c9bd' }}>⚠️ ต้องเลือก Flaws ให้ครบอีก {virtues.length - flaws.length}</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, marginTop: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {frame('Virtues', `เลือกได้อีก ${Math.max(0, MAX_VIRTUES - virtues.length)}`, virtueItems, vLoading, virtues, toggleVirtue, virtues.length >= MAX_VIRTUES, '#2f7d4f')}
+        {frame('Flaws', 'เลือกกี่ข้อก็ได้', flawItems, fLoading, flaws, toggleFlaw, false, '#b0552f')}
+      </div>
+
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && <ItemDetailView item={info} isFeature />}
+      </Modal>
+    </>
   );
 }
 
