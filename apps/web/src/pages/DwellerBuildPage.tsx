@@ -104,6 +104,63 @@ const WOUND_LEVELS = [
 ];
 const SHEET_TABS = ['ช่องเก็บของ', 'Dweller Skill', 'Magic', 'Feature', 'ภูมิหลัง', 'จัดการสินทรัพย์', 'พิเศษ', 'บันทึกประจำวัน'];
 
+// Buff / Debuff catalogues (ported from the old design) — [key, label, desc]
+const BUFF_EFFECTS: [string, string, string][] = [
+  ['Blessed', 'ได้รับพร (Blessed)', 'ทอยได้สถานการณ์เป็นใจในครั้งถัดไป'],
+  ['Inspired', 'ฮึกเหิม (Inspired)', 'ได้โบนัสลูกเต๋าเสริมในการกระทำ'],
+  ['Hasted', 'เร่งความเร็ว (Hasted)', 'ระยะก้าวเพิ่มขึ้น · ได้ AP เพิ่ม'],
+  ['Shielded', 'ปกป้อง (Shielded)', 'NA เพิ่มขึ้นชั่วคราว'],
+  ['Regenerating', 'ฟื้นฟู (Regenerating)', 'ฟื้น Scratch ทุกเทิร์น'],
+  ['Empowered', 'เสริมพลัง (Empowered)', 'ความเสียหายเพิ่มขึ้น'],
+  ['Focused', 'จดจ่อ (Focused)', 'ทักษะที่เลือกได้เปรียบ'],
+  ['Warded', 'ป้องกันเวท (Warded)', 'ต้านทานเวทมนตร์'],
+  ['Hidden', 'พรางตัว (Hidden)', 'ตรวจจับได้ยาก'],
+  ['Fortified', 'แข็งแกร่ง (Fortified)', 'ต้านทานสถานะผิดปกติ'],
+];
+const STATUS_EFFECTS: [string, string, string][] = [
+  ['มานาเฮือดแห้ง', 'มานาเฮือดแห้ง (Mana Drained)', 'มานาติดลบ — ฟื้นฟูช้า ใช้เวทที่ต้องมานาไม่ได้จนกว่าจะกลับมาเป็นบวก'],
+  ['Injured', 'บาดเจ็บ', 'เคลื่อนไหวช้าลงครึ่งหนึ่ง · STR ได้สถานการณ์ไม่เป็นใจ'],
+  ['Bleeding', 'เลือดออก', 'Scratch −2 ทุกครั้งที่ติ๊ก Action Point'],
+  ['Fractured', 'กระดูกร้าว', 'ช้าลงครึ่งหนึ่ง · Ego Dice เหลือ D4'],
+  ['Broken', 'กระดูกหัก', 'ไม่สามารถใช้อวัยวะนั้นได้'],
+  ['Maimed', 'อวัยวะเสียหาย', 'แขนขาด นิ้วขาด ตาบอด (ระบุตำแหน่ง)'],
+  ['Internal Injury', 'ช้ำใน', 'STR ได้สถานการณ์ไม่เป็นใจ'],
+  ['Infected', 'ติดเชื้อ', 'ลดผลฟื้นฟู Scratch ลงครึ่งหนึ่ง'],
+  ['Slowed', 'ชะงัก', 'ความเร็วลดลง'],
+  ['Entangled', 'ติดพัน', 'ขยับได้ยาก'],
+  ['Immobilized', 'ถูกตรึง', 'เคลื่อนไหวไม่ได้ แต่ยังสู้ได้'],
+  ['Prone', 'ล้ม', 'หลบระยะไกลง่าย · สู้ประชิดเสียเปรียบ'],
+  ['Knocked Down', 'หงายหลัง', 'ล้มพร้อมเสียจังหวะ'],
+  ['Grappled', 'ถูกจับล็อก', 'ต้องทอย 3RR ชนะการจับกุม'],
+  ['Overburdened', 'แบกภาระเกิน', 'น้ำหนักมากไป · ระยะก้าวครึ่งเดียว'],
+  ['Blind', 'ตาบอด', 'การกระทำที่ใช้การมองเห็นทำไม่ได้'],
+  ['Deaf', 'หูหนวก', 'การกระทำที่ใช้การได้ยินทำไม่ได้'],
+  ['Dazed', 'มึนงง', 'ทุกการกระทำได้สถานการณ์ไม่เป็นใจ'],
+  ['Confused', 'สับสน', 'แยกมิตร/ศัตรูยาก'],
+  ['Stunned', 'ช็อก', 'เสียการกระทำ 1 เทิร์น'],
+  ['Paralyzed', 'อัมพาต', 'ขยับไม่ได้'],
+  ['Unconscious', 'สลบ', 'หมดสติ'],
+  ['Burning', 'ถูกเผาไหม้', 'Scratch d6/d8/d10 ทุกเทิร์น'],
+  ['Frozen', 'แช่แข็ง', 'เคลื่อนที่ลำบาก'],
+  ['Wet', 'เปียก', 'มีผลกับไฟฟ้าและความหนาว'],
+  ['Poisoned', 'สารพิษสะสม', 'ทานอาหาร/น้ำไม่ได้จนพิษออก'],
+  ['Suffocating', 'ขาดอากาศ', 'นับถอยหลัง 10 + END เทิร์น'],
+  ['Fear', 'หวาดกลัว', 'ไม่กล้าเข้าใกล้เป้าหมาย'],
+  ['Panic', 'ตื่นตระหนก', 'ทำอะไรไม่ได้จนได้สติ'],
+  ['Despair', 'สิ้นหวัง', 'Willpower ไม่คืนกลับ'],
+  ['Madness', 'คลุ้มคลั่ง', 'ใช้ทักษะ AUT/CVN ไม่ได้'],
+  ['Hallucinating', 'ประสาทหลอน', 'เห็นสิ่งที่ไม่มีอยู่จริง'],
+  ['Possessed', 'ถูกครอบงำ', 'มีบางสิ่งควบคุมร่างคุณ'],
+  ['Hungry', 'หิว', 'ไม่กิน 1 อาทิตย์ → ลด Wounds'],
+  ['Thirsty', 'กระหาย', 'ไม่ดื่ม 3 วัน → ลด Wounds'],
+  ['Sleep-Deprived', 'อดนอน', 'เสียค่าสติวันละ d6 SAN'],
+];
+const LANG_TIER_DEFS = [
+  { key: 'master', label: 'ภาษาที่ชำนาญ (Fluent)' },
+  { key: 'read', label: 'ภาษาที่อ่านออก (Literate)' },
+  { key: 'speak', label: 'ภาษาที่พูดและฟังได้ (Conversational)' },
+];
+
 function CharacterSheet({
   character,
   covers,
@@ -134,12 +191,19 @@ function CharacterSheet({
   const [dragId, setDragId] = useState<string | null>(null);
   const [info, setInfo] = useState<CatalogItem | null>(null);
   const [infoIsFeature, setInfoIsFeature] = useState(true);
+  const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
+  const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
+  const [buffModal, setBuffModal] = useState(false);
+  const [statusModal, setStatusModal] = useState(false);
+  const [effQuery, setEffQuery] = useState('');
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
   const { data: q4data } = useQuery({ queryKey: ['step4-questions', 'global'], queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global') });
   const { data: q5data } = useQuery({ queryKey: ['step5-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step5-questions/global') });
   const { data: q6data } = useQuery({ queryKey: ['step6-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step6-questions/global') });
+  const { data: equipment } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
+  const equipById = new Map((equipment ?? []).map((e) => [e.id, e]));
   const featById = new Map((features ?? []).map((f) => [f.id, f]));
   const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
 
@@ -203,19 +267,18 @@ function CharacterSheet({
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
   const setBag = (next: BagLine[]) => patch.mutate({ data: { ...d, bag: next } });
 
-  // Language proficiency tiers (learn / use / expert) — click a badge to cycle
-  const LANG_TIERS = [
-    { key: 'learn', label: 'ระดับฝึกฝน' },
-    { key: 'use', label: 'ระดับใช้งาน' },
-    { key: 'expert', label: 'ระดับผู้เชี่ยวชาญ' },
-  ];
-  const langTierMap = sheet.langTier && typeof sheet.langTier === 'object' ? (sheet.langTier as Record<string, string>) : {};
-  const langTierOf = (nm: string) => langTierMap[nm] ?? 'use';
-  const cycleLangTier = (nm: string) => {
-    const order = ['learn', 'use', 'expert'];
-    const next = order[(order.indexOf(langTierOf(nm)) + 1) % 3];
-    setSheet({ langTier: { ...langTierMap, [nm]: next } });
-  };
+  // Language (old-design model): free list of { id, name, tier } across 3 tiers
+  interface LangItem { id: string; name: string; tier: string }
+  const langs: LangItem[] = Array.isArray(sheet.langs) ? (sheet.langs as LangItem[]) : [];
+  const addLang = (tier: string, name: string) => setSheet({ langs: [...langs, { id: `l${Date.now()}`, name, tier }] });
+  const setLang = (id: string, name: string) => setSheet({ langs: langs.map((l) => (l.id === id ? { ...l, name } : l)) });
+  const delLang = (id: string) => setSheet({ langs: langs.filter((l) => l.id !== id) });
+
+  // Buff / Debuff (old-design model): toggle sets on sheet.buffsOn / sheet.statusOn
+  const buffsOn = sheet.buffsOn && typeof sheet.buffsOn === 'object' ? (sheet.buffsOn as Record<string, boolean>) : {};
+  const statusOn = sheet.statusOn && typeof sheet.statusOn === 'object' ? (sheet.statusOn as Record<string, boolean>) : {};
+  const toggleBuff = (k: string) => { const n = { ...buffsOn }; if (n[k]) delete n[k]; else n[k] = true; setSheet({ buffsOn: n }); };
+  const toggleStatus = (k: string) => { const n = { ...statusOn }; if (n[k]) delete n[k]; else n[k] = true; setSheet({ statusOn: n }); };
 
   // Inventory zones (ported from the old design): LOOT / READY / สะพาย(กระเป๋า)
   // The "สะพาย" zone only unlocks once the character owns a bag-type item.
@@ -344,7 +407,6 @@ function CharacterSheet({
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
   const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: '.03em', color: '#6b6860' };
-  const plus = <span style={{ fontSize: 16, color: '#c9c5bd', fontWeight: 700 }}>+</span>;
 
   // ── Sanity / Scratch pools (max defaults to Step 10 but is editable) ──
   const sanMax = sv('sanMax', sanityMax);
@@ -382,7 +444,7 @@ function CharacterSheet({
   };
   const tickGreen = (i: number) => setSheet({ woundGreenTicked: greenTicked === i + 1 ? i : i + 1 });
   const addGreen = () => setSheet({ woundGreen: Math.min(4, woundGreen + 1) });
-  const subGreen = () => { const ng = Math.max(1, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
+  const subGreen = () => { const ng = Math.max(0, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
 
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
@@ -556,7 +618,7 @@ function CharacterSheet({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={secTitle}>WOUNDS POINT</span>
                 <span style={{ display: 'flex', gap: 5 }}>
-                  <button onClick={subGreen} disabled={woundGreen <= 1} title="ลดช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen <= 1 ? '#f5f3ef' : '#fff', color: woundGreen <= 1 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen <= 1 ? 'not-allowed' : 'pointer' }}>−</button>
+                  <button onClick={subGreen} disabled={woundGreen <= 0} title="ลดช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen <= 0 ? '#f5f3ef' : '#fff', color: woundGreen <= 0 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen <= 0 ? 'not-allowed' : 'pointer' }}>−</button>
                   <button onClick={addGreen} disabled={woundGreen >= 4} title="เพิ่มช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen >= 4 ? '#f5f3ef' : '#fff', color: woundGreen >= 4 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen >= 4 ? 'not-allowed' : 'pointer' }}>+</button>
                 </span>
               </div>
@@ -616,18 +678,31 @@ function CharacterSheet({
           {/* Middle */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={box}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>สถานะเสริม (Buff)</span>{plus}</div>
-              <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('buff')} onCommit={(v) => setSheet({ buff: v })} /></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ ...secTitle, color: '#2f6b4f' }}>สถานะเสริม (Buff)</span>
+                <button onClick={() => { setEffQuery(''); setBuffModal(true); }} style={{ padding: '3px 11px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เลือก</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {Object.keys(buffsOn).length === 0 ? <span style={{ fontSize: 11.5, color: '#bdbab2' }}>— ยังไม่มีบัฟ —</span> : Object.keys(buffsOn).map((k) => {
+                  const b = BUFF_EFFECTS.find((e) => e[0] === k);
+                  return <span key={k} title={b?.[2]} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, padding: '3px 6px 3px 10px', borderRadius: 8, background: '#f3f9f5', color: '#2f6b4f', border: '1px solid #cbe0d2', cursor: 'help' }}>{b?.[1] ?? k}<button onClick={() => toggleBuff(k)} style={{ border: 'none', background: 'none', color: '#5fa07a', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button></span>;
+                })}
+              </div>
             </div>
             <div style={box}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>สถานะผิดปกติ (Debuff)</span>{plus}</div>
-              {(activeWoundDebuffs.length > 0 || deathDoor) && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {activeWoundDebuffs.map((db) => <span key={db} style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{db}</span>)}
-                  {deathDoor && <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 10px', borderRadius: 8, background: '#2f2c25', color: '#f0c8c8' }}>☠ ลมหายใจเฮือกสุดท้าย</span>}
-                </div>
-              )}
-              <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('debuff')} onCommit={(v) => setSheet({ debuff: v })} /></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ ...secTitle, color: '#c0432a' }}>สถานะผิดปกติ (Debuff)</span>
+                <button onClick={() => { setEffQuery(''); setStatusModal(true); }} style={{ padding: '3px 11px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เลือก</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {activeWoundDebuffs.map((db) => <span key={db} title="ผลจากระดับบาดเจ็บ" style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{db}</span>)}
+                {deathDoor && <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 10px', borderRadius: 8, background: '#2f2c25', color: '#f0c8c8' }}>☠ ลมหายใจเฮือกสุดท้าย</span>}
+                {Object.keys(statusOn).map((k) => {
+                  const st = STATUS_EFFECTS.find((e) => e[0] === k);
+                  return <span key={k} title={st?.[2]} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, padding: '4px 6px 4px 11px', borderRadius: 8, background: '#fbeae6', color: '#b4513a', border: '1px solid #f0d3cb', cursor: 'help' }}>{st?.[1] ?? k}<button onClick={() => toggleStatus(k)} style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button></span>;
+                })}
+                {activeWoundDebuffs.length === 0 && !deathDoor && Object.keys(statusOn).length === 0 && <span style={{ fontSize: 11.5, color: '#bdbab2' }}>ยังไม่มีสถานะผิดปกติ — กด “เลือก”</span>}
+              </div>
             </div>
             <div style={{ ...box, position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -650,20 +725,41 @@ function CharacterSheet({
               )}
             </div>
             <div style={box}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}><span style={secTitle}>ภาษา / Language</span>{plus}</div>
-              {LANG_TIERS.map((t) => {
-                const items = languages.filter((nm) => langTierOf(nm) === t.key);
-                return (
-                  <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                    <span style={{ flex: '0 0 96px', fontSize: 12, color: '#6b6860' }}>{t.label}</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {items.map((nm, i) => (
-                        <button key={i} onClick={() => cycleLangTier(nm)} title="กดเพื่อเปลี่ยนระดับ" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0', cursor: 'pointer' }}>{nm}</button>
-                      ))}
+              <div style={{ ...secTitle, marginBottom: 10 }}>ภาษา <span style={{ color: '#cbc8c0' }}>/ Language</span></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {LANG_TIER_DEFS.map((t) => {
+                  const items = langs.filter((l) => l.tier === t.key);
+                  const opts = languages.filter((nm) => !langs.some((l) => l.name === nm));
+                  return (
+                    <div key={t.key} style={{ position: 'relative' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#46587a' }}>{t.label}</span>
+                        <button onClick={() => setLangPick(langPick === t.key ? null : t.key)} style={{ padding: '1px 9px', background: '#eef2f6', border: '1px solid #cdd8e6', color: '#46587a', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>＋</button>
+                      </div>
+                      {langPick === t.key && (
+                        <div style={{ position: 'absolute', zIndex: 30, top: 24, right: 0, width: 200, background: '#fff', border: '1px solid #cdd8e6', borderRadius: 9, boxShadow: '0 12px 30px rgba(0,0,0,.14)', padding: 6, maxHeight: 220, overflow: 'auto' }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.06em', color: '#a8a59d', padding: '3px 6px 5px' }}>เลือกจาก Feature: Language</div>
+                          {opts.length === 0 ? <div style={{ fontSize: 10.5, color: '#cbc8c0', padding: '4px 6px' }}>ยังไม่มี Feature ที่แท็ก “Language”</div> : opts.map((nm) => (
+                            <button key={nm} onClick={() => { addLang(t.key, nm); setLangPick(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px', border: 'none', background: 'none', borderRadius: 6, fontSize: 11.5, color: '#46443c', cursor: 'pointer' }}>{nm}</button>
+                          ))}
+                          <div style={{ borderTop: '1px solid #f0eee9', marginTop: 5, paddingTop: 5, display: 'flex', gap: 6 }}>
+                            <button onClick={() => { addLang(t.key, 'ภาษาใหม่'); setLangPick(null); }} style={{ flex: 1, padding: 5, border: '1px dashed #cdd8e6', background: '#faf9f7', color: '#46587a', borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' }}>＋ พิมพ์เอง</button>
+                            <button onClick={() => setLangPick(null)} style={{ flex: 'none', padding: '5px 10px', border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 6, fontSize: 10.5, cursor: 'pointer' }}>ปิด</button>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {items.length === 0 ? <span style={{ fontSize: 10.5, color: '#cbc8c0' }}>—</span> : items.map((l) => (
+                          <span key={l.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eef2f6', borderRadius: 6, padding: '2px 5px 2px 9px', color: '#46587a' }}>
+                            <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setLang(l.id, e.target.value); }} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 11, color: '#46587a', width: 66 }} />
+                            <button onClick={() => delLang(l.id)} style={{ border: 'none', background: 'none', color: '#9aa7bd', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -706,6 +802,26 @@ function CharacterSheet({
                   </div>
                   {/* white card */}
                   <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {phase === 'On Hand' ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· ช่องพร้อมใช้ · กด ⓘ ดูรายละเอียด</span></div>
+                        {ready.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>ยังไม่มีของในมือ — ลากของจาก “ช่องเก็บของ” มาที่ Ready</div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                            {ready.map((l) => (
+                              <div key={l.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #cbe0d2', borderRadius: 10, padding: '9px 11px', background: '#f7fbf8' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
+                                  <div style={{ fontSize: 10.5, color: '#9a978e' }}>{numData(l.kg)} kg</div>
+                                </div>
+                                <button onClick={() => { const it = l.itemId ? equipById.get(l.itemId) : undefined; if (it) { setInfoIsFeature(false); setInfo(it); } else setHandInfo(l); }} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (<>
                     {/* ── row 1: AP · Next Round · Will-power ── */}
                     <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
                       {/* Action Point */}
@@ -766,6 +882,7 @@ function CharacterSheet({
                         </div>
                       </div>
                     </div>
+                    </>)}
                   </div>
                 </div>
               );
@@ -1056,6 +1173,48 @@ function CharacterSheet({
       {/* ── Feature / Magic detail popup ── */}
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
         {info && <ItemDetailView item={info} isFeature={infoIsFeature} />}
+      </Modal>
+
+      {/* ── On-Hand fallback detail (custom item without catalog data) ── */}
+      <Modal open={!!handInfo} onClose={() => setHandInfo(null)} title={handInfo?.name ?? ''}>
+        {handInfo && (
+          <div style={{ fontSize: 13, color: '#3c3a33', lineHeight: 1.7 }}>
+            <div>น้ำหนัก: <b>{numData(handInfo.kg)} kg</b></div>
+            <div style={{ color: '#9a978e', marginTop: 4 }}>สิ่งของนี้เพิ่มเอง — ไม่มีรายละเอียดจากคลัง Equipment</div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Buff picker ── */}
+      <Modal open={buffModal} onClose={() => setBuffModal(false)} title="เลือก Buff">
+        <input value={effQuery} onChange={(e) => setEffQuery(e.target.value)} placeholder="ค้นหา Buff…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '9px 13px', fontSize: 13, outline: 'none', marginBottom: 10 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 380, overflowY: 'auto' }}>
+          {BUFF_EFFECTS.filter((b) => !effQuery.trim() || b[1].toLowerCase().includes(effQuery.toLowerCase()) || b[0].toLowerCase().includes(effQuery.toLowerCase())).map((b) => {
+            const on = !!buffsOn[b[0]];
+            return (
+              <button key={b[0]} onClick={() => toggleBuff(b[0])} style={{ display: 'block', textAlign: 'left', padding: '9px 11px', borderRadius: 9, cursor: 'pointer', border: `1px solid ${on ? '#2f6b4f' : '#ece9e3'}`, background: on ? '#eaf3ed' : '#fff' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f6b4f' }}>{on ? '✓ ' : ''}{b[1]}</div>
+                <div style={{ fontSize: 11.5, color: '#8d8a82', marginTop: 2, lineHeight: 1.5 }}>{b[2]}</div>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
+
+      {/* ── Debuff / status picker ── */}
+      <Modal open={statusModal} onClose={() => setStatusModal(false)} title="เลือกสถานะผิดปกติ">
+        <input value={effQuery} onChange={(e) => setEffQuery(e.target.value)} placeholder="ค้นหาสถานะ…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '9px 13px', fontSize: 13, outline: 'none', marginBottom: 10 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 380, overflowY: 'auto' }}>
+          {STATUS_EFFECTS.filter((st) => !effQuery.trim() || st[1].includes(effQuery) || st[0].toLowerCase().includes(effQuery.toLowerCase())).map((st) => {
+            const on = !!statusOn[st[0]];
+            return (
+              <button key={st[0]} onClick={() => toggleStatus(st[0])} style={{ display: 'block', textAlign: 'left', padding: '9px 11px', borderRadius: 9, cursor: 'pointer', border: `1px solid ${on ? '#c0432a' : '#ece9e3'}`, background: on ? '#fbeae6' : '#fff' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b4513a' }}>{on ? '✓ ' : ''}{st[1]}</div>
+                <div style={{ fontSize: 11.5, color: '#8d8a82', marginTop: 2, lineHeight: 1.5 }}>{st[2]}</div>
+              </button>
+            );
+          })}
+        </div>
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
