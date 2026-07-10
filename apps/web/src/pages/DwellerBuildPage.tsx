@@ -218,14 +218,12 @@ function CharacterSheet({
     setSheet({ [tempKey]: t, [curKey]: Math.max(0, cur - a) });
   };
 
-  // ── Wounds: 4 green ("Have no impact") + 5 red levels, ticked left→right ──
-  const woundTicks = sv('woundTicks', 0); // 0..9
-  const GREEN_SLOTS = 4;
-  const redLevel = Math.max(0, woundTicks - GREEN_SLOTS); // 0..5 (1=First Blood … 5=Death's Door)
+  // ── Wounds: cumulative tick 1→5 (First Blood … Death's Door); 0 = Have no impact ──
+  const woundLevel = sv('woundLevel', 0); // 0..5
   const WOUND_DEBUFFS = ['อ่อนแอต่อพิษ', 'อ่อนกำลัง', 'อ่อนล้า', 'หมดแรง'];
-  const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(redLevel, 4));
-  const deathDoor = woundTicks >= GREEN_SLOTS + 5;
-  const tickWound = (i: number) => setSheet({ woundTicks: woundTicks === i + 1 ? i : i + 1 });
+  const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(woundLevel, 4));
+  const deathDoor = woundLevel >= 5;
+  const tickWound = (lv: number) => setSheet({ woundLevel: woundLevel === lv ? lv - 1 : lv });
 
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
@@ -380,31 +378,20 @@ function CharacterSheet({
             </div>
             {poolBox('SCRATCH POINT', 'TEMP', scrTemp, 'scratchTemp', scrCur, scratchMax, 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scratchMax, scrAmt), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
             <div style={{ ...box, position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={secTitle}>WOUNDS POINT</span>
-                <span style={{ display: 'flex', gap: 5 }}>
-                  <button onClick={() => setSheet({ woundTicks: Math.max(0, woundTicks - 1) })} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>−</button>
-                  <button onClick={() => setSheet({ woundTicks: Math.min(GREEN_SLOTS + 5, woundTicks + 1) })} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>+</button>
-                </span>
-              </div>
+              <span style={secTitle}>WOUNDS POINT</span>
               <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
-                <div style={{ flex: 'none' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#5aa06a', marginBottom: 5 }}>Have no impact</div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {Array.from({ length: GREEN_SLOTS }).map((_, i) => (
-                      <button key={i} onClick={() => tickWound(i)} title="Have no impact" style={{ width: 18, height: 18, borderRadius: 5, border: '1px solid #bfe0c6', background: i < woundTicks ? '#7bc48a' : '#eaf5ec', cursor: 'pointer' }} />
-                    ))}
-                  </div>
+                <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: woundLevel === 0 ? '#5aa06a' : '#d5e8d9', flex: 'none' }} />
+                  <span style={{ fontSize: 12, fontWeight: woundLevel === 0 ? 800 : 500, color: woundLevel === 0 ? '#2f7d4f' : '#a8a59d' }}>Have no impact</span>
                 </div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {[1, 2, 3, 4, 5].map((lv) => {
-                    const idx = GREEN_SLOTS + lv - 1;
-                    const on = woundTicks > idx;
+                    const on = woundLevel >= lv;
                     const w = WOUND_LEVELS[lv];
                     return (
-                      <button key={w.label} onClick={() => tickWound(idx)} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
-                        <span style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${w.color}`, background: on ? w.color : 'transparent', flex: 'none' }} />
-                        <span style={{ fontSize: 12, fontWeight: on ? 800 : 500, color: on ? '#2f2c25' : '#8d8a82' }}>{w.label}</span>
+                      <button key={w.label} onClick={() => tickWound(lv)} title={`ติ๊กถึง ${w.label}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
+                        <span style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${w.color}`, background: on ? w.color : 'transparent', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800 }}>{on ? '✓' : ''}</span>
+                        <span style={{ fontSize: 12, fontWeight: on ? 800 : 500, color: on ? '#2f2c25' : '#8d8a82' }}>{lv}. {w.label}</span>
                       </button>
                     );
                   })}
