@@ -128,7 +128,7 @@ function CharacterSheet({
   const [profPicker, setProfPicker] = useState(false);
   const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
   const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
-  const [addItemName, setAddItemName] = useState('');
+  const [coinAdj, setCoinAdj] = useState<Record<string, string>>({});
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -193,8 +193,6 @@ function CharacterSheet({
 
   // Wallet
   const walletIC = numData(d.walletIC);
-  const rb: RoyalBond[] = Array.isArray(d.walletRB) ? (d.walletRB as RoyalBond[]) : [];
-  const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
   const setBag = (next: BagLine[]) => patch.mutate({ data: { ...d, bag: next } });
 
@@ -212,16 +210,62 @@ function CharacterSheet({
     setSheet({ langTier: { ...langTierMap, [nm]: next } });
   };
 
-  // Storage containers ("กระเป๋าที่มี") — each bag line belongs to one container
-  interface BagContainer { id: string; name: string; color: string }
-  const DEFAULT_BAGS: BagContainer[] = [
-    { id: 'b1', name: 'กระเป๋า 1', color: '#4a463d' },
-    { id: 'b2', name: 'กระเป๋า 2', color: '#d8d4cc' },
-  ];
-  const bags: BagContainer[] = Array.isArray(sheet.bags) && (sheet.bags as BagContainer[]).length ? (sheet.bags as BagContainer[]) : DEFAULT_BAGS;
-  const activeBagId = svs('activeBag', bags[0].id) || bags[0].id;
-  const activeBag = bags.find((b) => b.id === activeBagId) ?? bags[0];
-  const bagItems = bag.filter((l) => (l.bagId ?? bags[0].id) === activeBag.id);
+  // Inventory zones (ported from the old design): LOOT / READY / สะพาย(กระเป๋า)
+  // The "สะพาย" zone only unlocks once the character owns a bag-type item.
+  const BAG_RE = /bag|backpack|sack|pouch|pack|กระเป๋า|เป้|ย่าม|ถุง/i;
+  const isBagItem = (l: BagLine) => l.isBag ?? BAG_RE.test(l.name);
+  const invZone = (l: BagLine) => l.zone ?? 'loot';
+  const hasBag = bag.some(isBagItem);
+  const loot = bag.filter((l) => invZone(l) === 'loot');
+  const ready = bag.filter((l) => invZone(l) === 'ready');
+  const carried = bag.filter((l) => invZone(l) === 'bag');
+  const carryKg = [...ready, ...carried].reduce((s, l) => s + numData(l.kg), 0);
+  const setInv = (lineId: string, p: Partial<BagLine>) => setBag(bag.map((l) => (l.lineId === lineId ? { ...l, ...p } : l)));
+  const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId));
+  const addBlankInv = () => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: 'สิ่งของใหม่', priceIC: 0, zone: 'loot', kg: 0 }]);
+  const zoneBd: Record<string, string> = { loot: '#ece9e3', ready: '#cbe0d2', bag: '#d6c7f0' };
+  const zoneBg: Record<string, string> = { loot: '#fff', ready: '#f7fbf8', bag: '#faf8fd' };
+  const moveStyle = (c: string, bd: string): React.CSSProperties => ({ padding: '3px 9px', border: `1px solid ${bd}`, background: '#fff', color: c, borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' });
+  const invRow = (l: BagLine) => {
+    const z = invZone(l);
+    return (
+      <div key={l.lineId} style={{ border: `1px solid ${zoneBd[z]}`, borderRadius: 8, padding: '8px 10px', background: zoneBg[z] }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
+          {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า</span>}
+          <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          <NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} />
+          <span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span>
+          {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
+          {z !== 'loot' && <button onClick={() => setInv(l.lineId, { zone: 'loot' })} style={moveStyle('#8d8a82', '#e0ded7')}>→ Loot</button>}
+          {hasBag && z !== 'bag' && <button onClick={() => setInv(l.lineId, { zone: 'bag' })} style={moveStyle('#5b3fa0', '#d6c7f0')}>→ สะพาย</button>}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Finance / จัดการสินทรัพย์ (ported from the old design) ──
+  interface Pouch { id: string; name: string; coins: Record<string, number> }
+  const coins = decomposeIC(walletIC);
+  const pouches: Pouch[] = Array.isArray(d.pouches) ? (d.pouches as Pouch[]) : [];
+  const icOf = (key: string) => COIN_DEFS.find((c) => c.key === key)?.ic ?? 0;
+  const setWalletIC = (v: number) => patch.mutate({ data: { ...d, walletIC: Math.max(0, Math.round(v)) } });
+  const setCoinCount = (key: string, count: number) => setWalletIC(walletIC - coins[key] * icOf(key) + Math.max(0, count) * icOf(key));
+  const adjMain = (key: string, sign: 1 | -1) => { const amt = Math.max(0, Math.round(Number(coinAdj[key] || 0))); if (amt) setWalletIC(walletIC + sign * amt * icOf(key)); };
+  const clearAdj = () => setCoinAdj({});
+  const addPouch = () => patch.mutate({ data: { ...d, pouches: [...pouches, { id: `p${Date.now()}`, name: 'กองเงินใหม่', coins: {} }] } });
+  const renamePouch = (id: string, name: string) => patch.mutate({ data: { ...d, pouches: pouches.map((p) => (p.id === id ? { ...p, name } : p)) } });
+  const removePouch = (id: string) => { const p = pouches.find((x) => x.id === id); if (!p) return; const back = Object.entries(p.coins).reduce((s, [k, c]) => s + icOf(k) * c, 0); patch.mutate({ data: { ...d, pouches: pouches.filter((x) => x.id !== id), walletIC: walletIC + back } }); };
+  const moveCoin = (pid: string, key: string, dir: 'in' | 'out') => {
+    const p = pouches.find((x) => x.id === pid); if (!p) return;
+    const amt = Math.max(0, Math.round(Number(coinAdj[`${pid}:${key}`] || 1))) || 1;
+    const cur = p.coins[key] ?? 0;
+    const ic = icOf(key);
+    if (dir === 'in') { const move = Math.min(amt, coins[key]); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur + move } } : x)), walletIC: walletIC - move * ic } }); }
+    else { const move = Math.min(amt, cur); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur - move } } : x)), walletIC: walletIC + move * ic } }); }
+  };
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -605,71 +649,37 @@ function CharacterSheet({
 
               {tab === 'ช่องเก็บของ' && (
                 <div>
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 180 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', marginBottom: 6 }}>Ready Slot</div>
-                      <div style={{ minHeight: 70, border: '1px dashed #e0ded7', borderRadius: 10, background: '#faf9f7' }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 180 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', marginBottom: 6 }}>Party Slot</div>
-                      <div style={{ minHeight: 70, border: '1px dashed #e0ded7', borderRadius: 10, background: '#faf9f7' }} />
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>พื้นที่เก็บของ</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#5f5c54' }}>แบกอยู่ {carryKg} kg</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 6px' }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>กระเป๋า</span>
-                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <input
-                        value={addItemName}
-                        onChange={(e) => setAddItemName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && addItemName.trim()) {
-                            setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: addItemName.trim(), priceIC: 0, bagId: activeBag.id }]);
-                            setAddItemName('');
-                          }
-                        }}
-                        placeholder="ชื่อสิ่งของ"
-                        style={{ width: 130, border: '1px solid #e0ded7', borderRadius: 7, padding: '5px 9px', fontSize: 12 }}
-                      />
-                      <button
-                        onClick={() => { if (addItemName.trim()) { setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: addItemName.trim(), priceIC: 0, bagId: activeBag.id }]); setAddItemName(''); } }}
-                        style={{ border: 'none', background: '#e07a5f', color: '#fff', borderRadius: 7, padding: '6px 11px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                      >＋ เพิ่มสิ่งของ</button>
-                    </span>
-                    <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', flex: '0 0 auto' }}>กระเป๋าที่มี</span>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                    <button onClick={addBlankInv} style={{ flex: 'none', padding: '7px 14px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มสิ่งของ</button>
                   </div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-                    <div style={{ flex: 1, minHeight: 90, border: '1px solid #ece9e2', borderRadius: 10, background: '#faf9f7', padding: 10 }}>
-                      {bagItems.length === 0 ? (
-                        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '6px 0' }}>ยังไม่มีของใน{activeBag.name}</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {bagItems.map((l) => (
-                            <span key={l.lineId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 6px 5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>
-                              {l.name}
-                              <button onClick={() => setBag(bag.filter((x) => x.lineId !== l.lineId))} title="ลบ" style={{ border: 'none', background: 'none', color: '#c0432a', fontSize: 13, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: '0 0 150px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {bags.map((b) => (
-                        <button
-                          key={b.id}
-                          onClick={() => setSheet({ activeBag: b.id })}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: `1px solid ${b.id === activeBag.id ? '#e07a5f' : '#eae7e0'}`, background: b.id === activeBag.id ? '#fdeee9' : '#fff', borderRadius: 9, padding: '7px 10px', cursor: 'pointer' }}
-                        >
-                          <span style={{ width: 16, height: 16, borderRadius: 5, background: b.color, border: '1px solid rgba(0,0,0,.1)', flex: 'none' }} />
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3c3a33' }}>{b.name}</span>
-                          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9a978e' }}>{bag.filter((l) => (l.bagId ?? bags[0].id) === b.id).length}</span>
-                        </button>
-                      ))}
-                    </div>
+
+                  {/* LOOT */}
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#b06a2a', marginBottom: 6 }}>▾ LOOT (วางบนพื้น · ไม่นับน้ำหนัก)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                    {loot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง —</div> : loot.map(invRow)}
                   </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#c79a2e', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 8, padding: '5px 11px' }}>💰 {coinStr(walletIC)}</span>
-                    {rbTotalGC > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: '#5a6b86', background: '#eef2f8', border: '1px solid #d5deea', borderRadius: 8, padding: '5px 11px' }}>RB {rbTotalGC} GC</span>}
+
+                  {/* READY */}
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#2f6b4f', marginBottom: 6 }}>▾ READY SLOTS (พกพร้อมใช้ · นับน้ำหนัก)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                    {ready.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง —</div> : ready.map(invRow)}
                   </div>
+
+                  {/* BAG — only once a bag-type item is owned */}
+                  {hasBag ? (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#5b3fa0', marginBottom: 6 }}>▾ สะพาย / กระเป๋า (นับน้ำหนัก)</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {carried.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — (กด “→ สะพาย” ที่ของชิ้นอื่นเพื่อย้ายเข้ากระเป๋า)</div> : carried.map(invRow)}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 10.5, color: '#a8a59d', padding: '9px 12px', border: '1px dashed #e0ded7', borderRadius: 8, lineHeight: 1.5 }}>🎒 ยังไม่มีกระเป๋า — ซื้อกระเป๋าจาก Equipment &amp; Items เพื่อปลดล็อกพื้นที่ “สะพาย”</div>
+                  )}
                 </div>
               )}
 
@@ -752,8 +762,76 @@ function CharacterSheet({
                 </div>
               )}
 
-              {['จัดการสินทรัพย์', 'พิเศษ', 'บันทึกประจำวัน'].includes(tab) && (
-                <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '18px 0', textAlign: 'center' }}>ส่วน “{tab}” กำลังพัฒนา</div>
+              {tab === 'จัดการสินทรัพย์' && (
+                <div>
+                  {/* MY COIN header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#15140f', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
+                    <div><div style={{ fontSize: 9, letterSpacing: '.14em', color: '#9a978e', fontWeight: 700 }}>MY COIN</div><div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>กระเป๋าเหรียญ</div></div>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9, color: '#9a978e' }}>มูลค่ารวม (ฐาน)</div><div style={{ fontSize: 19, fontWeight: 800, color: '#e0b94a' }}>{coinStr(walletIC)}</div></div>
+                  </div>
+                  {/* coin tier rows */}
+                  <div style={{ border: '1px solid #e4e2dc', borderRadius: 11, overflow: 'hidden', marginBottom: 16 }}>
+                    {COIN_DEFS.map((c) => (
+                      <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: '1px solid #f3f1ec' }}>
+                        <span style={{ width: 13, height: 13, borderRadius: '50%', flex: 'none', background: c.color }} />
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#46443c' }}>{c.label} <span style={{ fontSize: 11, color: '#a8a59d', fontWeight: 400 }}>({c.key})</span></div><div style={{ fontSize: 10, color: '#b09a6a' }}>1 {c.key} = {c.ic} IC</div></div>
+                        <NumField value={coins[c.key]} onCommit={(v) => setCoinCount(c.key, v)} width={74} style={{ fontSize: 17, fontWeight: 800, textAlign: 'right' }} />
+                      </div>
+                    ))}
+                  </div>
+                  {/* ADJUST COIN */}
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: '#a8a59d', marginBottom: 9 }}>ADJUST COIN <span style={{ fontWeight: 400, color: '#cbc8c0' }}>· ใส่จำนวนแล้วกด เพิ่ม / หัก</span></div>
+                  <div style={{ display: 'flex', gap: 7, marginBottom: 11 }}>
+                    {COIN_DEFS.map((c) => (
+                      <div key={c.key} style={{ flex: 1, textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 4 }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: c.color }} /><span style={{ fontSize: 10, fontWeight: 700, color: '#8d8a82' }}>{c.key}</span></div>
+                        <input value={coinAdj[c.key] ?? ''} onChange={(e) => setCoinAdj({ ...coinAdj, [c.key]: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="0" style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 4px', fontSize: 14, fontWeight: 700, textAlign: 'center', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 7, marginBottom: 18 }}>
+                    <button onClick={() => COIN_DEFS.forEach((c) => adjMain(c.key, 1))} style={{ flex: 1, padding: 9, background: '#eaf3ed', border: '1px solid #cbe0d2', color: '#2f6b4f', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่ม</button>
+                    <button onClick={() => COIN_DEFS.forEach((c) => adjMain(c.key, -1))} style={{ flex: 1, padding: 9, background: '#fbeae6', border: '1px solid #f0d3cb', color: '#b4513a', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>− หัก</button>
+                    <button onClick={clearAdj} style={{ flex: 'none', padding: '9px 16px', background: '#fff', border: '1px solid #e0ded7', color: '#8d8a82', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>ล้าง</button>
+                  </div>
+                  {/* SEPARATE POUCHES */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 8px' }}><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: '#a8a59d' }}>กองเงินแยก <span style={{ fontWeight: 400, color: '#cbc8c0' }}>· ย้ายเหรียญจากกระเป๋าหลัก</span></span><button onClick={addPouch} style={{ padding: '4px 11px', background: '#faf6f4', border: '1px solid #e0c4ba', color: '#b4513a', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่มกอง</button></div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {pouches.length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#cbc8c0', padding: '4px 0' }}>ยังไม่มีกองเงินแยก — กด “＋ เพิ่มกอง” เพื่อสร้าง (เช่น เงินเก็บ, กองกลางปาร์ตี้)</div>
+                    ) : pouches.map((p) => (
+                      <div key={p.id} style={{ border: '1px solid #e4e2dc', borderRadius: 10, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                          <input key={p.name} defaultValue={p.name} onBlur={(e) => { if (e.target.value !== p.name) renamePouch(p.id, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 700, color: '#46443c', borderBottom: '1px dashed #d8d5ce' }} />
+                          <button onClick={() => removePouch(p.id)} title="ลบ (คืนเหรียญเข้ากระเป๋าหลัก)" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15, flex: 'none' }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {COIN_DEFS.map((c) => (
+                            <div key={c.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, background: '#faf9f7', border: '1px solid #ece9e3', borderRadius: 8, padding: '6px 5px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: '50%', flex: 'none', background: c.color }} /><span style={{ flex: 1, fontSize: 14, fontWeight: 800, textAlign: 'center' }}>{p.coins[c.key] ?? 0}</span></div>
+                              <input value={coinAdj[`${p.id}:${c.key}`] ?? ''} onChange={(e) => setCoinAdj({ ...coinAdj, [`${p.id}:${c.key}`]: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="1" style={{ width: '100%', border: '1px solid #e8e5de', borderRadius: 5, padding: '3px 2px', fontSize: 11, fontWeight: 700, textAlign: 'center', outline: 'none', boxSizing: 'border-box' }} />
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button onClick={() => moveCoin(p.id, c.key, 'out')} title="→ กระเป๋าหลัก" style={{ flex: 1, height: 22, border: '1px solid #f0d3cb', background: '#fff', borderRadius: 5, cursor: 'pointer', fontWeight: 700, color: '#b4513a', fontSize: 12 }}>−</button>
+                                <button onClick={() => moveCoin(p.id, c.key, 'in')} title="หยิบจากกระเป๋าหลัก" style={{ flex: 1, height: 22, border: '1px solid #cbe0d2', background: '#fff', borderRadius: 5, cursor: 'pointer', fontWeight: 700, color: '#2f6b4f', fontSize: 12 }}>＋</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {tab === 'บันทึกประจำวัน' && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d', marginBottom: 8 }}>📝 บันทึกของผู้เล่น</div>
+                  <GrowingAnswer value={svs('note')} onCommit={(v) => setSheet({ note: v })} />
+                </div>
+              )}
+
+              {tab === 'พิเศษ' && (
+                <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '18px 0', textAlign: 'center' }}>ส่วน “พิเศษ” กำลังพัฒนา</div>
               )}
             </div>
           </div>
@@ -2830,7 +2908,7 @@ const coinStr = (ic: number) => {
 };
 const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; bagId?: string }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
