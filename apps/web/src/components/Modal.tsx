@@ -8,10 +8,14 @@ interface Props {
   children: ReactNode;
   width?: number;
   footer?: ReactNode;
+  dark?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, width = 520, footer }: Props) {
+export function Modal({ open, onClose, title, children, width = 520, footer, dark = false }: Props) {
   if (!open) return null;
+  const panelBg = dark ? '#1b1813' : '#fff';
+  const titleColor = dark ? '#f3ede1' : undefined;
+  const borderCol = dark ? '#332f28' : 'var(--border-faint)';
   return createPortal(
     <div
       onClick={onClose}
@@ -31,7 +35,7 @@ export function Modal({ open, onClose, title, children, width = 520, footer }: P
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#fff',
+          background: panelBg,
           borderRadius: 16,
           width: '100%',
           maxWidth: width,
@@ -45,13 +49,13 @@ export function Modal({ open, onClose, title, children, width = 520, footer }: P
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '18px 22px',
-            borderBottom: '1px solid var(--border-faint)',
+            borderBottom: `1px solid ${borderCol}`,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{title}</h3>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: titleColor }}>{title}</h3>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-ghost)', cursor: 'pointer', lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', fontSize: 22, color: dark ? '#9a978e' : 'var(--text-ghost)', cursor: 'pointer', lineHeight: 1 }}
           >
             ×
           </button>

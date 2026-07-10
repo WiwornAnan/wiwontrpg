@@ -196,12 +196,18 @@ function CharacterSheet({
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
   const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false });
+  const [magicPicker, setMagicPicker] = useState(false);
+  const [featPicker, setFeatPicker] = useState(false);
+  const [magicTab, setMagicTab] = useState('known');
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
+  // Full catalog (all Wiwon, all levels) for the Magic/Feature pickers + detail resolution
+  const { data: allMagic } = useQuery({ queryKey: ['sheet-all-magic'], queryFn: () => fetchMagicSpells([]) });
+  const { data: allFeatures } = useQuery({ queryKey: ['sheet-all-features'], queryFn: () => fetchFeaturesByTag('', []) });
   const { data: q4data } = useQuery({ queryKey: ['step4-questions', 'global'], queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global') });
   const { data: q5data } = useQuery({ queryKey: ['step5-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step5-questions/global') });
   const { data: q6data } = useQuery({ queryKey: ['step6-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step6-questions/global') });
@@ -211,7 +217,6 @@ function CharacterSheet({
   // fields.tag on the server), across all Wiwon, so Official languages always show.
   const { data: langFeatures } = useQuery({ queryKey: ['sheet-lang-features'], queryFn: () => fetchFeaturesByTag('Language', []) });
   const featById = new Map((features ?? []).map((f) => [f.id, f]));
-  const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
 
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
   // Wiwon shown as the book SET (setName), de-duplicated.
@@ -399,24 +404,32 @@ function CharacterSheet({
   // ── Feature & Magic rows (old-design style): granted items + custom blanks,
   //    with per-row use-counter / max / Curiosity Point trackers ──
   const openInfo = (item: CatalogItem | null, isFeat: boolean) => { if (item) { setInfoIsFeature(isFeat); setInfo(item); } };
-  interface Extra { id: string; name: string }
+  interface Extra { id: string; name: string; itemId?: string }
+  // Resolve details across scoped + full catalog
+  const featItemById = new Map([...(features ?? []), ...(allFeatures ?? [])].map((f) => [f.id, f]));
+  const magicItemById = new Map([...(magic ?? []), ...(allMagic ?? [])].map((m) => [m.id, m]));
   const featTrack = sheet.featTrack && typeof sheet.featTrack === 'object' ? (sheet.featTrack as Record<string, { used?: number; max?: number | null; cp?: number }>) : {};
   const featExtra: Extra[] = Array.isArray(sheet.featExtra) ? (sheet.featExtra as Extra[]) : [];
   const featRows = [
-    ...featIds.map((id) => ({ key: id, name: featById.get(id)?.name ?? '(Feature)', item: featById.get(id) ?? null, custom: false })),
-    ...featExtra.map((x) => ({ key: x.id, name: x.name, item: null as CatalogItem | null, custom: true })),
+    ...featIds.map((id) => ({ key: id, name: featItemById.get(id)?.name ?? '(Feature)', item: featItemById.get(id) ?? null, custom: false })),
+    ...featExtra.map((x) => ({ key: x.id, name: x.name, item: x.itemId ? (featItemById.get(x.itemId) ?? null) : null, custom: true })),
   ];
   const setFeatTrack = (key: string, p: Partial<{ used: number; max: number | null; cp: number }>) => setSheet({ featTrack: { ...featTrack, [key]: { ...(featTrack[key] || {}), ...p } } });
-  const addBlankFeat = () => setSheet({ featExtra: [...featExtra, { id: `f${Date.now()}`, name: 'Feature ใหม่' }] });
+  const addFeatItem = (m: CatalogItem) => setSheet({ featExtra: [...featExtra, { id: `f${Date.now()}`, name: m.name, itemId: m.id }] });
   const renameFeat = (id: string, name: string) => setSheet({ featExtra: featExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
   const removeFeat = (id: string) => setSheet({ featExtra: featExtra.filter((x) => x.id !== id) });
 
+  // Magic proficiency tiers (known / understand / master) — switchable like storage
+  const MAGIC_TIERS = [{ key: 'known', label: 'รู้จัก' }, { key: 'understand', label: 'เข้าใจ' }, { key: 'master', label: 'เชี่ยวชาญ' }];
+  const magicTier = sheet.magicTier && typeof sheet.magicTier === 'object' ? (sheet.magicTier as Record<string, string>) : {};
+  const magTierOf = (key: string) => magicTier[key] ?? 'known';
+  const setMagTier = (key: string, tier: string) => setSheet({ magicTier: { ...magicTier, [key]: tier } });
   const magicExtra: Extra[] = Array.isArray(sheet.magicExtra) ? (sheet.magicExtra as Extra[]) : [];
   const magicRows = [
-    ...magicIds.map((id) => ({ key: id, name: magicById.get(id)?.name ?? '(เวทมนตร์)', item: magicById.get(id) ?? null, custom: false })),
-    ...magicExtra.map((x) => ({ key: x.id, name: x.name, item: null as CatalogItem | null, custom: true })),
+    ...magicIds.map((id) => ({ key: id, name: magicItemById.get(id)?.name ?? '(เวทมนตร์)', item: magicItemById.get(id) ?? null, custom: false })),
+    ...magicExtra.map((x) => ({ key: x.id, name: x.name, item: x.itemId ? (magicItemById.get(x.itemId) ?? null) : null, custom: true })),
   ];
-  const addBlankMagic = () => setSheet({ magicExtra: [...magicExtra, { id: `m${Date.now()}`, name: 'เวทมนตร์ใหม่' }] });
+  const addMagicItem = (m: CatalogItem, tier: string) => { const id = `m${Date.now()}`; setSheet({ magicExtra: [...magicExtra, { id, name: m.name, itemId: m.id }], magicTier: { ...magicTier, [id]: tier } }); };
   const renameMagic = (id: string, name: string) => setSheet({ magicExtra: magicExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
   const removeMagic = (id: string) => setSheet({ magicExtra: magicExtra.filter((x) => x.id !== id) });
 
@@ -882,12 +895,17 @@ function CharacterSheet({
                 <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 16 }}>{initiative}</b></span>
               </button>
               <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef}</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + sv('ndArmorBonus', 0)}</div>
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+                  <button onClick={() => setSheet({ ndArmorBonus: Math.max(0, sv('ndArmorBonus', 0) - 1) })} style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #d8d4cc', background: '#fff', color: '#6b6860', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>−</button>
+                  <span style={{ fontSize: 10.5, color: '#8d8a82', fontWeight: 700 }} title="โบนัสจากเกราะ / โล่">เกราะ/โล่ +{sv('ndArmorBonus', 0)}</span>
+                  <button onClick={() => setSheet({ ndArmorBonus: sv('ndArmorBonus', 0) + 1 })} style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #d8d4cc', background: '#fff', color: '#2f6b4f', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>+</button>
+                </div>
               </div>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement})` : undefined}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: movementHalf ? '#b4513a' : '#5c4a2e' }}>{effMovement}{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
-                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>M. Movement</div>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: movementHalf ? '#b4513a' : '#5c4a2e' }}>{effMovement}<span style={{ fontSize: 14 }}> M.</span>{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
+                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Movement</div>
               </div>
             </div>
             {(() => {
@@ -1160,23 +1178,38 @@ function CharacterSheet({
                       {ehenDie && <button onClick={() => setRoll({ faces: parseInt(ehenDie.replace(/[^0-9]/g, ''), 10) || 6, adv: false })} title="ทอยลูกเต๋าผลิตอีเฮน" style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc', cursor: 'pointer', fontWeight: 700 }}>ผลิต {ehenDie} 🎲</button>}
                     </div>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#5b3fa0' }}>MAGIC</span>
-                    <button onClick={addBlankMagic} style={{ padding: '5px 12px', background: '#5b3fa0', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Magic</button>
+                  {/* dark 3-tier switcher (รู้จัก / เข้าใจ / เชี่ยวชาญ) */}
+                  <div style={{ background: '#15140f', borderRadius: 12, padding: 6, display: 'flex', gap: 6, marginBottom: 12 }}>
+                    {MAGIC_TIERS.map((t) => {
+                      const on = magicTab === t.key;
+                      const count = magicRows.filter((r) => magTierOf(r.key) === t.key).length;
+                      return <button key={t.key} onClick={() => setMagicTab(t.key)} style={{ flex: 1, border: 'none', borderRadius: 9, padding: '9px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', background: on ? '#5b3fa0' : 'transparent', color: on ? '#fff' : '#cbc3b4' }}>{t.label} <span style={{ opacity: .7, fontSize: 11 }}>{count}</span></button>;
+                    })}
                   </div>
-                  {magicRows.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่รู้จักเวทมนตร์</div> : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {magicRows.map((r) => (
-                        <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', border: '1px solid #e2d7f4', borderRadius: 9, background: '#faf8fd' }}>
-                          {r.custom
-                            ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameMagic(r.key, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
-                            : <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
-                          {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
-                          {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#5b3fa0' }}>เวทมนตร์ระดับ “{MAGIC_TIERS.find((t) => t.key === magicTab)?.label}”</span>
+                    <button onClick={() => setMagicPicker(true)} style={{ padding: '5px 12px', background: '#5b3fa0', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Magic</button>
+                  </div>
+                  {(() => {
+                    const rows = magicRows.filter((r) => magTierOf(r.key) === magicTab);
+                    if (rows.length === 0) return <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีเวทมนตร์ในระดับนี้</div>;
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {rows.map((r) => (
+                          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', border: '1px solid #e2d7f4', borderRadius: 9, background: '#faf8fd' }}>
+                            {r.custom
+                              ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameMagic(r.key, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
+                              : <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
+                            <div style={{ display: 'flex', gap: 3, flex: 'none' }} title="ย้ายระดับ">
+                              {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => setMagTier(r.key, tt.key)} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
+                            </div>
+                            {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
+                            {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1184,7 +1217,7 @@ function CharacterSheet({
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>FEATURES &amp; TRAITS</span>
-                    <button onClick={addBlankFeat} style={{ padding: '5px 12px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Feature</button>
+                    <button onClick={() => setFeatPicker(true)} style={{ padding: '5px 12px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Feature</button>
                   </div>
                   {featRows.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มี Feature</div> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1387,6 +1420,16 @@ function CharacterSheet({
             );
           })}
         </div>
+      </Modal>
+
+      {/* ── Magic picker (full catalog, dark) ── */}
+      <Modal open={magicPicker} onClose={() => setMagicPicker(false)} title={`เพิ่ม Magic → ระดับ “${MAGIC_TIERS.find((t) => t.key === magicTab)?.label}”`} dark>
+        <CatPicker items={allMagic ?? []} accent="#5b3fa0" onPick={(m) => addMagicItem(m, magicTab)} />
+      </Modal>
+
+      {/* ── Feature picker (full catalog, dark) ── */}
+      <Modal open={featPicker} onClose={() => setFeatPicker(false)} title="เพิ่ม Feature" dark>
+        <CatPicker items={allFeatures ?? []} accent="#b4602a" onPick={addFeatItem} />
       </Modal>
 
       {/* ── On-Hand "Use" picker (Weapon / Shield / Artifact only) ── */}
@@ -3512,6 +3555,44 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ' }: { onPick: (m:
               </div>
               {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#2f7d4f' }}>รับแล้ว ×{n}</span>}
               <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>{actionLabel}</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Generic Magic/Feature catalog picker with search + tag filter (dark theme).
+function CatPicker({ items, onPick, accent = '#5b3fa0' }: { items: CatalogItem[]; onPick: (m: CatalogItem) => void; accent?: string }) {
+  const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [added, setAdded] = useState<Record<string, number>>({});
+  const tagOf = (m: CatalogItem) => [...m.tags, ...(m.fields.tag ? [String(m.fields.tag)] : [])];
+  const allTags = Array.from(new Set(items.flatMap(tagOf))).filter(Boolean).sort();
+  const q = query.trim().toLowerCase();
+  const hay = (m: CatalogItem) => `${m.name} ${m.subtitle ?? ''} ${tagOf(m).join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
+  const matches = items.filter((m) => (!tagFilter || tagOf(m).includes(tagFilter)) && (!q || hay(m).includes(q)));
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 ค้นหา…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #3a3730', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#221f1a', color: '#f3ede1', outline: 'none' }} />
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, maxHeight: 76, overflowY: 'auto' }}>
+          {allTags.map((t) => { const on = tagFilter === t; return <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? accent : '#3a3730'}`, background: on ? accent : '#2a2620', color: on ? '#fff' : '#cbc3b4', borderRadius: 20, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>{t}</button>; })}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 12, maxHeight: 360, overflowY: 'auto' }}>
+        {matches.length === 0 && <div style={{ color: '#8d8a82', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ไม่พบรายการ</div>}
+        {matches.map((m) => {
+          const n = added[m.id] ?? 0;
+          return (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid #35322b', background: '#26231e' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f3ede1' }}>{m.name}</div>
+                <div style={{ fontSize: 11, color: '#9a978e' }}>{tagOf(m).slice(0, 4).join(' · ') || '—'}</div>
+              </div>
+              {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#7bc48a' }}>เพิ่มแล้ว ×{n}</span>}
+              <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: accent, color: '#fff' }}>เพิ่ม</button>
             </div>
           );
         })}
