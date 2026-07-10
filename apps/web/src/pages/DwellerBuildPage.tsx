@@ -284,7 +284,17 @@ function CharacterSheet({
   const buffsOn = sheet.buffsOn && typeof sheet.buffsOn === 'object' ? (sheet.buffsOn as Record<string, boolean>) : {};
   const statusOn = sheet.statusOn && typeof sheet.statusOn === 'object' ? (sheet.statusOn as Record<string, boolean>) : {};
   const toggleBuff = (k: string) => { const n = { ...buffsOn }; if (n[k]) delete n[k]; else n[k] = true; setSheet({ buffsOn: n }); };
-  const toggleStatus = (k: string) => { const n = { ...statusOn }; if (n[k]) delete n[k]; else n[k] = true; setSheet({ statusOn: n }); };
+  const toggleStatus = (k: string) => {
+    const n = { ...statusOn };
+    const turningOn = !n[k];
+    if (n[k]) delete n[k]; else n[k] = true;
+    const p: Record<string, unknown> = { statusOn: n };
+    // มานาเฮือดแห้ง → ติ๊ก Wounds ไปที่ Desperate Edge (ระดับ 4) ทันที
+    if (turningOn && k === 'มานาเฮือดแห้ง') p.woundLevel = Math.max(woundLevel, 4);
+    // สิ้นหวัง → Willpower ที่มีหายไปทั้งหมด
+    if (turningOn && k === 'Despair') p.wpCur = 0;
+    setSheet(p);
+  };
 
   // Inventory zones (ported from the old design): LOOT / READY / สะพาย(กระเป๋า)
   // The "สะพาย" zone only unlocks once the character owns a bag-type item.
@@ -480,6 +490,15 @@ function CharacterSheet({
     ];
     return R.filter(([a, m]) => a && m).map(([, , label]) => label);
   };
+  // Non-dice status effects
+  const infected = activeStatusSet.has('Infected'); // halves all Scratch healing
+  const despair = activeStatusSet.has('Despair'); // Willpower gone, cannot regain
+  const poisoned = activeStatusSet.has('Poisoned'); // cannot eat / Cal. not counted
+  const bleeding = activeStatusSet.has('Bleeding'); // Next Round: Scratch −2
+  const burning = activeStatusSet.has('Burning'); // Next Round: Scratch −d6
+  const movementHalf = activeStatusSet.has('Injured') || activeStatusSet.has('อ่อนล้า');
+  const effMovement = movementHalf ? Math.floor(movement / 2) : movement;
+  const scratchHeal = (amt: number) => (infected ? Math.floor(amt / 2) : amt);
 
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
@@ -519,14 +538,14 @@ function CharacterSheet({
   const recKey = skillKey('Medicine', 'Rehabilitation'); // Dweller Skill "ฟื้นกำลัง"
   const recInfo = skillInfo('END', talent.includes(recKey), getCh(recKey).level);
   const doShortRest = () => {
-    const gain = rollDie(endFaces);
-    setSheet({ scratchCur: Math.min(scrMax, scrCur + gain), wpCur: Math.min(WP_MAX, sv('wpCur', WP_MAX) + 1) });
-    setRestMsg(`พักสั้น (Short Rest): +${gain} Scratch (END d${endFaces} ทอยได้ ${gain}) · Willpower +1`);
+    const gain = scratchHeal(rollDie(endFaces));
+    setSheet({ scratchCur: Math.min(scrMax, scrCur + gain), wpCur: despair ? 0 : Math.min(WP_MAX, sv('wpCur', WP_MAX) + 1) });
+    setRestMsg(`พักสั้น (Short Rest): +${gain} Scratch (END d${endFaces})${infected ? ' (ติดเชื้อ ×½)' : ''} · ${despair ? 'สิ้นหวัง — ไม่ได้ Willpower' : 'Willpower +1'}`);
   };
   const doLongRest = () => {
-    let woundDelta = -1, sanGain = 0, wpGain = 1;
-    let scratchGain = rollDie(recInfo.roll);
-    const notes: string[] = [`WOUNDS −1 · Scratch +${scratchGain} (ฟื้นกำลัง ${recInfo.label})`];
+    let woundDelta = -1, sanGain = 0, wpGain = despair ? 0 : 1;
+    let scratchGain = scratchHeal(rollDie(recInfo.roll));
+    const notes: string[] = [`WOUNDS −1 · Scratch +${scratchGain} (ฟื้นกำลัง ${recInfo.label})${infected ? ' ·ติดเชื้อ×½' : ''}`];
     if (lr.goodFood) { const s = rollDie(6); sanGain += s; notes.push(`อาหารอร่อย +${s} Sanity`); }
     if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
     if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
@@ -701,7 +720,7 @@ function CharacterSheet({
               สถานะค่าสติปัจจุบัน:
               {sanStatuses.length === 0 ? <b style={{ color: '#3c3a33' }}>ปกติ</b> : sanStatuses.map((s) => <span key={s} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 7, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{s}</span>)}
             </div>
-            {poolBox('SCRATCH POINT', '#c15a3f', 'TEMP', scrTemp, 'scratchTemp', scrCur, scrMax, 'scrMax', 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scrMax, scrAmt), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
+            {poolBox('SCRATCH POINT', '#c15a3f', 'TEMP', scrTemp, 'scratchTemp', scrCur, scrMax, 'scrMax', infected ? 'ฟื้นฟู ×½' : 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scrMax, scratchHeal(scrAmt)), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
             <div style={{ ...box, position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={secTitle}>WOUNDS POINT</span>
@@ -866,8 +885,8 @@ function CharacterSheet({
                 <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef}</div>
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
               </div>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{movement}</div>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement})` : undefined}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: movementHalf ? '#b4513a' : '#5c4a2e' }}>{effMovement}{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>M. Movement</div>
               </div>
             </div>
@@ -877,7 +896,7 @@ function CharacterSheet({
               const apRes = sv('apRes', 0); // reserve slot (0/1) — Next Round never fills it
               const roundNum = sv('roundNum', 1);
               const WP_MAX = 3;
-              const wpCur = sv('wpCur', WP_MAX);
+              const wpCur = despair ? 0 : sv('wpCur', WP_MAX);
               const phase = svs('apPhase', 'Action');
               return (
                 <div style={{ background: '#f0eee9', borderRadius: 20, padding: 16 }}>
@@ -975,7 +994,13 @@ function CharacterSheet({
                         <button onClick={() => setSheet(apCur > 0 ? { apCur: apCur - 1 } : apRes ? { apRes: 0 } : {})} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Reaction</button>
                       </div>
                       {/* Next Round */}
-                      <div style={{ position: 'relative', flex: '0 0 auto', background: '#59544c', borderRadius: 14, padding: '30px 18px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 116, cursor: 'pointer' }} onClick={() => setSheet({ roundNum: roundNum + 1, apCur: Math.min(apMax, apCur + 2) })} title="ขึ้นรอบถัดไป (+2 AP)">
+                      <div style={{ position: 'relative', flex: '0 0 auto', background: '#59544c', borderRadius: 14, padding: '30px 18px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 116, cursor: 'pointer' }} onClick={() => {
+                        const dmg = (bleeding ? 2 : 0) + (burning ? rollDie(6) : 0);
+                        const p: Record<string, unknown> = { roundNum: roundNum + 1, apCur: Math.min(apMax, apCur + 2) };
+                        if (dmg > 0) { let a = dmg, t = scrTemp; const d0 = Math.min(t, a); t -= d0; a -= d0; p.scratchTemp = t; p.scratchCur = Math.max(0, scrCur - a); }
+                        setSheet(p);
+                        if (dmg > 0) setRestMsg(`รอบใหม่: Scratch −${dmg}${bleeding ? ' (เลือดออก −2)' : ''}${burning ? ' (ถูกเผาไหม้ −d6)' : ''}`);
+                      }} title={`ขึ้นรอบถัดไป (+2 AP)${bleeding ? ' · เลือดออก −2 Scratch' : ''}${burning ? ' · ถูกเผาไหม้ −d6 Scratch' : ''}`}>
                         <button onClick={(e) => { e.stopPropagation(); setSheet({ roundNum: 1, apCur: apMax }); }} style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', background: '#736e66', color: '#e8e5df', border: 'none', borderRadius: 8, padding: '2px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Reset</button>
                         <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.15, textAlign: 'center' }}>Next<br />Round</div>
                         <div style={{ fontSize: 34, fontWeight: 800, color: '#37d39e', lineHeight: 1 }}>{roundNum}</div>
@@ -989,7 +1014,7 @@ function CharacterSheet({
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'center' }}>
                           {Array.from({ length: WP_MAX }).map((_, i) => (
-                            <button key={i} onClick={() => setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 })} title={`${wpCur} / ${WP_MAX}`} style={{ height: 20, borderRadius: 6, cursor: 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / WP_MAX) * 0.4})` : '#e3edf2' }} />
+                            <button key={i} disabled={despair} onClick={() => { if (!despair) setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 }); }} title={despair ? 'สิ้นหวัง — Willpower หายไป' : `${wpCur} / ${WP_MAX}`} style={{ height: 20, borderRadius: 6, cursor: despair ? 'not-allowed' : 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / WP_MAX) * 0.4})` : '#e3edf2' }} />
                           ))}
                         </div>
                       </div>
@@ -999,12 +1024,15 @@ function CharacterSheet({
                       {[
                         { label: 'ทาน', dot: true, bg: '#c4e4d2', color: '#2f7d6a', key: 'calEaten', big: 22 },
                         { label: 'Cal. สะสม', dot: false, bg: '#d4e1b7', color: '#5f5030', key: 'calStored', big: 22 },
-                      ].map((t) => (
-                        <div key={t.key} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}>{t.dot && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#2f9d6a' }} />}<span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>{t.label}</span></div>
-                          <div style={{ flex: 1, background: t.bg, borderRadius: 12, padding: '10px 8px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NumField value={sv(t.key, 0)} onCommit={(v) => setSheet({ [t.key]: v })} width={70} style={{ fontSize: t.big, fontWeight: 800, color: t.color, textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
-                        </div>
-                      ))}
+                      ].map((t) => {
+                        const blocked = poisoned && (t.key === 'calEaten' || t.key === 'calStored');
+                        return (
+                          <div key={t.key} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}>{t.dot && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#2f9d6a' }} />}<span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>{t.label}</span>{blocked && <span title={t.key === 'calEaten' ? 'สารพิษ — เพิ่ม “ทาน” ไม่ได้' : 'สารพิษ — ไม่ถูกนับ'} style={{ fontSize: 10 }}>🚫</span>}</div>
+                            <div style={{ flex: 1, background: t.bg, borderRadius: 12, padding: '10px 8px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: blocked ? 0.5 : 1 }} title={blocked ? (t.key === 'calEaten' ? 'สารพิษสะสม — เพิ่มปริมาณ “ทาน” ไม่ได้' : 'สารพิษสะสม — Cal. สะสม ไม่ถูกนับ') : undefined}><NumField value={sv(t.key, 0)} onCommit={(v) => { if (t.key === 'calEaten' && poisoned) setSheet({ calEaten: Math.min(v, sv('calEaten', 0)) }); else setSheet({ [t.key]: v }); }} width={70} style={{ fontSize: t.big, fontWeight: 800, color: t.color, textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
+                          </div>
+                        );
+                      })}
                       <div style={{ flex: 1.4, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45', marginBottom: 4, height: 16 }}>ดับหิว</div>
                         <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
