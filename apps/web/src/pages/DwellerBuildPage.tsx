@@ -174,7 +174,6 @@ function CharacterSheet({
   const natureDef = n('natureBase') + faces('DEX') + faces('PER') + a('natureDef');
   const movement = n('movement') + a('movement');
   const initiative = 10 + n('initRollDEX') + n('initRollCVN') + a('initiative');
-  const willpowerMax = n('willpower') + a('willpower');
 
   // Ehen
   const ehenType = str('ehenType');
@@ -691,10 +690,11 @@ function CharacterSheet({
             {(() => {
               const apMax = sv('apMax', 3);
               const apCur = sv('apCur', apMax);
+              const apRes = sv('apRes', 0); // reserve slot (0/1) — Next Round never fills it
               const roundNum = sv('roundNum', 1);
-              const wpCur = sv('wpCur', willpowerMax);
+              const WP_MAX = 3;
+              const wpCur = sv('wpCur', WP_MAX);
               const phase = svs('apPhase', 'Action');
-              const wpN = Math.max(1, willpowerMax);
               return (
                 <div style={{ background: '#f0eee9', borderRadius: 20, padding: 16 }}>
                   {/* phase pills */}
@@ -715,10 +715,10 @@ function CharacterSheet({
                           {Array.from({ length: Math.max(1, apMax) }).map((_, i) => (
                             <button key={i} onClick={() => setSheet({ apCur: i + 1 === apCur ? i : i + 1 })} title="กดปรับ AP" style={{ width: 34, height: 34, borderRadius: 9, cursor: 'pointer', border: 'none', background: i < apCur ? '#4a463d' : '#d3cec5' }} />
                           ))}
-                          <span title="AP ที่จะได้รอบถัดไป" style={{ width: 34, height: 34, borderRadius: 9, border: '2px dashed #dcc6bd', background: '#faf6f4' }} />
+                          <button onClick={() => setSheet({ apRes: apRes ? 0 : 1 })} title="ช่องสำรอง — กดเติม/เอาออก (Next Round ไม่เติมช่องนี้)" style={{ width: 34, height: 34, borderRadius: 9, cursor: 'pointer', border: '2px dashed #dcc6bd', background: apRes ? '#4a463d' : '#faf6f4' }} />
                         </div>
-                        <button onClick={() => setSheet({ apCur: Math.max(0, apCur - 1) })} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Action -1 AP</button>
-                        <button onClick={() => setSheet({ apCur: Math.max(0, apCur - 1) })} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Reaction</button>
+                        <button onClick={() => setSheet(apCur > 0 ? { apCur: apCur - 1 } : apRes ? { apRes: 0 } : {})} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Action -1 AP</button>
+                        <button onClick={() => setSheet(apCur > 0 ? { apCur: apCur - 1 } : apRes ? { apRes: 0 } : {})} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Reaction</button>
                       </div>
                       {/* Next Round */}
                       <div style={{ position: 'relative', flex: '0 0 auto', background: '#59544c', borderRadius: 14, padding: '30px 18px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 116, cursor: 'pointer' }} onClick={() => setSheet({ roundNum: roundNum + 1, apCur: Math.min(apMax, apCur + 2) })} title="ขึ้นรอบถัดไป (+2 AP)">
@@ -727,15 +727,15 @@ function CharacterSheet({
                         <div style={{ fontSize: 34, fontWeight: 800, color: '#37d39e', lineHeight: 1 }}>{roundNum}</div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>+2 AP</div>
                       </div>
-                      {/* Will-power */}
+                      {/* Will-power — 3 segments, centered */}
                       <div style={{ flex: 1, minWidth: 140, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>WILL-POWER</span>
-                          <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {willpowerMax}</span>
+                          <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {WP_MAX}</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: 1 }}>
-                          {Array.from({ length: wpN }).map((_, i) => (
-                            <button key={i} onClick={() => setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 })} title={`${wpCur} / ${willpowerMax}`} style={{ flex: 1, minHeight: 16, borderRadius: 6, cursor: 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / wpN) * 0.45})` : '#e3edf2' }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'center' }}>
+                          {Array.from({ length: WP_MAX }).map((_, i) => (
+                            <button key={i} onClick={() => setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 })} title={`${wpCur} / ${WP_MAX}`} style={{ height: 20, borderRadius: 6, cursor: 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / WP_MAX) * 0.4})` : '#e3edf2' }} />
                           ))}
                         </div>
                       </div>
