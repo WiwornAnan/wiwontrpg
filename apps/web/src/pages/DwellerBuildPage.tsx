@@ -130,6 +130,8 @@ function CharacterSheet({
   const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
   const [coinAdj, setCoinAdj] = useState<Record<string, string>>({});
   const [bgTopic, setBgTopic] = useState<string | null>(null);
+  const [invPicker, setInvPicker] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -223,18 +225,28 @@ function CharacterSheet({
   const loot = bag.filter((l) => invZone(l) === 'loot');
   const ready = bag.filter((l) => invZone(l) === 'ready');
   const carried = bag.filter((l) => invZone(l) === 'bag');
-  const carryKg = [...ready, ...carried].reduce((s, l) => s + numData(l.kg), 0);
+  const carryKg = Math.round([...ready, ...carried].reduce((s, l) => s + numData(l.kg), 0) * 10) / 10;
+  const bodyKg = sv('bodyKg', 0);
+  const carryMax = Math.round(bodyKg * 0.2 * 10) / 10; // cannot exceed 20% of body weight
+  const overloaded = carryMax > 0 && carryKg > carryMax;
   const setInv = (lineId: string, p: Partial<BagLine>) => setBag(bag.map((l) => (l.lineId === lineId ? { ...l, ...p } : l)));
   const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId));
-  const addBlankInv = () => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: 'สิ่งของใหม่', priceIC: 0, zone: 'loot', kg: 0 }]);
+  const receiveItem = (m: CatalogItem) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: m.id, name: m.name, priceIC: 0, zone: 'loot', kg: numData(m.fields.weightNum), isBag: BAG_RE.test(m.name) || m.tags.some((t) => /bag|กระเป๋า|เป้|ย่าม|ถุง/i.test(t)) }]);
   const zoneBd: Record<string, string> = { loot: '#ece9e3', ready: '#cbe0d2', bag: '#d6c7f0' };
   const zoneBg: Record<string, string> = { loot: '#fff', ready: '#f7fbf8', bag: '#faf8fd' };
   const moveStyle = (c: string, bd: string): React.CSSProperties => ({ padding: '3px 9px', border: `1px solid ${bd}`, background: '#fff', color: c, borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' });
   const invRow = (l: BagLine) => {
     const z = invZone(l);
     return (
-      <div key={l.lineId} style={{ border: `1px solid ${zoneBd[z]}`, borderRadius: 8, padding: '8px 10px', background: zoneBg[z] }}>
+      <div key={l.lineId} style={{ border: `1px solid ${zoneBd[z]}`, borderRadius: 8, padding: '8px 10px', background: zoneBg[z], opacity: dragId === l.lineId ? 0.45 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            draggable
+            onDragStart={(e) => { setDragId(l.lineId); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', l.lineId); }}
+            onDragEnd={() => setDragId(null)}
+            title="กดค้างเพื่อลากย้ายโซน"
+            style={{ flex: 'none', cursor: 'grab', color: '#c9c5bd', fontSize: 14, lineHeight: 1, userSelect: 'none' }}
+          >⠿</span>
           <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า</span>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
@@ -249,6 +261,16 @@ function CharacterSheet({
       </div>
     );
   };
+  // Drop-zone wrapper: drag a row's handle onto it to move the item there
+  const dropZone = (zone: 'loot' | 'ready' | 'bag', children: React.ReactNode) => (
+    <div
+      onDragOver={(e) => { if (dragId) e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); if (dragId) { setInv(dragId, { zone }); setDragId(null); } }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 5, minHeight: 34, borderRadius: 8, outline: dragId ? '2px dashed #e0c4ba' : 'none', outlineOffset: 2, transition: 'outline .1s' }}
+    >
+      {children}
+    </div>
+  );
 
   // ── Finance / จัดการสินทรัพย์ (ported from the old design) ──
   interface Pouch { id: string; name: string; coins: Record<string, number> }
@@ -676,36 +698,40 @@ function CharacterSheet({
 
               {tab === 'ช่องเก็บของ' && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>พื้นที่เก็บของ</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#5f5c54' }}>แบกอยู่ {carryKg} kg</span>
+                  {/* body weight / height + carry capacity */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12, background: '#faf9f7', border: '1px solid #ece9e3', borderRadius: 10, padding: '10px 12px' }}>
+                    <label style={{ fontSize: 10.5, color: '#8d8a82', fontWeight: 600 }}>น้ำหนักตัว (kg)<div style={{ marginTop: 3 }}><NumField value={bodyKg} onCommit={(v) => setSheet({ bodyKg: v })} width={80} style={{ fontSize: 13, padding: '6px 9px' }} /></div></label>
+                    <label style={{ fontSize: 10.5, color: '#8d8a82', fontWeight: 600 }}>ส่วนสูง (cm)<div style={{ marginTop: 3 }}><NumField value={sv('heightCm', 0)} onCommit={(v) => setSheet({ heightCm: v })} width={80} style={{ fontSize: 13, padding: '6px 9px' }} /></div></label>
+                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                      <div style={{ fontSize: 10, color: '#a8a59d', fontWeight: 700, letterSpacing: '.04em' }}>แบกอยู่</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: overloaded ? '#c0432a' : '#2f6b4f' }}>{carryKg} / {carryMax} kg</div>
+                      <div style={{ fontSize: 9.5, color: overloaded ? '#c0432a' : '#b0ada4' }}>{overloaded ? 'แบกเกินพิกัด! (>20%)' : 'สูงสุด 20% ของน้ำหนักตัว'}</div>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                    <button onClick={addBlankInv} style={{ flex: 'none', padding: '7px 14px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มสิ่งของ</button>
+                    <button onClick={() => setInvPicker(true)} style={{ flex: 'none', padding: '7px 14px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มสิ่งของ (Equipment &amp; Items)</button>
                   </div>
 
                   {/* LOOT */}
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#b06a2a', marginBottom: 6 }}>▾ LOOT (วางบนพื้น · ไม่นับน้ำหนัก)</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-                    {loot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง —</div> : loot.map(invRow)}
+                  <div style={{ marginBottom: 14 }}>
+                    {dropZone('loot', loot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : loot.map(invRow))}
                   </div>
 
                   {/* READY */}
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#2f6b4f', marginBottom: 6 }}>▾ READY SLOTS (พกพร้อมใช้ · นับน้ำหนัก)</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-                    {ready.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง —</div> : ready.map(invRow)}
+                  <div style={{ marginBottom: 14 }}>
+                    {dropZone('ready', ready.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : ready.map(invRow))}
                   </div>
 
                   {/* BAG — only once a bag-type item is owned */}
                   {hasBag ? (
                     <>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#5b3fa0', marginBottom: 6 }}>▾ สะพาย / กระเป๋า (นับน้ำหนัก)</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {carried.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — (กด “→ สะพาย” ที่ของชิ้นอื่นเพื่อย้ายเข้ากระเป๋า)</div> : carried.map(invRow)}
-                      </div>
+                      {dropZone('bag', carried.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : 'ลากของมาวางเพื่อเก็บเข้ากระเป๋า'}</div> : carried.map(invRow))}
                     </>
                   ) : (
-                    <div style={{ fontSize: 10.5, color: '#a8a59d', padding: '9px 12px', border: '1px dashed #e0ded7', borderRadius: 8, lineHeight: 1.5 }}>🎒 ยังไม่มีกระเป๋า — ซื้อกระเป๋าจาก Equipment &amp; Items เพื่อปลดล็อกพื้นที่ “สะพาย”</div>
+                    <div style={{ fontSize: 10.5, color: '#a8a59d', padding: '9px 12px', border: '1px dashed #e0ded7', borderRadius: 8, lineHeight: 1.5 }}>🎒 ยังไม่มีกระเป๋า — เพิ่มกระเป๋าจาก Equipment &amp; Items เพื่อปลดล็อกพื้นที่ “สะพาย”</div>
                   )}
                 </div>
               )}
@@ -906,6 +932,12 @@ function CharacterSheet({
           <div style={{ fontSize: 12, lineHeight: 1.55, color: '#cbc3b4' }}>{skillTip.desc}</div>
         </div>
       )}
+
+      {/* ── Equipment & Items picker → receive into LOOT ── */}
+      <Modal open={invPicker} onClose={() => setInvPicker(false)} title="Equipment & Items">
+        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เลือกสิ่งของแล้วกด “รับ” เพื่อเก็บเข้ากอง LOOT — จากนั้นลากไปยัง Ready หรือกระเป๋าได้</p>
+        <EquipPicker onPick={receiveItem} />
+      </Modal>
 
       {/* ── "ท้าทาย" per-skill challenge popup ── */}
       <Modal open={!!challengeSkill} onClose={() => setChallengeSkill(null)} title="ท้าทาย">
@@ -2979,6 +3011,51 @@ async function fetchEquipment(): Promise<CatalogItem[]> {
     if (d.items.length === 0 || out.length >= d.total) break;
   }
   return out;
+}
+
+// Equipment & Items picker used on the sheet's inventory tab. Picking an item
+// "receives" it (no payment) into LOOT with its real weight from item data.
+function EquipPicker({ onPick }: { onPick: (m: CatalogItem) => void }) {
+  const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [added, setAdded] = useState<Record<string, number>>({});
+  const { data: all, isLoading } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
+  const pool = all ?? [];
+  const allTags = Array.from(new Set(pool.flatMap((m) => m.tags))).sort();
+  const q = query.trim().toLowerCase();
+  const hay = (m: CatalogItem) => `${m.name} ${m.subtitle ?? ''} ${m.tags.join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
+  const matches = pool.filter((m) => (!tagFilter || m.tags.includes(tagFilter)) && (!q || hay(m).includes(q)));
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 ค้นหาอุปกรณ์…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#fff' }} />
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          {allTags.slice(0, 12).map((t) => {
+            const on = tagFilter === t;
+            return <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? '#e07a5f' : '#e0ded7'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#8d8a82', borderRadius: 20, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>{t}</button>;
+          })}
+        </div>
+      )}
+      {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
+      {!isLoading && matches.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ไม่พบอุปกรณ์</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, maxHeight: 360, overflowY: 'auto' }}>
+        {matches.map((m) => {
+          const kg = numData(m.fields.weightNum);
+          const n = added[m.id] ?? 0;
+          return (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border-soft)', background: '#fff' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#2f2c25' }}>{m.name}</div>
+                <div style={{ fontSize: 11, color: '#9a978e' }}>{kg > 0 ? `${kg} kg` : 'ไม่ระบุน้ำหนัก'}{m.tags.length ? ` · ${m.tags.slice(0, 3).join(', ')}` : ''}</div>
+              </div>
+              {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#2f7d4f' }}>รับแล้ว ×{n}</span>}
+              <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>รับ</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function Step9Money({
