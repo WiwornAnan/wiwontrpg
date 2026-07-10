@@ -132,6 +132,8 @@ function CharacterSheet({
   const [bgTopic, setBgTopic] = useState<string | null>(null);
   const [invPicker, setInvPicker] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [info, setInfo] = useState<CatalogItem | null>(null);
+  const [infoIsFeature, setInfoIsFeature] = useState(true);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -315,6 +317,30 @@ function CharacterSheet({
     if (text.trim()) next[id] = text; else delete next[id];
     patch.mutate({ data: { ...d, [store]: next } });
   };
+
+  // ── Feature & Magic rows (old-design style): granted items + custom blanks,
+  //    with per-row use-counter / max / Curiosity Point trackers ──
+  const openInfo = (item: CatalogItem | null, isFeat: boolean) => { if (item) { setInfoIsFeature(isFeat); setInfo(item); } };
+  interface Extra { id: string; name: string }
+  const featTrack = sheet.featTrack && typeof sheet.featTrack === 'object' ? (sheet.featTrack as Record<string, { used?: number; max?: number | null; cp?: number }>) : {};
+  const featExtra: Extra[] = Array.isArray(sheet.featExtra) ? (sheet.featExtra as Extra[]) : [];
+  const featRows = [
+    ...featIds.map((id) => ({ key: id, name: featById.get(id)?.name ?? '(Feature)', item: featById.get(id) ?? null, custom: false })),
+    ...featExtra.map((x) => ({ key: x.id, name: x.name, item: null as CatalogItem | null, custom: true })),
+  ];
+  const setFeatTrack = (key: string, p: Partial<{ used: number; max: number | null; cp: number }>) => setSheet({ featTrack: { ...featTrack, [key]: { ...(featTrack[key] || {}), ...p } } });
+  const addBlankFeat = () => setSheet({ featExtra: [...featExtra, { id: `f${Date.now()}`, name: 'Feature ใหม่' }] });
+  const renameFeat = (id: string, name: string) => setSheet({ featExtra: featExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
+  const removeFeat = (id: string) => setSheet({ featExtra: featExtra.filter((x) => x.id !== id) });
+
+  const magicExtra: Extra[] = Array.isArray(sheet.magicExtra) ? (sheet.magicExtra as Extra[]) : [];
+  const magicRows = [
+    ...magicIds.map((id) => ({ key: id, name: magicById.get(id)?.name ?? '(เวทมนตร์)', item: magicById.get(id) ?? null, custom: false })),
+    ...magicExtra.map((x) => ({ key: x.id, name: x.name, item: null as CatalogItem | null, custom: true })),
+  ];
+  const addBlankMagic = () => setSheet({ magicExtra: [...magicExtra, { id: `m${Date.now()}`, name: 'เวทมนตร์ใหม่' }] });
+  const renameMagic = (id: string, name: string) => setSheet({ magicExtra: magicExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
+  const removeMagic = (id: string) => setSheet({ magicExtra: magicExtra.filter((x) => x.id !== id) });
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -779,28 +805,65 @@ function CharacterSheet({
 
               {tab === 'Magic' && (
                 <div>
+                  {/* Ehen dice info — from the new dice system */}
                   {ehenType && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                       <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{ehenLabel}</span>
                       {sizeLabel && <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>ขนาด {sizeLabel}</span>}
                       {ehenColor && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: EHEN_COLOR_HEX[ehenColor], border: '1px solid rgba(0,0,0,.15)' }} />{ehenColor}</span>}
-                      {ehenDie && <span style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc' }}>ผลิต {ehenDie}</span>}
+                      {ehenDie && <button onClick={() => setRoll({ faces: parseInt(ehenDie.replace(/[^0-9]/g, ''), 10) || 6, adv: false })} title="ทอยลูกเต๋าผลิตอีเฮน" style={{ fontSize: 12, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc', cursor: 'pointer', fontWeight: 700 }}>ผลิต {ehenDie} 🎲</button>}
                     </div>
                   )}
-                  {magicIds.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่รู้จักเวทมนตร์</div> : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{magicIds.map((id) => <span key={id} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f3eefb', color: '#5b3fa0', border: '1px solid #e2d7f4' }}>{magicById.get(id)?.name ?? '(เวทมนตร์)'}</span>)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#5b3fa0' }}>MAGIC</span>
+                    <button onClick={addBlankMagic} style={{ padding: '5px 12px', background: '#5b3fa0', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Magic</button>
+                  </div>
+                  {magicRows.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่รู้จักเวทมนตร์</div> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {magicRows.map((r) => (
+                        <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', border: '1px solid #e2d7f4', borderRadius: 9, background: '#faf8fd' }}>
+                          {r.custom
+                            ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameMagic(r.key, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
+                            : <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
+                          {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
+                          {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
 
               {tab === 'Feature' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>Feature ที่ได้รับ</div>
-                    {featIds.length === 0 ? <span style={{ fontSize: 12.5, color: '#bdbab2' }}>—</span> : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{featIds.map((id) => <span key={id} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{featById.get(id)?.name ?? '(Feature)'}</span>)}</div>}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>FEATURES &amp; TRAITS</span>
+                    <button onClick={addBlankFeat} style={{ padding: '5px 12px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Feature</button>
                   </div>
-                  {virtues.length > 0 && <div><div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}</div></div>}
-                  {flaws.length > 0 && <div><div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>{nm}</span>)}</div></div>}
+                  {featRows.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มี Feature</div> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {featRows.map((r) => {
+                        const t = featTrack[r.key] || {};
+                        const used = t.used ?? 0;
+                        const max = t.max ?? null;
+                        return (
+                          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, background: '#fff', flexWrap: 'wrap' }}>
+                            {r.custom
+                              ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameFeat(r.key, e.target.value); }} style={{ flex: 1, minWidth: 120, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
+                              : <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
+                            {r.item && <button onClick={() => openInfo(r.item, true)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
+                            <button onClick={() => setFeatTrack(r.key, { used: max != null ? Math.min(max, used + 1) : used + 1 })} title="ใช้ Feature นี้" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#faf6f4', color: '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
+                            {used > 0 && <button onClick={() => setFeatTrack(r.key, { used: Math.max(0, used - 1) })} title="ลดจำนวน" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#fff', color: '#b4513a', borderRadius: 7, padding: '4px 9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>−</button>}
+                            <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#a8a59d', fontWeight: 600 }}>สูงสุด<input defaultValue={max ?? ''} key={`mx${max}`} onBlur={(e) => { const v = e.target.value.trim(); setFeatTrack(r.key, { max: v === '' ? null : Math.max(0, Math.round(Number(v) || 0)) }); }} inputMode="numeric" placeholder="∞" style={{ width: 34, border: '1px solid #e0ded7', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none' }} /></label>
+                            <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#5b3fa0', fontWeight: 600 }}>CP<input defaultValue={t.cp ?? ''} key={`cp${t.cp}`} onBlur={(e) => setFeatTrack(r.key, { cp: Math.max(0, Math.round(Number(e.target.value) || 0)) })} inputMode="numeric" placeholder="0" style={{ width: 38, border: '1px solid #d6c7f0', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none', background: '#faf8fd' }} /></label>
+                            {r.custom && <button onClick={() => removeFeat(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {virtues.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}</div></div>}
+                  {flaws.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>{nm}</span>)}</div></div>}
                 </div>
               )}
 
@@ -932,6 +995,11 @@ function CharacterSheet({
           <div style={{ fontSize: 12, lineHeight: 1.55, color: '#cbc3b4' }}>{skillTip.desc}</div>
         </div>
       )}
+
+      {/* ── Feature / Magic detail popup ── */}
+      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
+        {info && <ItemDetailView item={info} isFeature={infoIsFeature} />}
+      </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
       <Modal open={invPicker} onClose={() => setInvPicker(false)} title="Equipment & Items">
