@@ -128,6 +128,7 @@ function CharacterSheet({
   const [profPicker, setProfPicker] = useState(false);
   const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
   const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
+  const [addItemName, setAddItemName] = useState('');
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -195,6 +196,32 @@ function CharacterSheet({
   const rb: RoyalBond[] = Array.isArray(d.walletRB) ? (d.walletRB as RoyalBond[]) : [];
   const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
+  const setBag = (next: BagLine[]) => patch.mutate({ data: { ...d, bag: next } });
+
+  // Language proficiency tiers (learn / use / expert) — click a badge to cycle
+  const LANG_TIERS = [
+    { key: 'learn', label: 'ระดับฝึกฝน' },
+    { key: 'use', label: 'ระดับใช้งาน' },
+    { key: 'expert', label: 'ระดับผู้เชี่ยวชาญ' },
+  ];
+  const langTierMap = sheet.langTier && typeof sheet.langTier === 'object' ? (sheet.langTier as Record<string, string>) : {};
+  const langTierOf = (nm: string) => langTierMap[nm] ?? 'use';
+  const cycleLangTier = (nm: string) => {
+    const order = ['learn', 'use', 'expert'];
+    const next = order[(order.indexOf(langTierOf(nm)) + 1) % 3];
+    setSheet({ langTier: { ...langTierMap, [nm]: next } });
+  };
+
+  // Storage containers ("กระเป๋าที่มี") — each bag line belongs to one container
+  interface BagContainer { id: string; name: string; color: string }
+  const DEFAULT_BAGS: BagContainer[] = [
+    { id: 'b1', name: 'กระเป๋า 1', color: '#4a463d' },
+    { id: 'b2', name: 'กระเป๋า 2', color: '#d8d4cc' },
+  ];
+  const bags: BagContainer[] = Array.isArray(sheet.bags) && (sheet.bags as BagContainer[]).length ? (sheet.bags as BagContainer[]) : DEFAULT_BAGS;
+  const activeBagId = svs('activeBag', bags[0].id) || bags[0].id;
+  const activeBag = bags.find((b) => b.id === activeBagId) ?? bags[0];
+  const bagItems = bag.filter((l) => (l.bagId ?? bags[0].id) === activeBag.id);
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -505,24 +532,44 @@ function CharacterSheet({
               )}
             </div>
             <div style={box}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>ภาษา / Language</span>{plus}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {languages.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : languages.map((nm, i) => <span key={i} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{nm}</span>)}
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}><span style={secTitle}>ภาษา / Language</span>{plus}</div>
+              {LANG_TIERS.map((t) => {
+                const items = languages.filter((nm) => langTierOf(nm) === t.key);
+                return (
+                  <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                    <span style={{ flex: '0 0 96px', fontSize: 12, color: '#6b6860' }}>{t.label}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {items.map((nm, i) => (
+                        <button key={i} onClick={() => cycleLangTier(nm)} title="กดเพื่อเปลี่ยนระดับ" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0', cursor: 'pointer' }}>{nm}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* Right */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-              <div style={{ ...box, flex: '0 0 180px' }}>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 600, color: '#2f2c25', marginBottom: 8 }}>INITIATIVE ROLL</div>
-                <div style={{ display: 'flex', gap: 14 }}>
-                  <div><div style={{ fontSize: 28, fontWeight: 800, color: '#2f2c25' }}>{natureDef}</div><div style={{ fontSize: 10.5, color: '#9a978e' }}>Natural Defense</div></div>
-                  <div><div style={{ fontSize: 28, fontWeight: 800, color: '#2f2c25' }}>{movement}</div><div style={{ fontSize: 10.5, color: '#9a978e' }}>M. Movement</div></div>
-                </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 15 }}>{initiative}</b></div>
+              <button
+                onClick={() => setRoll({ faces: 20, adv: false })}
+                title="ทอย Initiative (d20)"
+                style={{ ...box, flex: 1, background: '#f4f2ee', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}
+              >
+                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL</span>
+                <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 16 }}>{initiative}</b></span>
+              </button>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef}</div>
+                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
               </div>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{movement}</div>
+                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>M. Movement</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
               <div style={{ ...box, flex: 1 }}>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                   {['Action', 'On Hand', 'Ehen', 'Short Rest', 'Long Rest'].map((t, i) => (
@@ -568,17 +615,57 @@ function CharacterSheet({
                       <div style={{ minHeight: 70, border: '1px dashed #e0ded7', borderRadius: 10, background: '#faf9f7' }} />
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '14px 0 6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 6px' }}>
                     <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>กระเป๋า</span>
-                    <span style={{ fontSize: 11, color: '#9a978e' }}>ของทั้งหมด {bag.length} ชิ้น</span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input
+                        value={addItemName}
+                        onChange={(e) => setAddItemName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && addItemName.trim()) {
+                            setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: addItemName.trim(), priceIC: 0, bagId: activeBag.id }]);
+                            setAddItemName('');
+                          }
+                        }}
+                        placeholder="ชื่อสิ่งของ"
+                        style={{ width: 130, border: '1px solid #e0ded7', borderRadius: 7, padding: '5px 9px', fontSize: 12 }}
+                      />
+                      <button
+                        onClick={() => { if (addItemName.trim()) { setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name: addItemName.trim(), priceIC: 0, bagId: activeBag.id }]); setAddItemName(''); } }}
+                        style={{ border: 'none', background: '#e07a5f', color: '#fff', borderRadius: 7, padding: '6px 11px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >＋ เพิ่มสิ่งของ</button>
+                    </span>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25', flex: '0 0 auto' }}>กระเป๋าที่มี</span>
                   </div>
-                  {bag.length === 0 ? (
-                    <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>ยังไม่มีของในกระเป๋า</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {bag.map((l) => <span key={l.lineId} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>{l.name}</span>)}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+                    <div style={{ flex: 1, minHeight: 90, border: '1px solid #ece9e2', borderRadius: 10, background: '#faf9f7', padding: 10 }}>
+                      {bagItems.length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '6px 0' }}>ยังไม่มีของใน{activeBag.name}</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {bagItems.map((l) => (
+                            <span key={l.lineId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 6px 5px 11px', borderRadius: 9, background: '#f6f2ea', color: '#5c4a2e', border: '1px solid #e8e0d0' }}>
+                              {l.name}
+                              <button onClick={() => setBag(bag.filter((x) => x.lineId !== l.lineId))} title="ลบ" style={{ border: 'none', background: 'none', color: '#c0432a', fontSize: 13, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <div style={{ flex: '0 0 150px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {bags.map((b) => (
+                        <button
+                          key={b.id}
+                          onClick={() => setSheet({ activeBag: b.id })}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: `1px solid ${b.id === activeBag.id ? '#e07a5f' : '#eae7e0'}`, background: b.id === activeBag.id ? '#fdeee9' : '#fff', borderRadius: 9, padding: '7px 10px', cursor: 'pointer' }}
+                        >
+                          <span style={{ width: 16, height: 16, borderRadius: 5, background: b.color, border: '1px solid rgba(0,0,0,.1)', flex: 'none' }} />
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3c3a33' }}>{b.name}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9a978e' }}>{bag.filter((l) => (l.bagId ?? bags[0].id) === b.id).length}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#c79a2e', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 8, padding: '5px 11px' }}>💰 {coinStr(walletIC)}</span>
                     {rbTotalGC > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: '#5a6b86', background: '#eef2f8', border: '1px solid #d5deea', borderRadius: 8, padding: '5px 11px' }}>RB {rbTotalGC} GC</span>}
@@ -2743,7 +2830,7 @@ const coinStr = (ic: number) => {
 };
 const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; bagId?: string }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
