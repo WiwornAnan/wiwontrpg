@@ -193,6 +193,9 @@ function CharacterSheet({
   const [infoIsFeature, setInfoIsFeature] = useState(true);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
+  const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
+  const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
+  const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false, outcome: 'normal' as 'normal' | 'fortuity' | 'curse' });
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
@@ -468,6 +471,61 @@ function CharacterSheet({
     const faces = DIE_LADDER[idx];
     return { label: faces === 0 ? '0' : `d${faces}`, roll: faces === 0 ? 2 : faces };
   };
+
+  // ── On-Hand slots (right / left / tail) — only Weapon / Shield / Artifact ──
+  interface HandItem { name: string; itemId?: string; kg?: number }
+  const HAND_SLOTS = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
+  const HAND_RE = /weapon|อาวุธ|shield|โล่|artifact|อาร์ติแฟกต์|วัตถุโบราณ/i;
+  const isHandItem = (m: CatalogItem) => HAND_RE.test(`${m.fields.type ?? ''} ${m.fields.tag ?? ''} ${m.tags.join(' ')} ${m.name}`);
+  const hands = sheet.hands && typeof sheet.hands === 'object' ? (sheet.hands as Record<string, HandItem>) : {};
+  const handOn = (slot: string) => (sheet.handsOn && typeof sheet.handsOn === 'object' ? (sheet.handsOn as Record<string, boolean>)[slot] : undefined) ?? (slot !== 'tail');
+  const setHand = (slot: string, item: HandItem) => setSheet({ hands: { ...hands, [slot]: item } });
+  const clearHand = (slot: string) => { const n = { ...hands }; delete n[slot]; setSheet({ hands: n }); };
+  const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
+
+  // ── Short / Long Rest mechanics ──
+  const WP_MAX = 3;
+  const rollDie = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
+  const endFaces = skillInfo('END', false, 0).roll; // Core Attribute END die
+  const recKey = skillKey('Medicine', 'Rehabilitation'); // Dweller Skill "ฟื้นกำลัง"
+  const recInfo = skillInfo('END', talent.includes(recKey), getCh(recKey).level);
+  const doShortRest = () => {
+    const gain = rollDie(endFaces);
+    setSheet({ scratchCur: Math.min(scrMax, scrCur + gain), wpCur: Math.min(WP_MAX, sv('wpCur', WP_MAX) + 1) });
+    setRestMsg(`พักสั้น (Short Rest): +${gain} Scratch (END d${endFaces} ทอยได้ ${gain}) · Willpower +1`);
+  };
+  const doLongRest = () => {
+    let scratchGain = 0, woundDelta = 0, sanGain = 0, wpGain = 1;
+    const notes: string[] = [];
+    if (lr.outcome === 'curse') { woundDelta = 1; wpGain = 0; notes.push('รอยร้าวอาถรรพ์ — อาการหนักขึ้น ไม่ฟื้นฟูใด ๆ · WOUNDS +1'); }
+    else if (lr.outcome === 'fortuity') { woundDelta = -2; scratchGain = recInfo.roll; notes.push(`คลื่นน้ำแห่งโชค — WOUNDS −2 · Scratch +${scratchGain} (ผลรวม ${recInfo.label})`); }
+    else { woundDelta = -1; scratchGain = rollDie(recInfo.roll); notes.push(`WOUNDS −1 · Scratch +${scratchGain} (ฟื้นกำลัง ${recInfo.label})`); }
+    if (lr.outcome !== 'curse') {
+      if (lr.goodFood) { const s = rollDie(6); sanGain += s; notes.push(`อาหารอร่อย +${s} Sanity`); }
+      if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
+      if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
+    }
+    if (!lr.safe) { scratchGain = Math.floor(scratchGain / 2); sanGain = Math.floor(sanGain / 2); wpGain = Math.floor(wpGain / 2); if (woundDelta < 0) woundDelta = Math.ceil(woundDelta / 2); notes.push('สถานที่ไม่ปลอดภัย — ผลฟื้นฟูเหลือครึ่ง (ปัดลง)'); }
+    setSheet({
+      scratchCur: Math.min(scrMax, scrCur + scratchGain),
+      sanCur: Math.min(sanMax, sanCur + sanGain),
+      wpCur: Math.min(WP_MAX, sv('wpCur', WP_MAX) + wpGain),
+      woundLevel: Math.max(0, Math.min(5, woundLevel + woundDelta)),
+    });
+    setRestMsg(`พักยาว (Long Rest): ${notes.join(' · ')}`);
+  };
+  const EHEN_DENSITY = [
+    { key: 'thin', label: 'เบาบาง', faces: 4 },
+    { key: 'normal', label: 'ปกติ', faces: 6 },
+    { key: 'dense', label: 'หนาแน่น', faces: 10 },
+    { key: 'veil', label: 'ม่านเอเฮน', faces: 20 },
+  ];
+  const cbx = (label: string, val: boolean, onToggle: () => void) => (
+    <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: `1px solid ${val ? '#cbe0d2' : '#e0ded7'}`, background: val ? '#eef6f0' : '#fff', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 12.5, color: '#3c3a33', width: '100%' }}>
+      <span style={{ flex: 'none', width: 16, height: 16, borderRadius: 4, border: `1px solid ${val ? '#2f7d4f' : '#cfccc4'}`, background: val ? '#2f7d4f' : '#fff', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{val ? '✓' : ''}</span>
+      {label}
+    </button>
+  );
 
   const amtInput: React.CSSProperties = { width: 46, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 8, padding: '5px 4px', fontSize: 13, background: '#fff' };
   const actBtn = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 800, color, background: bg, border: `1px solid ${brd}`, borderRadius: 8, padding: '5px 11px', cursor: 'pointer', whiteSpace: 'nowrap' });
@@ -807,22 +865,79 @@ function CharacterSheet({
                   <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {phase === 'On Hand' ? (
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· ช่องพร้อมใช้ · กด ⓘ ดูรายละเอียด</span></div>
-                        {ready.length === 0 ? (
-                          <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '10px 0' }}>ยังไม่มีของในมือ — ลากของจาก “ช่องเก็บของ” มาที่ Ready</div>
-                        ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                            {ready.map((l) => (
-                              <div key={l.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #cbe0d2', borderRadius: 10, padding: '9px 11px', background: '#f7fbf8' }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
-                                  <div style={{ fontSize: 10.5, color: '#9a978e' }}>{numData(l.kg)} kg</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· เฉพาะ Weapon / Shield / Artifact · กด Use เพื่อถือ</span></div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                          {HAND_SLOTS.map((s) => {
+                            const on = handOn(s.key);
+                            const item = hands[s.key];
+                            return (
+                              <div key={s.key} style={{ border: `1px solid ${on ? '#cbe0d2' : '#eae7e0'}`, borderRadius: 12, padding: 11, background: on ? '#f7fbf8' : '#f6f5f2', opacity: on ? 1 : 0.7 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }}>{s.label}</span>
+                                  <button onClick={() => toggleHandSlot(s.key)} title={on ? 'ปิดช่องนี้' : 'เปิดช่องนี้'} style={{ border: '1px solid #e0ded7', background: '#fff', color: on ? '#2f6b4f' : '#a8a59d', borderRadius: 7, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{on ? 'เปิด' : 'ปิด'}</button>
                                 </div>
-                                <button onClick={() => { const it = l.itemId ? equipById.get(l.itemId) : undefined; if (it) { setInfoIsFeature(false); setInfo(it); } else setHandInfo(l); }} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ</button>
+                                {!on ? (
+                                  <div style={{ fontSize: 11, color: '#bdbab2', padding: '6px 0' }}>— ปิดช่องอยู่ —</div>
+                                ) : item ? (
+                                  <div>
+                                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25' }}>{item.name}</div>
+                                    <div style={{ fontSize: 10.5, color: '#9a978e', marginBottom: 8 }}>{numData(item.kg)} kg</div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button onClick={() => { const it = item.itemId ? equipById.get(item.itemId) : undefined; if (it) { setInfoIsFeature(false); setInfo(it); } else setHandInfo({ lineId: s.key, itemId: item.itemId ?? '', name: item.name, priceIC: 0, kg: item.kg }); }} title="รายละเอียด" style={{ flex: 1, border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ รายละเอียด</button>
+                                      <button onClick={() => clearHand(s.key)} title="เอาออกจากมือ" style={{ flex: 'none', border: '1px solid #f0d3cb', background: '#fbeae6', color: '#b4513a', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>เอาออก</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setHandSlot(s.key)} style={{ width: '100%', border: '1px dashed #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 9, padding: '10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>＋ Use ไอเทม</button>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : phase === 'Ehen' ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>Ehen <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· ความหนาแน่นของอีเฮนรอบตัว — เลือกแล้วกดทอย</span></div>
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          {EHEN_DENSITY.map((e) => {
+                            const sel = svs('ehenDensity') === e.key;
+                            return (
+                              <div key={e.key} style={{ flex: '1 1 120px', border: `1.5px solid ${sel ? '#7c5fc0' : '#e4e1d9'}`, background: sel ? '#faf8fd' : '#fff', borderRadius: 12, padding: 12, textAlign: 'center' }}>
+                                <button onClick={() => setSheet({ ehenDensity: e.key })} style={{ display: 'block', width: '100%', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 800, color: sel ? '#5b3fa0' : '#3c3a33', marginBottom: 8 }}>{e.label}</button>
+                                <button onClick={() => { setSheet({ ehenDensity: e.key }); setRoll({ faces: e.faces, adv: false }); }} title={`ทอย d${e.faces}`} style={{ width: '100%', border: 'none', borderRadius: 9, padding: '8px', background: '#5b3fa0', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>d{e.faces} 🎲</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : phase === 'Short Rest' ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 8 }}>พักสั้น (Short Rest)</div>
+                        <div style={{ fontSize: 12, color: '#8d8a82', lineHeight: 1.6, marginBottom: 12 }}>เพิ่ม Scratch เท่ากับ END (<b>d{endFaces}</b>) ทอย 1 ครั้ง · ฟื้นฟู Willpower 1 ช่อง</div>
+                        <button onClick={doShortRest} style={{ width: '100%', padding: 12, background: '#4a463d', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>☾ ทำการพักสั้น</button>
+                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#2f6b4f', background: '#eef6f0', border: '1px solid #cfe6d6', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
+                      </div>
+                    ) : phase === 'Long Rest' ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 4 }}>พักยาว (Long Rest)</div>
+                        <div style={{ fontSize: 11.5, color: '#8d8a82', lineHeight: 1.55, marginBottom: 10 }}>Scratch += ฟื้นกำลัง (<b>{recInfo.label}</b>) · WOUNDS −1 · ไม่ฟื้นค่าสติจากการพัก</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 6, marginBottom: 10 }}>
+                          {cbx('สถานที่นี้ปลอดภัย', lr.safe, () => setLr((v) => ({ ...v, safe: !v.safe })))}
+                          {cbx('อาหารวันนี้อร่อย', lr.goodFood, () => setLr((v) => ({ ...v, goodFood: !v.goodFood })))}
+                          {cbx('ฝันดี', lr.goodDream, () => setLr((v) => ({ ...v, goodDream: !v.goodDream })))}
+                          {cbx('อาหารวันนี้ไม่อร่อย', lr.badFood, () => setLr((v) => ({ ...v, badFood: !v.badFood })))}
+                          {cbx('ฝันร้าย', lr.badDream, () => setLr((v) => ({ ...v, badDream: !v.badDream })))}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>ผลการทอยฟื้นกำลัง</div>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                          {([['normal', 'ปกติ'], ['fortuity', 'คลื่นน้ำแห่งโชค'], ['curse', 'รอยร้าวอาถรรพ์']] as const).map(([k, lb]) => {
+                            const on = lr.outcome === k;
+                            const c = k === 'fortuity' ? '#2f7d4f' : k === 'curse' ? '#b4513a' : '#6b6860';
+                            return <button key={k} onClick={() => setLr((v) => ({ ...v, outcome: k }))} style={{ flex: '1 1 auto', border: `1px solid ${on ? c : '#e0ded7'}`, background: on ? '#faf9f7' : '#fff', color: on ? c : '#8d8a82', borderRadius: 9, padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{lb}</button>;
+                          })}
+                        </div>
+                        <button onClick={doLongRest} style={{ width: '100%', padding: 12, background: '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>🌙 ทำการพักยาว</button>
+                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
                       </div>
                     ) : (<>
                     {/* ── row 1: AP · Next Round · Will-power ── */}
@@ -1218,6 +1333,12 @@ function CharacterSheet({
             );
           })}
         </div>
+      </Modal>
+
+      {/* ── On-Hand "Use" picker (Weapon / Shield / Artifact only) ── */}
+      <Modal open={!!handSlot} onClose={() => setHandSlot(null)} title={`Use ไอเทมเข้า${HAND_SLOTS.find((s) => s.key === handSlot)?.label ?? 'มือ'}`}>
+        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เฉพาะ Weapon / Shield / Artifact — กด “Use” เพื่อถือเข้าช่องนี้</p>
+        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot) { setHand(handSlot, { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum) }); setHandSlot(null); } }} />
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
@@ -3302,12 +3423,12 @@ async function fetchEquipment(): Promise<CatalogItem[]> {
 
 // Equipment & Items picker used on the sheet's inventory tab. Picking an item
 // "receives" it (no payment) into LOOT with its real weight from item data.
-function EquipPicker({ onPick }: { onPick: (m: CatalogItem) => void }) {
+function EquipPicker({ onPick, match, actionLabel = 'รับ' }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string }) {
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [added, setAdded] = useState<Record<string, number>>({});
   const { data: all, isLoading } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
-  const pool = all ?? [];
+  const pool = (all ?? []).filter((m) => !match || match(m));
   const allTags = Array.from(new Set(pool.flatMap((m) => m.tags))).sort();
   const q = query.trim().toLowerCase();
   const hay = (m: CatalogItem) => `${m.name} ${m.subtitle ?? ''} ${m.tags.join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
@@ -3336,7 +3457,7 @@ function EquipPicker({ onPick }: { onPick: (m: CatalogItem) => void }) {
                 <div style={{ fontSize: 11, color: '#9a978e' }}>{kg > 0 ? `${kg} kg` : 'ไม่ระบุน้ำหนัก'}{m.tags.length ? ` · ${m.tags.slice(0, 3).join(', ')}` : ''}</div>
               </div>
               {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#2f7d4f' }}>รับแล้ว ×{n}</span>}
-              <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>รับ</button>
+              <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>{actionLabel}</button>
             </div>
           );
         })}
