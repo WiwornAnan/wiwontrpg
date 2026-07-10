@@ -195,7 +195,7 @@ function CharacterSheet({
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
-  const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false, outcome: 'normal' as 'normal' | 'fortuity' | 'curse' });
+  const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false });
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
@@ -495,16 +495,12 @@ function CharacterSheet({
     setRestMsg(`พักสั้น (Short Rest): +${gain} Scratch (END d${endFaces} ทอยได้ ${gain}) · Willpower +1`);
   };
   const doLongRest = () => {
-    let scratchGain = 0, woundDelta = 0, sanGain = 0, wpGain = 1;
-    const notes: string[] = [];
-    if (lr.outcome === 'curse') { woundDelta = 1; wpGain = 0; notes.push('รอยร้าวอาถรรพ์ — อาการหนักขึ้น ไม่ฟื้นฟูใด ๆ · WOUNDS +1'); }
-    else if (lr.outcome === 'fortuity') { woundDelta = -2; scratchGain = recInfo.roll; notes.push(`คลื่นน้ำแห่งโชค — WOUNDS −2 · Scratch +${scratchGain} (ผลรวม ${recInfo.label})`); }
-    else { woundDelta = -1; scratchGain = rollDie(recInfo.roll); notes.push(`WOUNDS −1 · Scratch +${scratchGain} (ฟื้นกำลัง ${recInfo.label})`); }
-    if (lr.outcome !== 'curse') {
-      if (lr.goodFood) { const s = rollDie(6); sanGain += s; notes.push(`อาหารอร่อย +${s} Sanity`); }
-      if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
-      if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
-    }
+    let woundDelta = -1, sanGain = 0, wpGain = 1;
+    let scratchGain = rollDie(recInfo.roll);
+    const notes: string[] = [`WOUNDS −1 · Scratch +${scratchGain} (ฟื้นกำลัง ${recInfo.label})`];
+    if (lr.goodFood) { const s = rollDie(6); sanGain += s; notes.push(`อาหารอร่อย +${s} Sanity`); }
+    if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
+    if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
     if (!lr.safe) { scratchGain = Math.floor(scratchGain / 2); sanGain = Math.floor(sanGain / 2); wpGain = Math.floor(wpGain / 2); if (woundDelta < 0) woundDelta = Math.ceil(woundDelta / 2); notes.push('สถานที่ไม่ปลอดภัย — ผลฟื้นฟูเหลือครึ่ง (ปัดลง)'); }
     setSheet({
       scratchCur: Math.min(scrMax, scrCur + scratchGain),
@@ -927,14 +923,6 @@ function CharacterSheet({
                           {cbx('ฝันดี', lr.goodDream, () => setLr((v) => ({ ...v, goodDream: !v.goodDream })))}
                           {cbx('อาหารวันนี้ไม่อร่อย', lr.badFood, () => setLr((v) => ({ ...v, badFood: !v.badFood })))}
                           {cbx('ฝันร้าย', lr.badDream, () => setLr((v) => ({ ...v, badDream: !v.badDream })))}
-                        </div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>ผลการทอยฟื้นกำลัง</div>
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                          {([['normal', 'ปกติ'], ['fortuity', 'คลื่นน้ำแห่งโชค'], ['curse', 'รอยร้าวอาถรรพ์']] as const).map(([k, lb]) => {
-                            const on = lr.outcome === k;
-                            const c = k === 'fortuity' ? '#2f7d4f' : k === 'curse' ? '#b4513a' : '#6b6860';
-                            return <button key={k} onClick={() => setLr((v) => ({ ...v, outcome: k }))} style={{ flex: '1 1 auto', border: `1px solid ${on ? c : '#e0ded7'}`, background: on ? '#faf9f7' : '#fff', color: on ? c : '#8d8a82', borderRadius: 9, padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{lb}</button>;
-                          })}
                         </div>
                         <button onClick={doLongRest} style={{ width: '100%', padding: 12, background: '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>🌙 ทำการพักยาว</button>
                         {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
