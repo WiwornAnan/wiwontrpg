@@ -688,31 +688,85 @@ function CharacterSheet({
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>M. Movement</div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-              <div style={{ ...box, flex: 1 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                  {['Action', 'On Hand', 'Ehen', 'Short Rest', 'Long Rest'].map((t, i) => (
-                    <span key={t} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 16, background: i === 0 ? '#fdeee9' : '#f5f3ef', color: i === 0 ? '#c15a3f' : '#9a978e', border: `1px solid ${i === 0 ? '#f2cdbc' : '#eae7e0'}` }}>{t}</span>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div>
-                    <div style={secTitle}>WILL-POWER</div>
-                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                      {Array.from({ length: Math.max(1, willpowerMax) }).map((_, i) => (
-                        <span key={i} style={{ width: 14, height: 22, borderRadius: 3, background: i < sv('wpCur', willpowerMax) ? '#7aa7c4' : '#dfeaf0' }} />
-                      ))}
+            {(() => {
+              const apMax = sv('apMax', 3);
+              const apCur = sv('apCur', apMax);
+              const roundNum = sv('roundNum', 1);
+              const wpCur = sv('wpCur', willpowerMax);
+              const phase = svs('apPhase', 'Action');
+              const wpN = Math.max(1, willpowerMax);
+              return (
+                <div style={{ background: '#f0eee9', borderRadius: 20, padding: 16 }}>
+                  {/* phase pills */}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {['Action', 'On Hand', 'Ehen', 'Short Rest', 'Long Rest'].map((t) => {
+                      const on = phase === t;
+                      return <button key={t} onClick={() => setSheet({ apPhase: t })} style={{ fontSize: 13, fontWeight: 800, padding: '9px 20px', borderRadius: 22, cursor: 'pointer', border: `1px solid ${on ? '#f0b4aa' : '#eae7e0'}`, background: on ? '#f7cdc6' : '#fff', color: on ? '#b0503f' : '#6b5b45' }}>{t}</button>;
+                    })}
+                  </div>
+                  {/* white card */}
+                  <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', gap: 18, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                    {/* Action Point */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>Action Point (AP)</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {Array.from({ length: Math.max(1, apMax) }).map((_, i) => (
+                          <button key={i} onClick={() => setSheet({ apCur: i + 1 === apCur ? i : i + 1 })} title="กดปรับ AP" style={{ width: 34, height: 34, borderRadius: 9, cursor: 'pointer', border: 'none', background: i < apCur ? '#4a463d' : '#d3cec5' }} />
+                        ))}
+                        <span title="AP ที่จะได้รอบถัดไป" style={{ width: 34, height: 34, borderRadius: 9, border: '2px dashed #dcc6bd', background: '#faf6f4' }} />
+                      </div>
+                      <button onClick={() => setSheet({ apCur: Math.max(0, apCur - 1) })} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Action -1 AP</button>
+                      <button onClick={() => setSheet({ apCur: Math.max(0, apCur - 1) })} style={{ background: '#4a463d', color: '#fff', border: 'none', borderRadius: 9, padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Reaction</button>
                     </div>
-                    <div style={{ fontSize: 11, color: '#9a978e', marginTop: 4 }}>{sv('wpCur', willpowerMax)} / {willpowerMax}</div>
-                  </div>
-                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, color: '#9a978e' }}>Cal. สะสม</div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: '#c79a2e' }}>{sv('calStored', 0)}</div>
-                    <div style={{ fontSize: 11, color: '#9a978e', marginTop: 4 }}>ดับหิว <b style={{ color: '#3c3a33' }}>{sv('calGoal', 0)}</b> Cal.</div>
+                    {/* Next Round */}
+                    <div style={{ position: 'relative', background: '#59544c', borderRadius: 14, padding: '30px 16px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 110, cursor: 'pointer' }} onClick={() => setSheet({ roundNum: roundNum + 1, apCur: Math.min(apMax, apCur + 2) })} title="ขึ้นรอบถัดไป (+2 AP)">
+                      <button onClick={(e) => { e.stopPropagation(); setSheet({ roundNum: 1, apCur: apMax }); }} style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', background: '#736e66', color: '#e8e5df', border: 'none', borderRadius: 8, padding: '2px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Reset</button>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.15, textAlign: 'center' }}>Next<br />Round</div>
+                      <div style={{ fontSize: 34, fontWeight: 800, color: '#37d39e', lineHeight: 1 }}>{roundNum}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>+2 AP</div>
+                    </div>
+                    {/* Will-power */}
+                    <div style={{ flex: 1, minWidth: 150, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45', marginBottom: 8 }}>WILL-POWER</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: 1, justifyContent: 'center' }}>
+                        {Array.from({ length: wpN }).map((_, i) => (
+                          <button key={i} onClick={() => setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 })} title={`${wpCur} / ${willpowerMax}`} style={{ height: 16, borderRadius: 6, cursor: 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / wpN) * 0.45})` : '#e3edf2' }} />
+                        ))}
+                      </div>
+                    </div>
+                    {/* Calories & thirst */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#2f9d6a' }} /><span style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45' }}>ทาน</span></div>
+                          <div style={{ background: '#c4e4d2', borderRadius: 12, padding: '10px 16px', textAlign: 'center' }}><NumField value={sv('calEaten', 0)} onCommit={(v) => setSheet({ calEaten: v })} width={70} style={{ fontSize: 22, fontWeight: 800, color: '#2f7d6a', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 3 }}>Cal. สะสม</div>
+                          <div style={{ background: '#d4e1b7', borderRadius: 12, padding: '10px 16px', textAlign: 'center' }}><NumField value={sv('calStored', 0)} onCommit={(v) => setSheet({ calStored: v })} width={70} style={{ fontSize: 22, fontWeight: 800, color: '#5f5030', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 3, textAlign: 'right' }}>ดับหิว</div>
+                          <div style={{ background: '#d4e1b7', borderRadius: 12, padding: '10px 18px', textAlign: 'center', height: 'calc(100% - 22px)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <NumField value={sv('calGoal', 0)} onCommit={(v) => setSheet({ calGoal: v })} width={110} style={{ fontSize: 30, fontWeight: 800, color: '#5f5030', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} />
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52' }}>Calories ที่ต้องการ</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 3, textAlign: 'right' }}>ดับกระหาย</div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ flex: 1, background: '#9fb6c6', borderRadius: 12, padding: '8px', textAlign: 'center' }}><NumField value={sv('waterCur', 0)} onCommit={(v) => setSheet({ waterCur: v })} width={52} style={{ fontSize: 17, fontWeight: 800, color: '#2c4a5c', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
+                            <div style={{ flex: 1, background: '#9fb6c6', borderRadius: 12, padding: '8px', textAlign: 'center' }}><NumField value={sv('waterGoal', 0)} onCommit={(v) => setSheet({ waterGoal: v })} width={52} style={{ fontSize: 17, fontWeight: 800, color: '#2c4a5c', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Tabbed area */}
             <div style={box}>
