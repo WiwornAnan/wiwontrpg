@@ -132,6 +132,9 @@ function CharacterSheet({
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
+  const { data: q4data } = useQuery({ queryKey: ['step4-questions', 'global'], queryFn: () => api.get<{ step4: { questions: Step4Question[] } }>('/wizard/step4-questions/global') });
+  const { data: q5data } = useQuery({ queryKey: ['step5-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step5-questions/global') });
+  const { data: q6data } = useQuery({ queryKey: ['step6-questions', 'global'], queryFn: () => api.get<Record<string, { questions: Step5Question[] }>>('/wizard/step6-questions/global') });
   const featById = new Map((features ?? []).map((f) => [f.id, f]));
   const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
 
@@ -266,6 +269,28 @@ function CharacterSheet({
     if (dir === 'in') { const move = Math.min(amt, coins[key]); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur + move } } : x)), walletIC: walletIC - move * ic } }); }
     else { const move = Math.min(amt, cur); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur - move } } : x)), walletIC: walletIC + move * ic } }); }
   };
+
+  // ── ภูมิหลัง (Background): seeded from Step 4/5/6, then freely editable ──
+  interface BgItem { id: string; heading: string; text: string }
+  const step4Ans = d.step4Answers && typeof d.step4Answers === 'object' ? (d.step4Answers as Record<string, string>) : {};
+  const step5Ans = d.step5Answers && typeof d.step5Answers === 'object' ? (d.step5Answers as Record<string, string>) : {};
+  const step6Ans = d.step6Answers && typeof d.step6Answers === 'object' ? (d.step6Answers as Record<string, string>) : {};
+  const derivedBg: BgItem[] = [
+    ...(q4data?.step4?.questions ?? []).flatMap((q) => {
+      const optId = step4Ans[q.id];
+      if (!optId) return [];
+      const opt = q.options.find((o) => o.id === optId);
+      return [{ id: `s4:${q.id}`, heading: `${q.section} — ${q.title}`, text: opt?.text ?? '' }];
+    }),
+    ...(q5data?.step5?.questions ?? []).flatMap((q) => (step5Ans[q.id]?.trim() ? [{ id: `s5:${q.id}`, heading: q.prompt, text: step5Ans[q.id] }] : [])),
+    ...(q6data?.step6?.questions ?? []).flatMap((q) => (step6Ans[q.id]?.trim() ? [{ id: `s6:${q.id}`, heading: q.prompt, text: step6Ans[q.id] }] : [])),
+  ];
+  const bgCustom = Array.isArray(sheet.background) ? (sheet.background as BgItem[]) : null;
+  const bgItems: BgItem[] = bgCustom ?? derivedBg;
+  const saveBg = (items: BgItem[]) => setSheet({ background: items });
+  const setBgItem = (id: string, p: Partial<BgItem>) => saveBg(bgItems.map((it) => (it.id === id ? { ...it, ...p } : it)));
+  const delBgItem = (id: string) => saveBg(bgItems.filter((it) => it.id !== id));
+  const addBgItem = () => saveBg([...bgItems, { id: `bg${Date.now()}`, heading: 'หัวข้อใหม่', text: '' }]);
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -752,13 +777,26 @@ function CharacterSheet({
               )}
 
               {tab === 'ภูมิหลัง' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, lineHeight: 1.7, color: '#3c3a33' }}>
-                  {(() => {
-                    const a5 = d.step5Answers && typeof d.step5Answers === 'object' ? Object.values(d.step5Answers as Record<string, string>) : [];
-                    const a6 = d.step6Answers && typeof d.step6Answers === 'object' ? Object.values(d.step6Answers as Record<string, string>) : [];
-                    const all = [...a5, ...a6].filter(Boolean);
-                    return all.length === 0 ? <span style={{ color: '#bdbab2' }}>ยังไม่มีเรื่องราวภูมิหลัง</span> : all.map((t, i) => <p key={i} style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{t}</p>);
-                  })()}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>ภูมิหลัง <span style={{ color: '#cbc8c0', fontWeight: 400 }}>— จาก Step 4/5/6 · แก้ไข/ลบ/เขียนใหม่ได้อิสระ</span></span>
+                    <button onClick={addBgItem} style={{ flex: 'none', padding: '5px 12px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มหัวข้อ</button>
+                  </div>
+                  {bgItems.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#cbc8c0', fontSize: 12.5, padding: '24px 16px', lineHeight: 1.7 }}>ยังไม่มีภูมิหลัง — กรอกใน Step 4/5/6 ตอนสร้างตัวละคร หรือกด “＋ เพิ่มหัวข้อ”</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {bgItems.map((it) => (
+                        <div key={it.id} style={{ border: '1px solid #ece9e3', borderRadius: 10, padding: '10px 12px', background: '#faf9f7' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <input key={it.heading} defaultValue={it.heading} onBlur={(e) => { if (e.target.value !== it.heading) setBgItem(it.id, { heading: e.target.value }); }} placeholder="หัวข้อ" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontWeight: 800, color: '#46443c', borderBottom: '1px dashed #d8d5ce' }} />
+                            <button onClick={() => delBgItem(it.id)} title="ลบหัวข้อนี้" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15, flex: 'none' }}>×</button>
+                          </div>
+                          <GrowingAnswer value={it.text} onCommit={(v) => setBgItem(it.id, { text: v })} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
