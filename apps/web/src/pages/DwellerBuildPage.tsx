@@ -201,12 +201,14 @@ function CharacterSheet({
   const bluePill: React.CSSProperties = { background: '#dfeaf5', border: '1px solid #cbd9ea', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 800, color: '#2a5fbd', textAlign: 'center', minWidth: 44 };
   const plus = <span style={{ fontSize: 16, color: '#c9c5bd', fontWeight: 700 }}>+</span>;
 
-  // ── Sanity / Scratch pools ──
+  // ── Sanity / Scratch pools (max defaults to Step 10 but is editable) ──
+  const sanMax = sv('sanMax', sanityMax);
+  const scrMax = sv('scrMax', scratchMax);
   const sanTemp = sv('sanTemp', 0);
-  const sanCur = sv('sanCur', sanityMax);
+  const sanCur = sv('sanCur', sanMax);
   const scrTemp = sv('scratchTemp', 0);
-  const scrCur = sv('scratchCur', scratchMax);
-  const sanRatio = sanityMax > 0 ? sanCur / sanityMax : 1;
+  const scrCur = sv('scratchCur', scrMax);
+  const sanRatio = sanMax > 0 ? sanCur / sanMax : 1;
   const sanStatuses = [
     ...(sanRatio < 0.5 ? ['เครียด'] : []),
     ...(sanRatio < 0.3 ? ['บาดแผลทางจิตใจ'] : []),
@@ -218,12 +220,18 @@ function CharacterSheet({
     setSheet({ [tempKey]: t, [curKey]: Math.max(0, cur - a) });
   };
 
-  // ── Wounds: cumulative tick 1→5 (First Blood … Death's Door); 0 = Have no impact ──
+  // ── Wounds: red levels cumulative-tick 1→5; green "Have no impact" is a buffer
+  //    whose slot count is added/removed with +/- (starts at 0, hidden). ──
   const woundLevel = sv('woundLevel', 0); // 0..5
+  const woundGreen = sv('woundGreen', 0); // 0..4 buffer slots
+  const greenTicked = sv('woundGreenTicked', 0);
   const WOUND_DEBUFFS = ['อ่อนแอต่อพิษ', 'อ่อนกำลัง', 'อ่อนล้า', 'หมดแรง'];
   const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(woundLevel, 4));
   const deathDoor = woundLevel >= 5;
   const tickWound = (lv: number) => setSheet({ woundLevel: woundLevel === lv ? lv - 1 : lv });
+  const tickGreen = (i: number) => setSheet({ woundGreenTicked: greenTicked === i + 1 ? i : i + 1 });
+  const addGreen = () => setSheet({ woundGreen: Math.min(4, woundGreen + 1) });
+  const subGreen = () => { const ng = Math.max(0, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
 
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
@@ -232,30 +240,38 @@ function CharacterSheet({
   const showDeathOverlay = deathDoor && !reviveActive;
   const toggleLB = (which: 'lbGreen' | 'lbRed', arr: boolean[], i: number) => { const nx = [...arr]; nx[i] = !nx[i]; setSheet({ [which]: nx }); };
 
-  const linkBtn = (color: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 700, color, background: 'none', border: 'none', cursor: 'pointer', padding: 0 });
-  const amtInput: React.CSSProperties = { width: 44, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 4px', fontSize: 13, background: '#faf9f7' };
+  const amtInput: React.CSSProperties = { width: 46, textAlign: 'center', border: '1px solid #e0ded7', borderRadius: 8, padding: '5px 4px', fontSize: 13, background: '#fff' };
+  const actBtn = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 11.5, fontWeight: 800, color, background: bg, border: `1px solid ${brd}`, borderRadius: 8, padding: '5px 11px', cursor: 'pointer', whiteSpace: 'nowrap' });
 
-  const poolBox = (title: string, tempLabel: string, temp: number, tempKey: string, cur: number, max: number, healLabel: string, dmgLabel: string, amt: number, setAmt: (v: number) => void, onHeal: () => void, onDamage: () => void) => (
-    <div style={box}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-        <div style={{ textAlign: 'center', flex: 'none' }}>
-          <div style={secTitle}>{tempLabel}</div>
-          <div style={{ ...bluePill, marginTop: 4, minWidth: 74 }}><NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={58} /></div>
+  const poolBox = (title: string, accent: string, tempLabel: string, temp: number, tempKey: string, cur: number, max: number, maxKey: string, healLabel: string, dmgLabel: string, amt: number, setAmt: (v: number) => void, onHeal: () => void, onDamage: () => void) => {
+    const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+    return (
+      <div style={{ ...box, padding: '14px 16px', background: 'linear-gradient(#ffffff,#fcfbf9)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: accent }}>{title}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d' }}>{tempLabel}</div>
+              <div style={{ ...bluePill, minWidth: 52, fontSize: 15, padding: '3px 6px' }}><NumField value={temp} onCommit={(v) => setSheet({ [tempKey]: v })} width={40} /></div>
+            </div>
+          </div>
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8 }}>
-          <div style={{ textAlign: 'center' }}><div style={secTitle}>ปัจจุบัน</div><div style={{ fontSize: 32, fontWeight: 800, color: '#2f2c25', lineHeight: 1 }}>{cur}</div></div>
-          <span style={{ fontSize: 26, color: '#cfccc4', fontWeight: 700, paddingBottom: 2 }}>/</span>
-          <div style={{ textAlign: 'center' }}><div style={secTitle}>สูงสุด</div><div style={{ fontSize: 32, fontWeight: 800, color: '#8d8a82', lineHeight: 1 }}>{max}</div></div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 10 }}>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>ปัจจุบัน</div><div style={{ fontSize: 34, fontWeight: 800, color: accent, lineHeight: 1 }}>{cur}</div></div>
+          <span style={{ fontSize: 26, color: '#d8d4cc', fontWeight: 700, paddingBottom: 3 }}>/</span>
+          <div style={{ textAlign: 'center' }}><div style={secTitle}>สูงสุด</div><div style={{ fontSize: 20, fontWeight: 800, color: '#8d8a82', lineHeight: 1 }}><NumField value={max} onCommit={(v) => setSheet({ [maxKey]: v })} width={48} /></div></div>
+        </div>
+        <div style={{ height: 7, borderRadius: 5, background: '#eee9e1', overflow: 'hidden', margin: '10px 0 10px' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: pct < 30 ? '#d9736b' : pct < 50 ? '#e0a24a' : accent, transition: 'width .25s' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+          <button onClick={onHeal} style={actBtn('#eef6f0', '#2f7d4f', '#cfe6d6')}>{healLabel}</button>
+          <input type="number" value={amt} onChange={(e) => setAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={amtInput} />
+          <button onClick={onDamage} style={actBtn('#f9eeea', '#c0432a', '#f0d0c4')}>{dmgLabel}</button>
         </div>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: '#5c4a2e', marginTop: 8 }}>{title}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, justifyContent: 'center' }}>
-        <button onClick={onHeal} style={linkBtn('#2f7d4f')}>{healLabel}</button>
-        <input type="number" value={amt} onChange={(e) => setAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} style={amtInput} />
-        <button onClick={onDamage} style={linkBtn('#c0432a')}>{dmgLabel}</button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
@@ -371,19 +387,31 @@ function CharacterSheet({
         <div style={{ display: 'grid', gridTemplateColumns: '290px 300px 1fr', gap: 12, alignItems: 'start' }}>
           {/* Left */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {poolBox('SANITY', 'SAN TEMP', sanTemp, 'sanTemp', sanCur, sanityMax, 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ', sanAmt, setSanAmt, () => healPool('sanCur', sanCur, sanityMax, sanAmt), () => damagePool('sanCur', 'sanTemp', sanCur, sanTemp, sanAmt))}
+            {poolBox('SANITY', '#2a5fbd', 'SAN TEMP', sanTemp, 'sanTemp', sanCur, sanMax, 'sanMax', 'ฟื้นฟูสภาพจิต', 'เสียหายต่อจิตใจ', sanAmt, setSanAmt, () => healPool('sanCur', sanCur, sanMax, sanAmt), () => damagePool('sanCur', 'sanTemp', sanCur, sanTemp, sanAmt))}
             <div style={{ ...box, padding: '10px 14px', fontSize: 12, color: '#9a978e', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               สถานะค่าสติปัจจุบัน:
               {sanStatuses.length === 0 ? <b style={{ color: '#3c3a33' }}>ปกติ</b> : sanStatuses.map((s) => <span key={s} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 7, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{s}</span>)}
             </div>
-            {poolBox('SCRATCH POINT', 'TEMP', scrTemp, 'scratchTemp', scrCur, scratchMax, 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scratchMax, scrAmt), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
+            {poolBox('SCRATCH POINT', '#c15a3f', 'TEMP', scrTemp, 'scratchTemp', scrCur, scrMax, 'scrMax', 'ฟื้นฟู', 'บาดเจ็บ', scrAmt, setScrAmt, () => healPool('scratchCur', scrCur, scrMax, scrAmt), () => damagePool('scratchCur', 'scratchTemp', scrCur, scrTemp, scrAmt))}
             <div style={{ ...box, position: 'relative' }}>
-              <span style={secTitle}>WOUNDS POINT</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={secTitle}>WOUNDS POINT</span>
+                <span style={{ display: 'flex', gap: 5 }}>
+                  <button onClick={subGreen} disabled={woundGreen === 0} title="ลดช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen === 0 ? '#f5f3ef' : '#fff', color: woundGreen === 0 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen === 0 ? 'not-allowed' : 'pointer' }}>−</button>
+                  <button onClick={addGreen} disabled={woundGreen >= 4} title="เพิ่มช่อง Have no impact" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: woundGreen >= 4 ? '#f5f3ef' : '#fff', color: woundGreen >= 4 ? '#cfccc4' : '#6b6860', fontSize: 14, fontWeight: 800, cursor: woundGreen >= 4 ? 'not-allowed' : 'pointer' }}>+</button>
+                </span>
+              </div>
               <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
-                <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: woundLevel === 0 ? '#5aa06a' : '#d5e8d9', flex: 'none' }} />
-                  <span style={{ fontSize: 12, fontWeight: woundLevel === 0 ? 800 : 500, color: woundLevel === 0 ? '#2f7d4f' : '#a8a59d' }}>Have no impact</span>
-                </div>
+                {woundGreen > 0 && (
+                  <div style={{ flex: 'none' }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Have no impact</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {Array.from({ length: woundGreen }).map((_, i) => (
+                        <button key={i} onClick={() => tickGreen(i)} title="Have no impact" style={{ width: 20, height: 20, borderRadius: 5, border: '1px solid #bfe0c6', background: i < greenTicked ? '#7bc48a' : '#eaf5ec', cursor: 'pointer' }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {[1, 2, 3, 4, 5].map((lv) => {
                     const on = woundLevel >= lv;
