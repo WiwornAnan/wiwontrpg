@@ -178,7 +178,7 @@ function CharacterSheet({
   const [editName, setEditName] = useState(false);
   const [editCamp, setEditCamp] = useState(false);
   const [editXp, setEditXp] = useState(false);
-  const [roll, setRoll] = useState<{ faces: number; adv: boolean } | null>(null);
+  const [roll, setRoll] = useState<{ faces: number; adv: boolean; dis?: boolean } | null>(null);
   const [sanAmt, setSanAmt] = useState(0);
   const [scrAmt, setScrAmt] = useState(0);
   const [endAmt, setEndAmt] = useState(0);
@@ -452,6 +452,35 @@ function CharacterSheet({
   const addGreen = () => setSheet({ woundGreen: Math.min(4, woundGreen + 1) });
   const subGreen = () => { const ng = Math.max(0, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
 
+  // ── Active statuses → Ego-Dice Disadvantage (per skill: attr / category / name) ──
+  const activeStatusSet = (() => {
+    const s = new Set<string>();
+    Object.keys(statusOn).forEach((k) => s.add(k));
+    sanStatuses.forEach((x) => s.add(x));
+    activeWoundDebuffs.forEach((x) => s.add(x));
+    if (s.has('บาดแผลทางจิตใจ')) { s.add('นอนไม่หลับ'); s.add('หูแว่วและภาพหลอน'); }
+    return s;
+  })();
+  const insomnia = activeStatusSet.has('นอนไม่หลับ'); // blocks Long Rest
+  const disReasons = (attr: string, name: string, catEn: string): string[] => {
+    const R: Array<[boolean, boolean, string]> = [
+      [activeStatusSet.has('Injured'), attr === 'STR', 'บาดเจ็บ'],
+      [activeStatusSet.has('Fractured'), catEn === 'Athletics' && name !== 'ซ่อนตัว', 'กระดูกร้าว'],
+      [activeStatusSet.has('Internal Injury'), name === 'ฟื้นกำลัง', 'ช้ำใน'],
+      [activeStatusSet.has('Overburdened'), ['Athletics', 'Social Arts', 'Survival'].includes(catEn), 'แบกภาระเกิน'],
+      [activeStatusSet.has('Blind'), name === 'กวาดสายตา' || name === 'มองหาจุดสังเกต', 'ตาบอด'],
+      [activeStatusSet.has('Deaf'), name === 'การฟัง', 'หูหนวก'],
+      [activeStatusSet.has('Madness'), attr === 'AUT' || attr === 'CVN', 'คลุ้มคลั่ง'],
+      [activeStatusSet.has('เครียด'), attr === 'INT' || attr === 'AUT', 'เครียด'],
+      [activeStatusSet.has('หูแว่วและภาพหลอน'), attr === 'PER', 'หูแว่วและภาพหลอน'],
+      [activeStatusSet.has('จิตผิดปกติ'), attr === 'CVN', 'จิตผิดปกติ'],
+      [activeStatusSet.has('อ่อนกำลัง'), attr === 'STR', 'อ่อนกำลัง'],
+      [activeStatusSet.has('อ่อนล้า'), attr === 'PER', 'อ่อนล้า'],
+      [activeStatusSet.has('หมดแรง'), attr === 'DEX' || attr === 'END', 'หมดแรง'],
+    ];
+    return R.filter(([a, m]) => a && m).map(([, , label]) => label);
+  };
+
   // ── The Last Breath: 5 green (revive) + 5 red (death) ──
   const lbGreen: boolean[] = Array.isArray(sheet.lbGreen) ? (sheet.lbGreen as boolean[]) : [false, false, false, false, false];
   const lbRed: boolean[] = Array.isArray(sheet.lbRed) ? (sheet.lbRed as boolean[]) : [false, false, false, false, false];
@@ -618,13 +647,15 @@ function CharacterSheet({
               const name = attr.replace(/\s*\(.*\)/, '');
               const g = byAbbr[abbr] ?? '—';
               const dFaces = STEP10_FACES[g] ?? 0;
+              const aReasons = disReasons(abbr, '', '');
+              const aDis = aReasons.length > 0;
               return (
                 <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '18px 8px 12px', minHeight: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <button
-                    onClick={() => dFaces > 0 && setRoll({ faces: dFaces, adv: false })}
-                    title={`ทอย ${abbr} (d${dFaces})`}
-                    style={{ position: 'absolute', top: -13, left: 10, background: '#e07a5f', color: '#fff', fontSize: 14, fontWeight: 800, borderRadius: 9, padding: '5px 11px', border: '2px solid #fff', boxShadow: '0 3px 8px rgba(224,122,95,.45)', cursor: dFaces > 0 ? 'pointer' : 'default', lineHeight: 1 }}
-                  >d{dFaces || '?'}</button>
+                    onClick={() => dFaces > 0 && setRoll({ faces: dFaces, adv: false, dis: aDis })}
+                    title={`ทอย ${abbr} (d${dFaces})${aDis ? ` · Disadvantage: ${aReasons.join(', ')}` : ''}`}
+                    style={{ position: 'absolute', top: -13, left: 10, background: aDis ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 14, fontWeight: 800, borderRadius: 9, padding: '5px 11px', border: '2px solid #fff', boxShadow: '0 3px 8px rgba(224,122,95,.45)', cursor: dFaces > 0 ? 'pointer' : 'default', lineHeight: 1 }}
+                  >d{dFaces || '?'}{aDis && ' ▼'}</button>
                   <div style={{ position: 'absolute', top: 9, right: 11, fontSize: 13, fontWeight: 800, color: '#8d8a82' }}>{abbr}</div>
                   <div style={{ fontSize: 56, fontWeight: 800, color: '#35322b', lineHeight: 1 }}>{g}</div>
                   <div style={{ fontSize: 12.5, color: '#9a978e', marginTop: 8 }}>{name}</div>
@@ -924,7 +955,8 @@ function CharacterSheet({
                           {cbx('อาหารวันนี้ไม่อร่อย', lr.badFood, () => setLr((v) => ({ ...v, badFood: !v.badFood })))}
                           {cbx('ฝันร้าย', lr.badDream, () => setLr((v) => ({ ...v, badDream: !v.badDream })))}
                         </div>
-                        <button onClick={doLongRest} style={{ width: '100%', padding: 12, background: '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>🌙 ทำการพักยาว</button>
+                        {insomnia && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', background: '#fbeae6', border: '1px solid #f0d3cb', borderRadius: 9, padding: '8px 11px', marginBottom: 8 }}>🚫 ติดสถานะ “นอนไม่หลับ” — ไม่สามารถพักยาวได้</div>}
+                        <button onClick={doLongRest} disabled={insomnia} style={{ width: '100%', padding: 12, background: insomnia ? '#cfccc4' : '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: insomnia ? 'not-allowed' : 'pointer' }}>🌙 ทำการพักยาว</button>
                         {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
                       </div>
                     ) : (<>
@@ -1062,6 +1094,11 @@ function CharacterSheet({
                           const key = skillKey(cat.en, s.en);
                           const ch = getCh(key);
                           const info = skillInfo(s.attr, talent.includes(key), ch.level);
+                          const hasAdv = prof.includes(key);
+                          const reasons = disReasons(s.attr, s.name, cat.en);
+                          const hasDis = reasons.length > 0;
+                          const advNet = hasAdv && !hasDis;
+                          const disNet = hasDis && !hasAdv;
                           return (
                             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ec' }}>
                               <span style={{ width: 26, height: 22, borderRadius: 6, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
@@ -1070,10 +1107,11 @@ function CharacterSheet({
                                 onMouseLeave={() => setSkillTip(null)}
                                 style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help' }}
                               >{s.name}</span>
-                              {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                              {hasAdv && <span title="เชี่ยวชาญ · Advantage" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
                               {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
+                              {hasDis && <span title={`Disadvantage: ${reasons.join(', ')}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
                               <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
-                              <button onClick={() => setRoll({ faces: info.roll, adv: prof.includes(key) })} title={`ทอย ${info.label}${prof.includes(key) ? ' · Advantage' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
+                              <button onClick={() => setRoll({ faces: info.roll, adv: advNet, dis: disNet })} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
                             </div>
                           );
                         })}
@@ -1266,7 +1304,7 @@ function CharacterSheet({
           </div>
         </div>
       </div>
-      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} onClose={() => setRoll(null)} />
+      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} egoDisadvantage={roll?.dis ?? false} onClose={() => setRoll(null)} />
 
       {/* ── hover description for Dweller Skill rows ── */}
       {skillTip && (

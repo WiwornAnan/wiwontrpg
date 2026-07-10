@@ -259,7 +259,7 @@ interface LogEntry {
   label?: string;
 }
 
-export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false }: { open: boolean; onClose: () => void; egoFaces?: number; egoAdvantage?: boolean }) {
+export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false, egoDisadvantage = false }: { open: boolean; onClose: () => void; egoFaces?: number; egoAdvantage?: boolean; egoDisadvantage?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -273,7 +273,7 @@ export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false 
     if (!host) return;
     const w = window as unknown as { __wiwonEgoFaces?: number; __wiwonEgoMode?: string };
     w.__wiwonEgoFaces = egoFaces;
-    w.__wiwonEgoMode = egoAdvantage ? 'adv' : 'normal';
+    w.__wiwonEgoMode = egoDisadvantage ? 'dis' : egoAdvantage ? 'adv' : 'normal';
     host.innerHTML = WIDGET_HTML;
     const script = document.createElement('script');
     script.textContent = WIDGET_JS;
@@ -301,7 +301,7 @@ export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false 
       setDropped(false);
       setPending(null);
     };
-  }, [open, egoFaces, egoAdvantage]);
+  }, [open, egoFaces, egoAdvantage, egoDisadvantage]);
 
   if (!open) return null;
 
