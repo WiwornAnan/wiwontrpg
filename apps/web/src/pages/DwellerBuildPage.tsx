@@ -227,7 +227,13 @@ function CharacterSheet({
   const WOUND_DEBUFFS = ['อ่อนแอต่อพิษ', 'อ่อนกำลัง', 'อ่อนล้า', 'หมดแรง'];
   const activeWoundDebuffs = WOUND_DEBUFFS.slice(0, Math.min(woundLevel, 4));
   const deathDoor = woundLevel >= 5;
-  const tickWound = (lv: number) => setSheet({ woundLevel: woundLevel === lv ? lv - 1 : lv });
+  const tickWound = (lv: number) => {
+    const next = woundLevel === lv ? lv - 1 : lv;
+    const patch: Record<string, unknown> = { woundLevel: next };
+    // Leaving Death's Door → clear the revived (green) Last Breath cells.
+    if (deathDoor && next < 5) patch.lbGreen = [false, false, false, false, false];
+    setSheet(patch);
+  };
   const tickGreen = (i: number) => setSheet({ woundGreenTicked: greenTicked === i + 1 ? i : i + 1 });
   const addGreen = () => setSheet({ woundGreen: Math.min(4, woundGreen + 1) });
   const subGreen = () => { const ng = Math.max(1, woundGreen - 1); setSheet({ woundGreen: ng, woundGreenTicked: Math.min(greenTicked, ng) }); };
