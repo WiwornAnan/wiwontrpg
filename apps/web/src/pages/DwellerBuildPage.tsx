@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLevel, WizardLevelOption } from '@wiwonanant/shared';
 import { CATALOG_CONFIGS } from '@wiwonanant/shared';
@@ -403,8 +403,9 @@ function StepShell({
 }: {
   character: Character;
   covers: WiwonCover[];
-  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number }>>;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; status?: 'draft' | 'complete' }>>;
 }) {
+  const navigate = useNavigate();
   const step = character.step;
   const pct = Math.round((step / TOTAL_STEPS) * 100);
   const selectedNames = wiwonIdsOf(character)
@@ -412,12 +413,17 @@ function StepShell({
     .filter(Boolean);
 
   const canNext = step === 1 ? !!character.data.race : step === 2 ? !!character.data.class : true;
+  const isLast = step >= TOTAL_STEPS;
+  const finish = () => patch.mutate({ status: 'complete' }, { onSuccess: () => navigate(`/dweller/sheet/${character.id}`) });
 
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82' }}>Step {step}/{TOTAL_STEPS}</span>
-        <span style={{ fontSize: 12, color: '#a8a59d' }}>{pct}%</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Link to={`/dweller/sheet/${character.id}`} style={{ fontSize: 12, fontWeight: 700, color: '#e07a5f', textDecoration: 'none' }}>ดูชีต (พรีวิว) ↗</Link>
+          <span style={{ fontSize: 12, color: '#a8a59d' }}>{pct}%</span>
+        </div>
       </div>
       <div style={{ height: 8, borderRadius: 6, background: '#eae7e0', overflow: 'hidden', marginBottom: 20 }}>
         <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)', transition: 'width .3s' }} />
@@ -465,9 +471,15 @@ function StepShell({
         <Button variant="ghost" disabled={patch.isPending} onClick={() => patch.mutate({ step: step - 1 })}>
           ← ย้อนกลับ
         </Button>
-        <Button variant="coral" disabled={patch.isPending || step >= TOTAL_STEPS || !canNext} onClick={() => patch.mutate({ step: step + 1 })}>
-          ถัดไป →
-        </Button>
+        {isLast ? (
+          <Button variant="coral" disabled={patch.isPending} onClick={finish}>
+            เสร็จสิ้น · ดูชีต ✓
+          </Button>
+        ) : (
+          <Button variant="coral" disabled={patch.isPending || !canNext} onClick={() => patch.mutate({ step: step + 1 })}>
+            ถัดไป →
+          </Button>
+        )}
       </div>
     </>
   );
