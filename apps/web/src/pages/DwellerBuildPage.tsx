@@ -72,9 +72,12 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
 
   if (mode === 'sheet') {
     return (
-      <Shell back={back}>
-        <CharacterSheet character={character} covers={covers} patch={patch} />
-      </Shell>
+      <div className={layout.page} style={{ paddingTop: 40, maxWidth: 1340 }}>
+        {back}
+        <div style={{ marginTop: 16 }}>
+          <CharacterSheet character={character} covers={covers} patch={patch} />
+        </div>
+      </div>
     );
   }
 
@@ -222,13 +225,13 @@ function CharacterSheet({
         <div style={{ background: '#15140f', borderRadius: 18, padding: '18px 22px', color: '#fff', display: 'flex', alignItems: 'center', gap: 18 }}>
           <div style={{ width: 84, height: 84, borderRadius: 12, background: '#fff', flex: 'none' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff' }}>{character.name || 'ตัวละครใหม่'}</h1>
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{character.name || 'ตัวละครใหม่'}</h1>
             <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: {raceName || '—'}{ancestryName ? ` | ${ancestryName}` : ''}</div>
             <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 3 }}>Class Feature: {str('className') || '—'} | LV. {level}</div>
           </div>
-          <div style={{ flex: 'none', textAlign: 'right', minWidth: 230 }}>
-            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#fff' }}>CAMPAIGN: {svs('campaign', 'ชื่อแคมเปญ')}</div>
-            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4 }}>Wiwon: {wiwonNames.join(', ') || '—'}</div>
+          <div style={{ flex: 'none', width: 250, textAlign: 'right', overflow: 'hidden' }}>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CAMPAIGN: {svs('campaign', 'ชื่อแคมเปญ')}</div>
+            <div title={wiwonNames.join(', ')} style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Wiwon: {wiwonNames.join(', ') || '—'}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
               <span style={{ fontSize: 11, color: '#c9c5bd', fontWeight: 700 }}>XP</span>
               <div style={{ width: 120, height: 8, borderRadius: 6, background: '#3a382f', overflow: 'hidden' }}>
