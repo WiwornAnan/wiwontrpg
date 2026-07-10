@@ -129,6 +129,7 @@ function CharacterSheet({
   const [rollFaces, setRollFaces] = useState<number | null>(null);
   const [sanAmt, setSanAmt] = useState(0);
   const [scrAmt, setScrAmt] = useState(0);
+  const [profPicker, setProfPicker] = useState(false);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -184,10 +185,12 @@ function CharacterSheet({
   const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
   const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
-  const skillNameByKey = new Map<string, string>();
-  DWELLER_SKILLS.forEach((cat) => cat.skills.forEach((s) => skillNameByKey.set(skillKey(cat.en, s.en), s.name)));
-  const profNames = prof.map((k) => skillNameByKey.get(k) ?? k);
   const languages = featIds.map((id) => featById.get(id)).filter((f): f is CatalogItem => !!f && f.tags.includes('Language')).map((f) => f.name);
+  // Proficiency = Features tagged "Specialization" the player picks via the + button.
+  const specPool = (features ?? []).filter((f) => f.tags.includes('Specialization'));
+  const proficiencies: string[] = Array.isArray(sheet.proficiencies) ? (sheet.proficiencies as string[]) : [];
+  const addProf = (id: string) => setSheet({ proficiencies: [...proficiencies, id] });
+  const removeProf = (id: string) => setSheet({ proficiencies: proficiencies.filter((x) => x !== id) });
 
   // Wallet
   const walletIC = numData(d.walletIC);
@@ -470,11 +473,25 @@ function CharacterSheet({
               )}
               <div style={{ marginTop: 8 }}><GrowingAnswer value={svs('debuff')} onCommit={(v) => setSheet({ debuff: v })} /></div>
             </div>
-            <div style={box}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>ความชำนาญ / Proficiency</span>{plus}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {profNames.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : profNames.map((nm, i) => <span key={i} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 8, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}
+            <div style={{ ...box, position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={secTitle}>ความชำนาญ / Proficiency</span>
+                <button onClick={() => setProfPicker((o) => !o)} title="เพิ่ม Specialization" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: profPicker ? '#e07a5f' : '#c9c5bd', fontWeight: 700, lineHeight: 1 }}>+</button>
               </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {proficiencies.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : proficiencies.map((id) => (
+                  <button key={id} onClick={() => removeProf(id)} title="กดเพื่อเอาออก" style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6', cursor: 'pointer' }}>{featById.get(id)?.name ?? '(Specialization)'} ✕</button>
+                ))}
+              </div>
+              {profPicker && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#fff', border: '1px solid #e4e1d9', borderRadius: 10, boxShadow: '0 10px 26px rgba(0,0,0,.14)', maxHeight: 220, overflowY: 'auto', padding: 6 }}>
+                  {specPool.filter((f) => !proficiencies.includes(f.id)).length === 0 ? (
+                    <div style={{ fontSize: 12, color: '#bdbab2', padding: '8px 10px', textAlign: 'center' }}>ไม่มี Feature แท็ก Specialization เพิ่มเติม</div>
+                  ) : specPool.filter((f) => !proficiencies.includes(f.id)).map((f) => (
+                    <button key={f.id} onClick={() => { addProf(f.id); }} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '7px 10px', fontSize: 12.5, color: '#3c3a33', cursor: 'pointer', borderRadius: 7 }}>{f.name}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={box}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={secTitle}>ภาษา / Language</span>{plus}</div>
@@ -559,20 +576,30 @@ function CharacterSheet({
               )}
 
               {tab === 'Dweller Skill' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '2px 18px' }}>
-                  {DWELLER_SKILLS.flatMap((cat) => cat.skills.map((s) => {
-                    const key = skillKey(cat.en, s.en);
-                    const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
-                    return (
-                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderBottom: '1px solid #f4f1ec' }}>
-                        <span style={{ width: 22, height: 18, borderRadius: 5, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
-                        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                        {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 10, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
-                        {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 10, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#6b6860', minWidth: 28, textAlign: 'right' }}>{die}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {DWELLER_SKILLS.map((cat) => (
+                    <div key={cat.en}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</span>
+                        <span style={{ fontSize: 10.5, color: '#b0ada4', fontStyle: 'italic' }}>{cat.en}</span>
                       </div>
-                    );
-                  }))}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0 16px' }}>
+                        {cat.skills.map((s) => {
+                          const key = skillKey(cat.en, s.en);
+                          const die = sheetSkillDie(byAbbr, s.attr, talent.includes(key));
+                          return (
+                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', borderBottom: '1px solid #f4f1ec' }}>
+                              <span style={{ width: 20, height: 16, borderRadius: 4, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                              {prof.includes(key) && <span title="เชี่ยวชาญ" style={{ fontSize: 9.5, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                              {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 9.5, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
+                              <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b6860', minWidth: 26, textAlign: 'right' }}>{die}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
