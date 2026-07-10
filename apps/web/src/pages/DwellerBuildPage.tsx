@@ -129,6 +129,7 @@ function CharacterSheet({
   const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
   const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
   const [coinAdj, setCoinAdj] = useState<Record<string, string>>({});
+  const [bgTopic, setBgTopic] = useState<string | null>(null);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -270,27 +271,28 @@ function CharacterSheet({
     else { const move = Math.min(amt, cur); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur - move } } : x)), walletIC: walletIC + move * ic } }); }
   };
 
-  // ── ภูมิหลัง (Background): seeded from Step 4/5/6, then freely editable ──
-  interface BgItem { id: string; heading: string; text: string }
+  // ── ภูมิหลัง (Background) ──
   const step4Ans = d.step4Answers && typeof d.step4Answers === 'object' ? (d.step4Answers as Record<string, string>) : {};
   const step5Ans = d.step5Answers && typeof d.step5Answers === 'object' ? (d.step5Answers as Record<string, string>) : {};
   const step6Ans = d.step6Answers && typeof d.step6Answers === 'object' ? (d.step6Answers as Record<string, string>) : {};
-  const derivedBg: BgItem[] = [
-    ...(q4data?.step4?.questions ?? []).flatMap((q) => {
-      const optId = step4Ans[q.id];
-      if (!optId) return [];
-      const opt = q.options.find((o) => o.id === optId);
-      return [{ id: `s4:${q.id}`, heading: `${q.section} — ${q.title}`, text: opt?.text ?? '' }];
-    }),
-    ...(q5data?.step5?.questions ?? []).flatMap((q) => (step5Ans[q.id]?.trim() ? [{ id: `s5:${q.id}`, heading: q.prompt, text: step5Ans[q.id] }] : [])),
-    ...(q6data?.step6?.questions ?? []).flatMap((q) => (step6Ans[q.id]?.trim() ? [{ id: `s6:${q.id}`, heading: q.prompt, text: step6Ans[q.id] }] : [])),
+  // Step 4: read-only summary of the ticked choices, grouped by section
+  const step4Summary = STEP4_SECTIONS.map((sec) => ({
+    sec,
+    picks: (q4data?.step4?.questions ?? [])
+      .filter((q) => q.section === sec)
+      .flatMap((q) => { const o = q.options.find((op) => op.id === step4Ans[q.id]); return o ? [{ q: q.title, choice: o.text }] : []; }),
+  })).filter((s) => s.picks.length > 0);
+  // Step 5/6: writable topics, selected via chips
+  const bgTopics = [
+    ...(q5data?.step5?.questions ?? []).map((q) => ({ id: q.id, prompt: q.prompt, store: 'step5Answers' as const, answered: !!step5Ans[q.id]?.trim() })),
+    ...(q6data?.step6?.questions ?? []).map((q) => ({ id: q.id, prompt: q.prompt, store: 'step6Answers' as const, answered: !!step6Ans[q.id]?.trim() })),
   ];
-  const bgCustom = Array.isArray(sheet.background) ? (sheet.background as BgItem[]) : null;
-  const bgItems: BgItem[] = bgCustom ?? derivedBg;
-  const saveBg = (items: BgItem[]) => setSheet({ background: items });
-  const setBgItem = (id: string, p: Partial<BgItem>) => saveBg(bgItems.map((it) => (it.id === id ? { ...it, ...p } : it)));
-  const delBgItem = (id: string) => saveBg(bgItems.filter((it) => it.id !== id));
-  const addBgItem = () => saveBg([...bgItems, { id: `bg${Date.now()}`, heading: 'หัวข้อใหม่', text: '' }]);
+  const commitBgAnswer = (store: 'step5Answers' | 'step6Answers', id: string, text: string) => {
+    const cur = store === 'step5Answers' ? step5Ans : step6Ans;
+    const next = { ...cur };
+    if (text.trim()) next[id] = text; else delete next[id];
+    patch.mutate({ data: { ...d, [store]: next } });
+  };
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -778,25 +780,44 @@ function CharacterSheet({
 
               {tab === 'ภูมิหลัง' && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>ภูมิหลัง <span style={{ color: '#cbc8c0', fontWeight: 400 }}>— จาก Step 4/5/6 · แก้ไข/ลบ/เขียนใหม่ได้อิสระ</span></span>
-                    <button onClick={addBgItem} style={{ flex: 'none', padding: '5px 12px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มหัวข้อ</button>
-                  </div>
-                  {bgItems.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: '#cbc8c0', fontSize: 12.5, padding: '24px 16px', lineHeight: 1.7 }}>ยังไม่มีภูมิหลัง — กรอกใน Step 4/5/6 ตอนสร้างตัวละคร หรือกด “＋ เพิ่มหัวข้อ”</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {bgItems.map((it) => (
-                        <div key={it.id} style={{ border: '1px solid #ece9e3', borderRadius: 10, padding: '10px 12px', background: '#faf9f7' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                            <input key={it.heading} defaultValue={it.heading} onBlur={(e) => { if (e.target.value !== it.heading) setBgItem(it.id, { heading: e.target.value }); }} placeholder="หัวข้อ" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontWeight: 800, color: '#46443c', borderBottom: '1px dashed #d8d5ce' }} />
-                            <button onClick={() => delBgItem(it.id)} title="ลบหัวข้อนี้" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15, flex: 'none' }}>×</button>
-                          </div>
-                          <GrowingAnswer value={it.text} onCommit={(v) => setBgItem(it.id, { text: v })} />
-                        </div>
-                      ))}
+                  {/* Step 4 — read-only summary (edit only via character creation) */}
+                  {step4Summary.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: '#a8a59d', marginBottom: 6 }}>ฐานะทางสังคม &amp; ภูมิหลัง <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· แก้ไขได้ที่หน้าสร้างตัวละคร</span></div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {step4Summary.flatMap((s) => s.picks.map((p, i) => (
+                          <span key={`${s.sec}-${i}`} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 7, background: '#f4f2ee', color: '#6b6860', border: '1px solid #eae7e0' }}>
+                            <span style={{ color: '#a8a59d' }}>{p.q}:</span> <b style={{ color: '#5f5c54' }}>{p.choice}</b>
+                          </span>
+                        )))}
+                      </div>
                     </div>
                   )}
+
+                  {/* Step 5/6 — topic chips switch a single writing area */}
+                  {bgTopics.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#cbc8c0', fontSize: 12.5, padding: '24px 16px', lineHeight: 1.7 }}>ยังไม่มีคำถามภูมิหลัง (Step 5/6)</div>
+                  ) : (() => {
+                    const activeId = bgTopic && bgTopics.some((t) => t.id === bgTopic) ? bgTopic : bgTopics[0].id;
+                    const active = bgTopics.find((t) => t.id === activeId)!;
+                    return (
+                      <div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                          {bgTopics.map((t, i) => {
+                            const on = t.id === activeId;
+                            return (
+                              <button key={t.id} onClick={() => setBgTopic(t.id)} title={t.prompt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: on ? 700 : 600, padding: '5px 11px', borderRadius: 16, cursor: 'pointer', border: `1px solid ${on ? '#e07a5f' : '#eae7e0'}`, background: on ? '#fdeee9' : '#fff', color: on ? '#c15a3f' : '#8d8a82' }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', flex: 'none', background: t.answered ? '#5aa06a' : '#d5d2ca' }} />
+                                หัวข้อ {i + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#2f2c25', marginBottom: 10, lineHeight: 1.5 }}>{active.prompt || '(ยังไม่มีคำถาม)'}</div>
+                        <GrowingAnswer key={active.id} value={(active.store === 'step5Answers' ? step5Ans : step6Ans)[active.id] ?? ''} onCommit={(v) => commitBgAnswer(active.store, active.id, v)} minHeight={180} />
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2233,14 +2254,14 @@ function Step4Questions({
 interface Step5Question { id: string; prompt: string }
 
 // A textarea that grows with its content and commits its value on blur.
-function GrowingAnswer({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+function GrowingAnswer({ value, onCommit, minHeight = 72 }: { value: string; onCommit: (v: string) => void; minHeight?: number }) {
   const [text, setText] = useState(value);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setText(value); }, [value]);
   useEffect(() => {
     const el = ref.current;
-    if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
-  }, [text]);
+    if (el) { el.style.height = 'auto'; el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`; }
+  }, [text, minHeight]);
   return (
     <textarea
       ref={ref}
@@ -2248,8 +2269,7 @@ function GrowingAnswer({ value, onCommit }: { value: string; onCommit: (v: strin
       onChange={(e) => setText(e.target.value)}
       onBlur={() => { if (text !== value) onCommit(text); }}
       placeholder="เขียนคำตอบของคุณ…"
-      rows={3}
-      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '11px 13px', fontSize: 13.5, lineHeight: 1.7, fontFamily: 'inherit', color: '#2f2c25', background: '#fff', resize: 'none', overflow: 'hidden', minHeight: 72 }}
+      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '11px 13px', fontSize: 13.5, lineHeight: 1.7, fontFamily: 'inherit', color: '#2f2c25', background: '#fff', resize: 'none', overflow: 'hidden', minHeight }}
     />
   );
 }
