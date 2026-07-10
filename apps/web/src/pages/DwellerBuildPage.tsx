@@ -116,12 +116,16 @@ function CharacterSheet({
 }: {
   character: Character;
   covers: WiwonCover[];
-  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; status?: 'draft' | 'complete' }>>;
+  patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; status?: 'draft' | 'complete'; name?: string }>>;
 }) {
+  const navigate = useNavigate();
   const byAbbr = useEffectiveGrades(character);
   const wiwonIds = wiwonIdsOf(character);
   const d = character.data;
   const [tab, setTab] = useState('ช่องเก็บของ');
+  const [editName, setEditName] = useState(false);
+  const [editCamp, setEditCamp] = useState(false);
+  const [editXp, setEditXp] = useState(false);
 
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
@@ -129,7 +133,8 @@ function CharacterSheet({
   const magicById = new Map((magic ?? []).map((m) => [m.id, m]));
 
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '');
-  const wiwonNames = wiwonIds.map((wid) => covers.find((c) => c.id === wid)?.name).filter(Boolean) as string[];
+  // Wiwon shown as the book SET (setName), de-duplicated.
+  const wiwonSets = Array.from(new Set(wiwonIds.map((wid) => { const c = covers.find((x) => x.id === wid); return c?.setName || c?.name; }).filter(Boolean))) as string[];
   const raceName = str('raceName');
   const ancestryName = str('ancestryName');
   const isAncestry = raceHasAncestry(raceName);
@@ -140,6 +145,10 @@ function CharacterSheet({
   const sv = (k: string, def = 0) => (sheet[k] !== undefined ? numData(sheet[k]) : def);
   const svs = (k: string, def = '') => (typeof sheet[k] === 'string' ? (sheet[k] as string) : def);
   const setSheet = (partial: Record<string, unknown>) => patch.mutate({ data: { ...d, sheet: { ...sheet, ...partial } } });
+  const xp = sv('xp', 0);
+  const xpMax = level * 10000;
+  const canLevelUp = xp >= xpMax && xpMax > 0;
+  const levelUp = () => patch.mutate({ step: 2 }, { onSuccess: () => navigate(`/dweller/build/${character.id}`) });
 
   // Derived stats (mirror Step 10).
   const s10 = d.step10 && typeof d.step10 === 'object' ? (d.step10 as Record<string, number>) : {};
@@ -225,21 +234,54 @@ function CharacterSheet({
         <div style={{ background: '#15140f', borderRadius: 18, padding: '18px 22px', color: '#fff', display: 'flex', alignItems: 'center', gap: 18 }}>
           <div style={{ width: 84, height: 84, borderRadius: 12, background: '#fff', flex: 'none' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{character.name || 'ตัวละครใหม่'}</h1>
-            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: {raceName || '—'}{ancestryName ? ` | ${ancestryName}` : ''}</div>
+            {editName ? (
+              <input
+                autoFocus
+                defaultValue={character.name}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== character.name) patch.mutate({ name: v }); setEditName(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditName(false); }}
+                style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 28, color: '#15140f', border: 'none', borderRadius: 8, padding: '2px 8px', width: '90%', maxWidth: 460 }}
+              />
+            ) : (
+              <h1 onDoubleClick={() => setEditName(true)} title="ดับเบิลคลิกเพื่อเปลี่ยนชื่อ" style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}>{character.name || 'ตัวละครใหม่'}</h1>
+            )}
+            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: <b style={{ color: '#eae7df', fontWeight: 800 }}>{raceName || '—'}{ancestryName ? ` | ${ancestryName}` : ''}</b></div>
             <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 3 }}>Class Feature: {str('className') || '—'} | LV. {level}</div>
           </div>
-          <div style={{ flex: 'none', width: 250, textAlign: 'right', overflow: 'hidden' }}>
-            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CAMPAIGN: {svs('campaign', 'ชื่อแคมเปญ')}</div>
-            <div title={wiwonNames.join(', ')} style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Wiwon: {wiwonNames.join(', ') || '—'}</div>
+          <div style={{ flex: 'none', width: 260, textAlign: 'right', overflow: 'hidden' }}>
+            {editCamp ? (
+              <input
+                autoFocus
+                defaultValue={svs('campaign', '')}
+                placeholder="ชื่อแคมเปญ"
+                onBlur={(e) => { setSheet({ campaign: e.target.value }); setEditCamp(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditCamp(false); }}
+                style={{ fontSize: 15, color: '#15140f', border: 'none', borderRadius: 8, padding: '4px 8px', width: '100%', textAlign: 'right' }}
+              />
+            ) : (
+              <div onDoubleClick={() => setEditCamp(true)} title="ดับเบิลคลิกเพื่อแก้ชื่อแคมเปญ" style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}>CAMPAIGN: {svs('campaign', 'ชื่อแคมเปญ')}</div>
+            )}
+            <div title={wiwonSets.join(', ')} style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Wiwon: {wiwonSets.join(', ') || '—'}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
               <span style={{ fontSize: 11, color: '#c9c5bd', fontWeight: 700 }}>XP</span>
               <div style={{ width: 120, height: 8, borderRadius: 6, background: '#3a382f', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(100, (sv('xp', 0) / (level * 10000)) * 100)}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)' }} />
+                <div style={{ width: `${Math.min(100, xpMax > 0 ? (xp / xpMax) * 100 : 0)}%`, height: '100%', background: 'linear-gradient(90deg,#e79b86,#e07a5f)' }} />
               </div>
-              <span style={{ fontSize: 10, fontWeight: 800, color: '#f7dca0', border: '1px solid #6a5a2a', borderRadius: 6, padding: '2px 7px' }}>LV UP</span>
+              <button onClick={canLevelUp ? levelUp : undefined} disabled={!canLevelUp} title={canLevelUp ? 'เลเวลอัพ — ไปเลือกรางวัลใน Step 2' : 'ยังไม่ถึงเกณฑ์เลเวลอัพ'} style={{ fontSize: 10, fontWeight: 800, color: canLevelUp ? '#15140f' : '#8a7a4a', background: canLevelUp ? '#f7dca0' : 'transparent', border: '1px solid #6a5a2a', borderRadius: 6, padding: '2px 7px', cursor: canLevelUp ? 'pointer' : 'default' }}>LV UP</button>
             </div>
-            <div style={{ fontSize: 11, color: '#a8a49a', marginTop: 4 }}>{sv('xp', 1000).toLocaleString()} / {(level * 10000).toLocaleString()} XP</div>
+            <div style={{ fontSize: 11, color: '#a8a49a', marginTop: 4 }}>
+              {editXp ? (
+                <input
+                  autoFocus type="number"
+                  defaultValue={xp}
+                  onBlur={(e) => { setSheet({ xp: Math.max(0, Math.round(Number(e.target.value) || 0)) }); setEditXp(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditXp(false); }}
+                  style={{ width: 90, fontSize: 12, border: 'none', borderRadius: 6, padding: '2px 6px', textAlign: 'right' }}
+                />
+              ) : (
+                <span onClick={() => setEditXp(true)} title="กดเพื่อแก้จำนวน EXP" style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{xp.toLocaleString()}</span>
+              )} / {xpMax.toLocaleString()} XP
+            </div>
           </div>
         </div>
 
