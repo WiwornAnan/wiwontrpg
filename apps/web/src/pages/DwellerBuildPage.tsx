@@ -202,7 +202,6 @@ function CharacterSheet({
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
-  const [logOpen, setLogOpen] = useState(false);
   const [initOpen, setInitOpen] = useState(false);
 
   const qc = useQueryClient();
@@ -378,6 +377,12 @@ function CharacterSheet({
           {z !== 'loot' && <button onClick={() => setInv(l.lineId, { zone: 'loot' })} style={moveStyle('#8d8a82', '#e0ded7')}>→ Loot</button>}
           {hasBag && z !== 'bag' && <button onClick={() => setInv(l.lineId, { zone: 'bag' })} style={moveStyle('#5b3fa0', '#d6c7f0')}>→ สะพาย</button>}
         </div>
+        {CLOTHING_RE.test(l.name) && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', marginBottom: 3 }}>👕 ลักษณะเสื้อผ้า</div>
+            <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#fff', outline: 'none' }} />
+          </div>
+        )}
       </div>
     );
   };
@@ -853,6 +858,20 @@ function CharacterSheet({
 
           {/* Middle */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {campaignId && (
+              <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
+                {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
+                  <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4 }}>
+                    {campaignLog.slice().reverse().map((l) => (
+                      <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
+                        <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={box}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ ...secTitle, color: '#2f6b4f' }}>สถานะเสริม (Buff)</span>
@@ -1439,7 +1458,7 @@ function CharacterSheet({
       {campaignId && (
         <>
           <button
-            onClick={() => { setInitOpen((o) => !o); setLogOpen(false); }}
+            onClick={() => setInitOpen((o) => !o)}
             title="Initiative — ลำดับการเล่นของแคมเปญ"
             style={{ position: 'fixed', right: 22, bottom: 154, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 22, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -1458,30 +1477,6 @@ function CharacterSheet({
                       <span style={{ flex: 'none', width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#f7dca0' : '#35322b', color: i === 0 ? '#15140f' : '#cbc3b4', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
                       <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: e.kind === 'monster' ? '#e6a3a8' : '#e8e4db' }}>{e.name}{e.kind === 'monster' && ' 👹'}</span>
                       <span style={{ fontSize: 16, fontWeight: 800, color: '#f7dca0' }}>{e.value}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-          <button
-            onClick={() => { setLogOpen((o) => !o); setInitOpen(false); }}
-            title="Log ประวัติการทอยของแคมเปญ"
-            style={{ position: 'fixed', right: 22, bottom: 88, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 24, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            📜{campaignLog.length > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, background: '#e07a5f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{campaignLog.length}</span>}
-          </button>
-          {logOpen && (
-            <div style={{ position: 'fixed', right: 22, bottom: 152, zIndex: 151, width: 340, maxWidth: 'calc(100vw - 44px)', maxHeight: '62vh', background: '#1b1813', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.45)', border: '1px solid #35322b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid #35322b' }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: '#f3ede1' }}>📜 LOG แคมเปญ <span style={{ fontSize: 10.5, fontWeight: 400, color: '#8d8a82' }}>· เรียลไทม์</span></span>
-                <button onClick={() => setLogOpen(false)} style={{ background: 'none', border: 'none', color: '#9a978e', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 15px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860', padding: '10px 0' }}>ยังไม่มีบันทึก — ทอยลูกเต๋า หรือใช้ Magic/Feature เพื่อบันทึกลง Log</div> : (
-                  campaignLog.slice().reverse().map((l) => (
-                    <div key={l.id} style={{ fontSize: 12.5, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 7 }}>
-                      <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
                     </div>
                   ))
                 )}
@@ -3628,7 +3623,8 @@ const coinStr = (ic: number) => {
 };
 const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string }
+const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
