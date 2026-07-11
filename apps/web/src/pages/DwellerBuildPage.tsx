@@ -1313,7 +1313,7 @@ function CharacterSheet({
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 8 }}>พักสั้น (Short Rest)</div>
                         <div style={{ fontSize: 12, color: '#8d8a82', lineHeight: 1.6, marginBottom: 12 }}>เพิ่ม Scratch เท่ากับ END (<b>d{endFaces}</b>) ทอย 1 ครั้ง · ฟื้นฟู Willpower 1 ช่อง</div>
                         <button onClick={doShortRest} style={{ width: '100%', padding: 12, background: '#4a463d', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>☾ ทำการพักสั้น</button>
-                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#2f6b4f', background: '#eef6f0', border: '1px solid #cfe6d6', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
+                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#2f6b4f', background: '#eef6f0', border: '1px solid #cfe6d6', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}><span style={{ flex: 1 }}>{restMsg}</span><button onClick={() => setRestMsg('')} style={{ flex: 'none', border: '1px solid #cfe6d6', background: '#fff', color: '#2f6b4f', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>รับทราบ ✓</button></div>}
                       </div>
                     ) : phase === 'Long Rest' ? (
                       <div>
@@ -1341,7 +1341,7 @@ function CharacterSheet({
                         })()}
                         {insomnia && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', background: '#fbeae6', border: '1px solid #f0d3cb', borderRadius: 9, padding: '8px 11px', marginBottom: 8 }}>🚫 ติดสถานะ “นอนไม่หลับ” — ไม่สามารถพักยาวได้</div>}
                         <button onClick={doLongRest} disabled={insomnia} style={{ width: '100%', padding: 12, background: insomnia ? '#cfccc4' : '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: insomnia ? 'not-allowed' : 'pointer' }}>🌙 ทำการพักยาว</button>
-                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
+                        {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}><span style={{ flex: 1 }}>{restMsg}</span><button onClick={() => setRestMsg('')} style={{ flex: 'none', border: '1px solid #e6e0cf', background: '#fff', color: '#8a6a3a', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>รับทราบ ✓</button></div>}
                       </div>
                     ) : (<>
                     {/* ── row 1: AP · Next Round · Will-power ── */}
