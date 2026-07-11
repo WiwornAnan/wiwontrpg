@@ -215,7 +215,6 @@ function CharacterSheet({
   const [sanAmt, setSanAmt] = useState(0);
   const [scrAmt, setScrAmt] = useState(0);
   const [endAmt, setEndAmt] = useState(0);
-  const [calAmt, setCalAmt] = useState(0); // amount for ทาน → Cal สะสม / ลดที่กิน
   const [profPicker, setProfPicker] = useState(false);
   const [challengeSkill, setChallengeSkill] = useState<string | null>(null);
   const [skillTip, setSkillTip] = useState<{ name: string; desc: string; x: number; y: number } | null>(null);
@@ -1388,29 +1387,27 @@ function CharacterSheet({
                     {/* ── row 2: calories & thirst (equal-width tiles) ── */}
                     <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
                       {(() => {
-                        const eaten = sv('calEaten', 0);
+                        const eaten = sv('calEaten', 0); // amount typed in the green box
                         const stored = sv('calStored', 0);
-                        const amt = Math.max(0, Math.round(calAmt));
-                        const toStored = () => { const m = Math.min(amt, eaten); if (m > 0) { setSheet({ calEaten: eaten - m, calStored: stored + m }); setCalAmt(0); } };
-                        const reduceEaten = () => { const m = Math.min(amt, eaten); if (m > 0) { setSheet({ calEaten: eaten - m }); setCalAmt(0); } };
-                        const stepBtn: React.CSSProperties = { flex: 1, border: '1px solid #a9c07f', borderRadius: 7, padding: '5px 4px', fontSize: 10.5, fontWeight: 700, cursor: amt > 0 && eaten > 0 ? 'pointer' : 'not-allowed', background: '#eaf1d8', color: '#5f6b33', opacity: amt > 0 && eaten > 0 ? 1 : 0.5 };
+                        const addStored = () => { if (eaten > 0) setSheet({ calStored: stored + eaten }); };
+                        const subStored = () => { if (eaten > 0) setSheet({ calStored: Math.max(0, stored - eaten) }); };
+                        const stepBtn: React.CSSProperties = { flex: 1, border: '1px solid #a9c07f', borderRadius: 7, padding: '5px 4px', fontSize: 10.5, fontWeight: 700, cursor: eaten > 0 ? 'pointer' : 'not-allowed', background: '#eaf1d8', color: '#5f6b33', opacity: eaten > 0 ? 1 : 0.5 };
                         return (
                           <>
-                            {/* ทาน — editable, with move/reduce controls */}
+                            {/* ทาน — type an amount; the buttons apply it to Cal สะสม */}
                             <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#2f9d6a' }} /><span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>ทาน</span>{poisoned && <span title="สารพิษ — เพิ่ม “ทาน” ไม่ได้" style={{ fontSize: 10 }}>🚫</span>}</div>
-                              <div style={{ background: '#c4e4d2', borderRadius: 12, padding: '8px', textAlign: 'center', opacity: poisoned ? 0.6 : 1 }} title={poisoned ? 'สารพิษสะสม — เพิ่มปริมาณ “ทาน” ไม่ได้' : undefined}>
-                                <NumField value={eaten} onCommit={(v) => { if (poisoned) setSheet({ calEaten: Math.min(v, eaten) }); else setSheet({ calEaten: Math.max(0, v) }); }} width={70} style={{ fontSize: 22, fontWeight: 800, color: '#2f7d6a', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#2f9d6a' }} /><span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>ทาน</span></div>
+                              <div style={{ background: '#c4e4d2', borderRadius: 12, padding: '8px', textAlign: 'center' }}>
+                                <NumField value={eaten} onCommit={(v) => setSheet({ calEaten: Math.max(0, v) })} width={70} style={{ fontSize: 22, fontWeight: 800, color: '#2f7d6a', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} />
                               </div>
                               <div style={{ display: 'flex', gap: 4, marginTop: 5, alignItems: 'center' }}>
-                                <input type="number" min={0} value={calAmt || ''} onChange={(e) => setCalAmt(Math.max(0, Math.round(Number(e.target.value) || 0)))} placeholder="0" style={{ width: 44, flex: 'none', border: '1px solid #cdd8b8', borderRadius: 7, padding: '4px 5px', fontSize: 11.5, textAlign: 'center', background: '#fff' }} />
-                                <button onClick={toStored} disabled={!(amt > 0 && eaten > 0)} title="ย้ายจากที่กิน ไปเก็บใน Cal สะสม" style={stepBtn}>→ สะสม</button>
-                                <button onClick={reduceEaten} disabled={!(amt > 0 && eaten > 0)} title="ลด Cal ที่เคยกินเข้าไป" style={stepBtn}>− ลดที่กิน</button>
+                                <button onClick={addStored} disabled={eaten <= 0} title="เพิ่มจำนวนนี้เข้า Cal สะสม" style={stepBtn}>→ สะสม</button>
+                                <button onClick={subStored} disabled={eaten <= 0} title="ลดจำนวนนี้ออกจาก Cal สะสม" style={stepBtn}>− ลดที่กิน</button>
                               </div>
                             </div>
-                            {/* Cal สะสม — read-only, changes only via ทาน → สะสม */}
+                            {/* Cal สะสม — read-only, changes only via the ทาน buttons */}
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}><span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>Cal. สะสม</span><span title="แก้เองไม่ได้ — เปลี่ยนผ่านปุ่ม “→ สะสม” ของ ทาน" style={{ fontSize: 10, color: '#a8a59d' }}>🔒</span></div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}><span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>Cal. สะสม</span><span title="แก้เองไม่ได้ — เปลี่ยนผ่านปุ่ม “→ สะสม / − ลดที่กิน” ของ ทาน" style={{ fontSize: 10, color: '#a8a59d' }}>🔒</span></div>
                               <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '10px 8px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: poisoned ? 0.5 : 1 }} title={poisoned ? 'สารพิษสะสม — Cal. สะสม ไม่ถูกนับ' : 'แก้เองไม่ได้'}>
                                 <span style={{ fontSize: 22, fontWeight: 800, color: '#5f5030' }}>{stored}</span>
                               </div>
