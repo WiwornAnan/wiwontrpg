@@ -200,8 +200,8 @@ function CharacterSheet({
   const [invPicker, setInvPicker] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [bagWarn, setBagWarn] = useState(''); // over-capacity feedback for bags
-  const [info, setInfo] = useState<CatalogItem | null>(null);
-  const [infoIsFeature, setInfoIsFeature] = useState(true);
+  // Stack of open floating detail windows — several can be open at once.
+  const [detailWins, setDetailWins] = useState<Array<{ key: string; item: CatalogItem; isFeature: boolean }>>([]);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
@@ -518,7 +518,12 @@ function CharacterSheet({
 
   // ── Feature & Magic rows (old-design style): granted items + custom blanks,
   //    with per-row use-counter / max / Curiosity Point trackers ──
-  const openInfo = (item: CatalogItem | null, isFeat: boolean) => { if (item) { setInfoIsFeature(isFeat); setInfo(item); } };
+  // Open a floating detail window (dedupe by item — clicking again focuses the existing one).
+  const openInfo = (item: CatalogItem | null, isFeat: boolean) => {
+    if (!item) return;
+    setDetailWins((prev) => (prev.some((w) => w.key === item.id) ? prev : [...prev, { key: item.id, item, isFeature: isFeat }]));
+  };
+  const closeInfo = (key: string) => setDetailWins((prev) => prev.filter((w) => w.key !== key));
   interface Extra { id: string; name: string; itemId?: string }
   // Resolve details across scoped + full catalog
   const featItemById = new Map([...(features ?? []), ...(allFeatures ?? [])].map((f) => [f.id, f]));
@@ -1217,7 +1222,7 @@ function CharacterSheet({
                                       </div>
                                     )}
                                     <div style={{ display: 'flex', gap: 6 }}>
-                                      <button onClick={() => { const it = item.itemId ? equipById.get(item.itemId) : undefined; if (it) { setInfoIsFeature(false); setInfo(it); } else setHandInfo({ lineId: s.key, itemId: item.itemId ?? '', name: item.name, priceIC: 0, kg: item.kg }); }} title="รายละเอียด" style={{ flex: 1, border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ รายละเอียด</button>
+                                      <button onClick={() => { const it = item.itemId ? equipById.get(item.itemId) : undefined; if (it) openInfo(it, false); else setHandInfo({ lineId: s.key, itemId: item.itemId ?? '', name: item.name, priceIC: 0, kg: item.kg }); }} title="รายละเอียด" style={{ flex: 1, border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ รายละเอียด</button>
                                       <button onClick={() => clearHand(s.key)} title="เอาออกจากมือ" style={{ flex: 'none', border: '1px solid #f0d3cb', background: '#fbeae6', color: '#b4513a', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>เอาออก</button>
                                     </div>
                                   </div>
@@ -1788,12 +1793,12 @@ function CharacterSheet({
         </div>
       )}
 
-      {/* ── Feature / Magic / Item detail — draggable floating window (same view as the website) ── */}
-      {info && (
-        <FloatWindow title={info.name} onClose={() => setInfo(null)} width={430}>
-          <CatalogDetail item={info} cfg={CATALOG_CONFIGS[info.category]} category={info.category} isFeature={infoIsFeature} onEdit={() => {}} />
+      {/* ── Feature / Magic / Item detail — multiple draggable floating windows (same view as the website) ── */}
+      {detailWins.map((w, i) => (
+        <FloatWindow key={w.key} title={w.item.name} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
+          <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} />
         </FloatWindow>
-      )}
+      ))}
 
       {/* ── On-Hand fallback detail (custom item without catalog data) ── */}
       {handInfo && (
@@ -3538,10 +3543,17 @@ function WalletCard({
 // A free-floating window you can drag anywhere by holding on it (interactive
 // elements inside still work). Used for the Dweller Sheet's ⓘ detail popups so
 // several can be positioned side-by-side while cross-referencing.
-function FloatWindow({ title, onClose, children, width = 430 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number }) {
-  const [pos, setPos] = useState(() => ({ x: Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) / 2 - width / 2), y: 96 }));
+let floatZCounter = 400; // shared so the last-touched floating window sits on top
+function FloatWindow({ title, onClose, children, width = 430, cascadeIndex = 0 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number; cascadeIndex?: number }) {
+  const [pos, setPos] = useState(() => {
+    const base = Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) / 2 - width / 2);
+    return { x: base + (cascadeIndex % 6) * 30, y: 90 + (cascadeIndex % 6) * 30 };
+  });
+  const [z, setZ] = useState(() => ++floatZCounter);
+  const raise = () => setZ(++floatZCounter);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const onDown = (e: React.PointerEvent) => {
+    raise(); // bring to front on any interaction
     if ((e.target as HTMLElement).closest('button, a, input, textarea, select')) return; // keep controls usable
     drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -3551,7 +3563,7 @@ function FloatWindow({ title, onClose, children, width = 430 }: { title: string;
       onPointerDown={onDown}
       onPointerMove={(e) => { if (drag.current) setPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }); }}
       onPointerUp={() => { drag.current = null; }}
-      style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '82vh', zIndex: 400, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '82vh', zIndex: z, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
         <span style={{ fontSize: 13, color: '#c9c5bd' }}>⠿</span>
