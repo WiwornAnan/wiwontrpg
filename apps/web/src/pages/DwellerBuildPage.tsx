@@ -341,8 +341,8 @@ function CharacterSheet({
   const magicIds = d.step8Magic && typeof d.step8Magic === 'object' ? Object.keys(d.step8Magic as Record<string, number>) : [];
   const featIds = d.step7Purchases && typeof d.step7Purchases === 'object' ? Object.keys(d.step7Purchases as Record<string, number>) : [];
   const s11 = d.step11 && typeof d.step11 === 'object' ? (d.step11 as { virtues?: string[]; flaws?: string[] }) : {};
-  const virtues = (s11.virtues ?? []).map((id) => featById.get(id)?.name ?? '(?)');
-  const flaws = (s11.flaws ?? []).map((id) => featById.get(id)?.name ?? '(?)');
+  const virtues = (s11.virtues ?? []).map((id) => ({ id, name: featById.get(id)?.name ?? '(?)', item: featById.get(id) ?? null }));
+  const flaws = (s11.flaws ?? []).map((id) => ({ id, name: featById.get(id)?.name ?? '(?)', item: featById.get(id) ?? null }));
   const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
   const languages = (langFeatures ?? []).map((f) => f.name);
@@ -553,6 +553,12 @@ function CharacterSheet({
   // Resolve details across scoped + full catalog
   const featItemById = new Map([...(features ?? []), ...(allFeatures ?? [])].map((f) => [f.id, f]));
   const magicItemById = new Map([...(magic ?? []), ...(allMagic ?? [])].map((m) => [m.id, m]));
+  // Features chosen during character creation (Step 7 QL purchases) surfaced under
+  // the section matching their tag — Proficiency-type and Language.
+  const creationFeats = featIds.map((id) => featItemById.get(id)).filter((f): f is CatalogItem => !!f);
+  const PROF_MATCH_TAGS = ['Weapon Proficiency', 'Specialization', 'Life lesson', 'Local Knowledge', 'Social'];
+  const profCreation = creationFeats.filter((f) => f.tags.some((t) => PROF_MATCH_TAGS.includes(t)));
+  const langCreation = creationFeats.filter((f) => f.tags.includes('Language'));
   const featTrack = sheet.featTrack && typeof sheet.featTrack === 'object' ? (sheet.featTrack as Record<string, { used?: number; max?: number | null; cp?: number }>) : {};
   const featExtra: Extra[] = Array.isArray(sheet.featExtra) ? (sheet.featExtra as Extra[]) : [];
   const featRows = [
@@ -950,7 +956,7 @@ function CharacterSheet({
                       transition: 'all .15s',
                     }}
                   >
-                    {on ? <><span style={{ fontSize: 17 }}>✦</span><span>{virtues[i] || 'ได้รับพร'}</span><span style={{ fontSize: 17 }}>✦</span></> : <span style={{ fontSize: 15, opacity: .6 }}>＋</span>}
+                    {on ? <><span style={{ fontSize: 17 }}>✦</span><span>{virtues[i]?.name || 'ได้รับพร'}</span><span style={{ fontSize: 17 }}>✦</span></> : <span style={{ fontSize: 15, opacity: .6 }}>＋</span>}
                   </button>
                 );
               })}
@@ -1121,9 +1127,17 @@ function CharacterSheet({
                 <button onClick={() => setProfPicker((o) => !o)} title="เพิ่ม Specialization" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: profPicker ? '#e07a5f' : '#c9c5bd', fontWeight: 700, lineHeight: 1 }}>+</button>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {proficiencies.length === 0 ? <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span> : proficiencies.map((id) => (
+                {/* From character creation — matched by tag (read-only, with ⓘ) */}
+                {profCreation.map((f) => (
+                  <span key={f.id} title={`จากการสร้างตัวละคร · ${f.tags.filter((t) => PROF_MATCH_TAGS.includes(t)).join(', ')}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, padding: '3px 6px 3px 10px', borderRadius: 8, background: '#f2f8f4', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>
+                    {f.name}
+                    <button onClick={() => openInfo(f, true)} title="ดูข้อมูล" style={{ border: 'none', background: 'none', color: '#5fa07a', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>
+                  </span>
+                ))}
+                {proficiencies.map((id) => (
                   <button key={id} onClick={() => removeProf(id)} title="กดเพื่อเอาออก" style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6', cursor: 'pointer' }}>{featById.get(id)?.name ?? '(Specialization)'} ✕</button>
                 ))}
+                {profCreation.length === 0 && proficiencies.length === 0 && <span style={{ fontSize: 12, color: '#bdbab2' }}>—</span>}
               </div>
               {profPicker && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#fff', border: '1px solid #e4e1d9', borderRadius: 10, boxShadow: '0 10px 26px rgba(0,0,0,.14)', maxHeight: 220, overflowY: 'auto', padding: 6 }}>
@@ -1138,6 +1152,19 @@ function CharacterSheet({
             <div style={box}>
               <div style={{ ...secTitle, marginBottom: 10 }}>ภาษา <span style={{ color: '#cbc8c0' }}>/ Language</span></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {langCreation.length > 0 && (
+                  <div style={{ borderBottom: '1px solid #eef1f5', paddingBottom: 9 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#a8a59d', marginBottom: 5 }}>จากการสร้างตัวละคร (Feature: Language)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {langCreation.map((f) => (
+                        <span key={f.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eef2f6', borderRadius: 6, padding: '2px 6px 2px 9px', color: '#46587a', fontSize: 11, fontWeight: 600 }}>
+                          {f.name}
+                          <button onClick={() => openInfo(f, true)} title="ดูข้อมูล" style={{ border: 'none', background: 'none', color: '#8fa0bd', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {LANG_TIER_DEFS.map((t) => {
                   const items = langs.filter((l) => l.tier === t.key);
                   const opts = languages.filter((nm) => !langs.some((l) => l.name === nm));
@@ -1680,8 +1707,8 @@ function CharacterSheet({
                       })}
                     </div>
                   )}
-                  {virtues.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{nm}</span>)}</div></div>}
-                  {flaws.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((nm, i) => <span key={i} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 9, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>{nm}</span>)}</div></div>}
+                  {virtues.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#2f7d4f', marginBottom: 6 }}>Virtues</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{virtues.map((v) => <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 8px 5px 11px', borderRadius: 9, background: '#eef6f0', color: '#2f7d4f', border: '1px solid #cfe6d6' }}>{v.name}{v.item && <button onClick={() => openInfo(v.item, true)} title="ดูข้อมูล" style={{ border: 'none', background: 'none', color: '#5fa07a', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>}</span>)}</div></div>}
+                  {flaws.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11.5, fontWeight: 700, color: '#b0552f', marginBottom: 6 }}>Flaws</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{flaws.map((v) => <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 8px 5px 11px', borderRadius: 9, background: '#f9eeea', color: '#b0552f', border: '1px solid #f0d8ce' }}>{v.name}{v.item && <button onClick={() => openInfo(v.item, true)} title="ดูข้อมูล" style={{ border: 'none', background: 'none', color: '#c78a6a', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>ⓘ</button>}</span>)}</div></div>}
                 </div>
               )}
 
