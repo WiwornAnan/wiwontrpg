@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
+import type { CampaignDTO } from '../data/statusEffects';
 import layout from '../components/layout.module.css';
 
 const TOTAL_STEPS = 12;
@@ -36,6 +37,26 @@ export function DwellerSheetPage() {
     },
   });
 
+  // ── Campaigns ──
+  const { data: campData } = useQuery({
+    queryKey: ['campaigns'],
+    queryFn: () => api.get<{ led: CampaignDTO[]; joined: CampaignDTO[] }>('/campaigns'),
+    enabled: !!user,
+  });
+  const campaigns = [...(campData?.led ?? []), ...(campData?.joined ?? [])];
+  const [joinCode, setJoinCode] = useState('');
+  const [joinChar, setJoinChar] = useState('');
+  const [joinErr, setJoinErr] = useState('');
+  const createCamp = useMutation({
+    mutationFn: () => api.post<{ campaign: CampaignDTO }>('/campaigns', { name: 'แคมเปญใหม่' }),
+    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ['campaigns'] }); navigate(`/campaign/${res.campaign.id}`); },
+  });
+  const joinCamp = useMutation({
+    mutationFn: () => api.post<{ campaign: CampaignDTO }>('/campaigns/join', { joinCode, characterId: joinChar }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); setJoinCode(''); setJoinChar(''); setJoinErr(''); },
+    onError: (e: Error) => setJoinErr(e.message || 'เข้าร่วมไม่สำเร็จ'),
+  });
+
   const openCharacter = (c: Character) =>
     navigate(c.status === 'complete' ? `/dweller/sheet/${c.id}` : `/dweller/build/${c.id}`);
 
@@ -62,15 +83,41 @@ export function DwellerSheetPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-        {/* ── แคมเปญของฉัน (ว่างไว้ก่อน) ── */}
+        {/* ── แคมเปญของฉัน ── */}
         <section style={frameStyle}>
           <div style={frameHeadStyle}>
             <h2 style={frameTitleStyle}>แคมเปญของฉัน</h2>
+            <button onClick={() => createCamp.mutate()} disabled={createCamp.isPending} style={{ background: '#15140f', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>+ สร้างแคมเปญ</button>
           </div>
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#a8a59d', fontSize: 13.5 }}>
-            <div style={{ fontSize: 34, marginBottom: 10, opacity: 0.4 }}>🎲</div>
-            ยังไม่มีแคมเปญ
-            <div style={{ fontSize: 12, marginTop: 6, color: '#bdbab2' }}>ระบบแคมเปญกำลังจะมาเร็ว ๆ นี้</div>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {campaigns.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#a8a59d', fontSize: 13 }}>
+                <div style={{ fontSize: 30, marginBottom: 8, opacity: 0.4 }}>🎲</div>ยังไม่มีแคมเปญ — สร้างเป็นบรรณารักษ์ หรือเข้าร่วมด้วยรหัส
+              </div>
+            )}
+            {campaigns.map((c) => (
+              <button key={c.id} onClick={() => navigate(`/campaign/${c.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: '#faf9f7', border: '1px solid #eae7e0', borderRadius: 11, padding: '12px 14px', cursor: 'pointer', width: '100%' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 10, flex: 'none', background: c.isLibrarian ? 'linear-gradient(160deg,#2a2620,#4a463d)' : '#ece8df', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{c.isLibrarian ? '📖' : '🎲'}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#2f2c25', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#9a978e', marginTop: 2 }}>{c.members.length} ตัวละคร · รหัส {c.joinCode}</div>
+                </div>
+                <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '3px 9px', background: c.isLibrarian ? '#efe7f6' : '#eef4fb', color: c.isLibrarian ? '#5b3fa0' : '#2a5fbd' }}>{c.isLibrarian ? 'บรรณารักษ์' : 'ผู้เล่น'}</span>
+              </button>
+            ))}
+            {/* join by code */}
+            <div style={{ borderTop: '1px solid #efece6', marginTop: 4, paddingTop: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 8 }}>เข้าร่วมด้วยรหัส</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="รหัส" style={{ width: 90, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 13, textTransform: 'uppercase' }} />
+                <select value={joinChar} onChange={(e) => setJoinChar(e.target.value)} style={{ flex: 1, minWidth: 120, border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 10px', fontSize: 13, background: '#fff' }}>
+                  <option value="">— เลือกตัวละคร —</option>
+                  {characters.map((c) => <option key={c.id} value={c.id}>{c.name || 'ตัวละครใหม่'}</option>)}
+                </select>
+                <button onClick={() => { setJoinErr(''); if (joinCode && joinChar) joinCamp.mutate(); }} disabled={!joinCode || !joinChar || joinCamp.isPending} style={{ background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12.5, fontWeight: 700, cursor: joinCode && joinChar ? 'pointer' : 'not-allowed', opacity: joinCode && joinChar ? 1 : 0.5 }}>เข้าร่วม</button>
+              </div>
+              {joinErr && <div style={{ fontSize: 11.5, color: '#b4513a', marginTop: 6 }}>{joinErr}</div>}
+            </div>
           </div>
         </section>
 

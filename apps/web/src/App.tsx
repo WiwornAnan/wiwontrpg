@@ -10,6 +10,7 @@ import { WiwonPage } from './pages/WiwonPage';
 import { CharactersPage } from './pages/CharactersPage';
 import { DwellerSheetPage } from './pages/DwellerSheetPage';
 import { DwellerBuildPage } from './pages/DwellerBuildPage';
+import { CampaignPage } from './pages/CampaignPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { PrayPage } from './pages/PrayPage';
 import { ArticleDetailPage } from './pages/ArticleDetailPage';
@@ -33,6 +34,7 @@ export function App() {
           <Route path="/dweller" element={<DwellerSheetPage />} />
           <Route path="/dweller/build/:id" element={<DwellerBuildPage mode="build" />} />
           <Route path="/dweller/sheet/:id" element={<DwellerBuildPage mode="sheet" />} />
+          <Route path="/campaign/:id" element={<CampaignPage />} />
           <Route path="/magic" element={<CatalogPage key="magic" category="magic" />} />
           <Route path="/equipment" element={<CatalogPage key="equipment" category="equipment" />} />
           <Route path="/monster" element={<CatalogPage key="monster" category="monster" />} />

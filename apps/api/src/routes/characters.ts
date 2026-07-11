@@ -10,6 +10,13 @@ export const charactersRouter = Router();
 
 charactersRouter.use(requireAuth);
 
+// Access rule: the owner, or the Librarian of a campaign this character is in.
+async function canAccess(characterId: string, ownerUserId: string, meId: string): Promise<boolean> {
+  if (ownerUserId === meId) return true;
+  const member = await prisma.campaignMember.findUnique({ where: { characterId }, include: { campaign: true } });
+  return !!member && member.campaign.librarianUserId === meId;
+}
+
 charactersRouter.get('/', async (req, res) => {
   const rows = await prisma.character.findMany({
     where: { ownerUserId: req.currentUser!.id },
@@ -20,7 +27,7 @@ charactersRouter.get('/', async (req, res) => {
 
 charactersRouter.get('/:id', async (req, res) => {
   const row = await prisma.character.findUnique({ where: { id: req.params.id } });
-  if (!row || row.ownerUserId !== req.currentUser!.id) {
+  if (!row || !(await canAccess(row.id, row.ownerUserId, req.currentUser!.id))) {
     res.status(404).json({ error: 'ไม่พบตัวละคร' });
     return;
   }
@@ -44,7 +51,7 @@ const patchInput = z.object({
 
 charactersRouter.patch('/:id', async (req, res) => {
   const existing = await prisma.character.findUnique({ where: { id: req.params.id } });
-  if (!existing || existing.ownerUserId !== req.currentUser!.id) {
+  if (!existing || !(await canAccess(existing.id, existing.ownerUserId, req.currentUser!.id))) {
     res.status(404).json({ error: 'ไม่พบตัวละคร' });
     return;
   }

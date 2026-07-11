@@ -9,25 +9,26 @@ datasource db {
 }
 
 model User {
-  id                String   @id @default(cuid())
-  email             String   @unique
+  id                String    @id @default(cuid())
+  email             String    @unique
   passwordHash      String
   displayName       String
-  role              String   @default("user") // 'user' | 'dev'
+  role              String    @default("user") // 'user' | 'dev'
   devCodeVerifiedAt DateTime?
-  creditBalance     Int      @default(0)
+  creditBalance     Int       @default(0)
   lastCrClaimAt     DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   catalogItems CatalogItem[]
-  prayFrom     PrayMessage[] @relation("PrayFrom")
-  prayTo       PrayMessage[] @relation("PrayTo")
+  prayFrom     PrayMessage[]   @relation("PrayFrom")
+  prayTo       PrayMessage[]   @relation("PrayTo")
   prayReplies  PrayReply[]
   crLedger     CrLedgerEntry[]
   comments     Comment[]
   bookmarks    Bookmark[]
   characters   Character[]
+  campaignsLed Campaign[]      @relation("CampaignLibrarian")
 }
 
 // A player's "Dweller" — created via the character-creation wizard. Kept as a
@@ -44,9 +45,40 @@ model Character {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  owner          User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  campaignMember CampaignMember?
 
   @@index([ownerUserId])
+}
+
+// A campaign run by a Librarian (GM). Players join with the code and add one of
+// their characters; the Librarian may open every member's Dweller Sheet.
+// `data` holds shared state as JSON: clock/calendar, notes, and status broadcasts.
+model Campaign {
+  id              String   @id @default(cuid())
+  name            String   @default("")
+  librarianUserId String
+  joinCode        String   @unique
+  data            String   @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  librarian User             @relation("CampaignLibrarian", fields: [librarianUserId], references: [id], onDelete: Cascade)
+  members   CampaignMember[]
+
+  @@index([librarianUserId])
+}
+
+model CampaignMember {
+  id          String   @id @default(cuid())
+  campaignId  String
+  characterId String   @unique
+  createdAt   DateTime @default(now())
+
+  campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
 }
 
 // Dev-authored wizard content that players receive but cannot edit — e.g. a
@@ -115,31 +147,31 @@ model WiwonCover {
 }
 
 model CatalogItem {
-  id                  String   @id @default(cuid())
-  category            String // 'equipment' | 'magic' | 'monster'
-  isFeature           Boolean  @default(false)
-  name                String
-  subtitle            String?
-  relatedWiwonId      String? // id of the WiwonCover this item belongs to (loose ref)
-  fields              String   @default("{}") // JSON category-specific field bag
-  description         String   @default("")
-  tags                String   @default("[]") // JSON string[]
-  source              String   @default("Homebrew")
-  isHomebrew          Boolean  @default(false)
-  ownerUserId         String?
-  isOfficialAdded     Boolean  @default(false)
-  approvedFromHomebrew Boolean @default(false)
-  iconUrl             String?
+  id                   String   @id @default(cuid())
+  category             String // 'equipment' | 'magic' | 'monster'
+  isFeature            Boolean  @default(false)
+  name                 String
+  subtitle             String?
+  relatedWiwonId       String? // id of the WiwonCover this item belongs to (loose ref)
+  fields               String   @default("{}") // JSON category-specific field bag
+  description          String   @default("")
+  tags                 String   @default("[]") // JSON string[]
+  source               String   @default("Homebrew")
+  isHomebrew           Boolean  @default(false)
+  ownerUserId          String?
+  isOfficialAdded      Boolean  @default(false)
+  approvedFromHomebrew Boolean  @default(false)
+  iconUrl              String?
   // live trackers (nullable — only set when relevant to the category)
-  durabilityRemaining Int?
-  woundsRemaining     Int?
-  willpowerRemaining  Int?
-  scratchCurrent      Int?
-  ammoCurrent         Int?
-  manaUsed            Int?
-  nameCount           Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  durabilityRemaining  Int?
+  woundsRemaining      Int?
+  willpowerRemaining   Int?
+  scratchCurrent       Int?
+  ammoCurrent          Int?
+  manaUsed             Int?
+  nameCount            Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   owner        User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   prayMessages PrayMessage[]
