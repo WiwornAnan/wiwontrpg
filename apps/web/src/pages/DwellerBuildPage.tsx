@@ -14,6 +14,14 @@ import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
 import type { SkillAttr } from '../data/dwellerSkills';
 
 const TOTAL_STEPS = 11;
+// Shared roll-log presentation (mirrors the Dice Astrolabe's own LOG panel).
+const rollSym = (m?: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
+const rollTotalColor = (r: { ego: number; ambient: number; fortuity: number }) => {
+  const triple = r.ego === r.ambient && r.ambient === r.fortuity;
+  if ((triple && r.ego === 1) || r.fortuity === 1) return '#f0554a';
+  if ((triple && r.ego >= 2 && r.ego <= 8) || r.fortuity === 10) return '#f0c76a';
+  return '#e8e6dc';
+};
 // Only these เผ่าพันธุ์ (by Feature name) unlock the Ancestry sub-layer in Step 1.
 const RACES_WITH_ANCESTRY = ['Animalea', 'Sprite'];
 const raceHasAncestry = (name: string) => RACES_WITH_ANCESTRY.some((r) => r.toLowerCase() === name.trim().toLowerCase());
@@ -211,7 +219,8 @@ function CharacterSheet({
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
   // Shared campaign roll/action log (real-time, if this character is in a campaign)
-  interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; itemId?: string; isFeature?: boolean }
+  interface RollData { ego: number; ambient: number; fortuity: number; total: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
+  interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; itemId?: string; isFeature?: boolean; roll?: RollData }
   interface InitEntry { id: string; name: string; value: number; kind: string }
   interface LootItem { id: string; name: string; kg?: number; desc?: string; itemId?: string }
   const { data: campForChar } = useQuery({
@@ -220,14 +229,16 @@ function CharacterSheet({
     refetchInterval: 4000,
   });
   const campaignId = campForChar?.campaign?.id;
+  const isLibrarian = campForChar?.campaign?.isLibrarian ?? false;
   const campaignLog = campForChar?.campaign?.log ?? [];
+  const logClear = useMutation({ mutationFn: () => api.post('/campaigns/log/clear', { characterId: character.id }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const sharedLoot = campForChar?.campaign?.loot ?? [];
   const lootAdd = useMutation({ mutationFn: (item: Partial<LootItem>) => api.post('/campaigns/loot/add', { characterId: character.id, item }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const lootRemove = useMutation({ mutationFn: (lootId: string) => api.post('/campaigns/loot/remove', { characterId: character.id, lootId }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const lootRename = useMutation({ mutationFn: (b: { lootId: string; name: string }) => api.post('/campaigns/loot/rename', { characterId: character.id, ...b }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const campaignInit = (campForChar?.campaign?.initiative ?? []).slice().sort((a, b) => b.value - a.value);
   const postLog = useMutation({
-    mutationFn: (body: { kind: string; text: string; itemId?: string; isFeature?: boolean }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
+    mutationFn: (body: { kind: string; text: string; itemId?: string; isFeature?: boolean; roll?: RollData }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
   });
   const postInit = useMutation({
@@ -235,21 +246,14 @@ function CharacterSheet({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
   });
   const rollLabelRef = useRef('');
-  const logRef = useRef<(kind: string, text: string, ref?: { itemId?: string; isFeature?: boolean }) => void>(() => {});
-  logRef.current = (kind, text, ref) => { if (campaignId) postLog.mutate({ kind, text, itemId: ref?.itemId, isFeature: ref?.isFeature }); };
+  const logRef = useRef<(kind: string, text: string, ref?: { itemId?: string; isFeature?: boolean; roll?: RollData }) => void>(() => {});
+  logRef.current = (kind, text, ref) => { if (campaignId) postLog.mutate({ kind, text, itemId: ref?.itemId, isFeature: ref?.isFeature, roll: ref?.roll }); };
   useEffect(() => {
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail as { ego: number; ambient: number; fortuity: number; total?: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string };
       const label = rollLabelRef.current || 'ทอยลูกเต๋า';
-      const sym = (m?: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
       const total = d.total ?? d.ego + d.ambient + d.fortuity;
-      const parts = [
-        `Ego ${d.ego} (d${d.egoFaces}${sym(d.egoMode)})`,
-        `Ambient ${d.ambient} (d8${sym(d.ambientMode)})`,
-        `Fortuity ${d.fortuity} (d10${sym(d.fortuityMode)})`,
-      ];
-      const extra = d.special ? ` · ${d.special}` : '';
-      logRef.current('roll', `🎲 ${label} → ${parts.join(' · ')} = รวม ${total}${extra}`);
+      logRef.current('roll', `🎲 ${label}`, { roll: { ego: d.ego, ambient: d.ambient, fortuity: d.fortuity, total, egoFaces: d.egoFaces, egoMode: d.egoMode, ambientMode: d.ambientMode, fortuityMode: d.fortuityMode, special: d.special } });
       rollLabelRef.current = '';
     };
     window.addEventListener('wiwon-dice', handler);
@@ -937,7 +941,12 @@ function CharacterSheet({
           {/* Middle */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82' }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
+                {campaignId && isLibrarian && campaignLog.length > 0 && (
+                  <button onClick={() => { if (window.confirm('ล้างประวัติ Log ของทั้งแคมเปญ?')) logClear.mutate(); }} title="Librarian: ล้าง Log ทั้งหมด" style={{ flex: 'none', border: '1px solid #3a3730', background: '#221f1a', color: '#a8a59d', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ล้าง LOG</button>
+                )}
+              </div>
               {!campaignId ? (
                 <div style={{ fontSize: 12, color: '#6b6860', lineHeight: 1.6 }}>ตัวละครนี้ยังไม่อยู่ในแคมเปญ — เข้าร่วมแคมเปญ (หน้า Dweller → “เข้าร่วมด้วยรหัส”) เพื่อใช้ Log ประวัติการทอยร่วมกัน</div>
               ) : (
@@ -946,9 +955,24 @@ function CharacterSheet({
                     <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4, marginBottom: 8 }}>
                       {campaignLog.slice().reverse().map((l) => {
                         const refItem = l.itemId ? (l.isFeature ? featItemById.get(l.itemId) : magicItemById.get(l.itemId)) : null;
+                        const r = l.roll;
                         return (
-                          <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
+                          <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 7 }}>
                             <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                            {r && (
+                              <div style={{ marginTop: 5, display: 'flex', gap: 12, alignItems: 'center' }}>
+                                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'center' }}>
+                                  <span style={{ color: '#e05a5a', fontWeight: 700 }}>Ego {r.ego}<span style={{ color: '#7a7a72', fontWeight: 400 }}> d{r.egoFaces}{rollSym(r.egoMode)}</span></span>
+                                  <span style={{ color: '#4fb99f', fontWeight: 700 }}>Amb {r.ambient}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{rollSym(r.ambientMode)}</span></span>
+                                  <span style={{ color: '#f0c76a', fontWeight: 700 }}>For {r.fortuity}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{rollSym(r.fortuityMode)}</span></span>
+                                </div>
+                                <div style={{ flex: 'none', textAlign: 'center', background: '#1c1e12', border: `1px solid ${rollTotalColor(r)}55`, borderRadius: 12, padding: '5px 13px', minWidth: 60 }}>
+                                  <div style={{ fontSize: 9, fontWeight: 700, color: '#a8a8a0', letterSpacing: '.08em' }}>รวม</div>
+                                  <div style={{ fontSize: 27, fontWeight: 800, color: rollTotalColor(r), lineHeight: 1 }}>{r.total}</div>
+                                </div>
+                              </div>
+                            )}
+                            {r?.special && <div style={{ marginTop: 3, fontSize: 11.5, color: '#f7dca0' }}>✦ {r.special}</div>}
                             {refItem && <button onClick={() => openInfo(refItem, !!l.isFeature)} title="ดูข้อมูลจากต้นฉบับ" style={{ marginTop: 3, display: 'inline-block', border: '1px solid #3a3730', background: '#221f1a', color: '#cbb8f0', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ⓘ ดูข้อมูล{l.isFeature ? ' Feature' : 'เวท'}</button>}
                           </div>
                         );

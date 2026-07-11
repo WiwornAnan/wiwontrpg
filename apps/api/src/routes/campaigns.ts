@@ -232,7 +232,8 @@ campaignsRouter.post('/:id/initiative/clear', async (req, res) => {
 });
 
 // Append an entry to the campaign's shared log (roll / magic / feature use).
-const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400), itemId: z.string().optional(), isFeature: z.boolean().optional() });
+const rollInput = z.object({ ego: z.number(), ambient: z.number(), fortuity: z.number(), total: z.number(), egoFaces: z.number(), egoMode: z.string().optional(), ambientMode: z.string().optional(), fortuityMode: z.string().optional(), special: z.string().optional() });
+const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400), itemId: z.string().optional(), isFeature: z.boolean().optional(), roll: rollInput.optional() });
 campaignsRouter.post('/log', async (req, res) => {
   const me = req.currentUser!.id;
   const parsed = logInput.safeParse(req.body);
@@ -242,9 +243,32 @@ campaignsRouter.post('/log', async (req, res) => {
   if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
   const data = parseData(member.campaign.data);
   const log = Array.isArray(data.log) ? (data.log as unknown[]) : [];
-  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: member.characterId, characterName: member.character.name || 'ตัวละคร', kind: parsed.data.kind, text: parsed.data.text, ...(parsed.data.itemId ? { itemId: parsed.data.itemId, isFeature: !!parsed.data.isFeature } : {}) });
+  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: member.characterId, characterName: member.character.name || 'ตัวละคร', kind: parsed.data.kind, text: parsed.data.text, ...(parsed.data.itemId ? { itemId: parsed.data.itemId, isFeature: !!parsed.data.isFeature } : {}), ...(parsed.data.roll ? { roll: parsed.data.roll } : {}) });
   data.log = log.slice(-80);
   await prisma.campaign.update({ where: { id: member.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+
+// Clear the shared log — Librarian only (via a member characterId of their campaign).
+campaignsRouter.post('/log/clear', async (req, res) => {
+  const me = req.currentUser!.id;
+  const characterId = typeof req.body?.characterId === 'string' ? req.body.characterId : '';
+  const member = await prisma.campaignMember.findUnique({ where: { characterId }, include: { campaign: true } });
+  if (!member) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  if (member.campaign.librarianUserId !== me) { res.status(403).json({ error: 'เฉพาะ Librarian เท่านั้น' }); return; }
+  const data = parseData(member.campaign.data);
+  data.log = [];
+  await prisma.campaign.update({ where: { id: member.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+
+// Librarian clears the shared log from the Librarian Sheet (campaign-scoped).
+campaignsRouter.post('/:id/log/clear', async (req, res) => {
+  const c = await prisma.campaign.findUnique({ where: { id: req.params.id } });
+  if (!c || c.librarianUserId !== req.currentUser!.id) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  data.log = [];
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
 });
 

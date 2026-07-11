@@ -33,9 +33,17 @@ const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
 
 interface Note { id: string; title: string; text: string }
-interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
+interface RollData { ego: number; ambient: number; fortuity: number; total: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
+interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData }
 interface InitEntry { id: string; name: string; value: number; kind: string }
 const rollD = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
+const rollSym = (m?: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
+const rollTotalColor = (r: { ego: number; ambient: number; fortuity: number }) => {
+  const triple = r.ego === r.ambient && r.ambient === r.fortuity;
+  if ((triple && r.ego === 1) || r.fortuity === 1) return '#c0432a';
+  if ((triple && r.ego >= 2 && r.ego <= 8) || r.fortuity === 10) return '#b4842a';
+  return '#3c3a33';
+};
 
 export function CampaignPage() {
   const { id } = useParams();
@@ -76,6 +84,7 @@ export function CampaignPage() {
   const setInitValue = useMutation({ mutationFn: (b: { entryId: string; value: number }) => api.post(`/campaigns/${id}/initiative/set-value`, b), onSuccess: invalidate });
   const delInit = useMutation({ mutationFn: (entryId: string) => api.delete(`/campaigns/${id}/initiative/${entryId}`), onSuccess: invalidate });
   const clearInit = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/initiative/clear`, {}), onSuccess: invalidate });
+  const clearLog = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/log/clear`, {}), onSuccess: invalidate });
   const [monName, setMonName] = useState('');
   const [monPicker, setMonPicker] = useState(false);
   const [monQuery, setMonQuery] = useState('');
@@ -226,14 +235,34 @@ export function CampaignPage() {
 
           {/* shared roll/action log */}
           <div style={box}>
-            <div style={secLabel}>📜 LOG แคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เรียลไทม์</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={secLabel}>📜 LOG แคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เรียลไทม์</span></div>
+              {log.length > 0 && <button onClick={() => { if (window.confirm('ล้างประวัติ Log ของทั้งแคมเปญ?')) clearLog.mutate(); }} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ล้าง LOG</button>}
+            </div>
             {log.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีบันทึก — เมื่อผู้เล่นทอยเต๋าหรือใช้ Magic/Feature จะปรากฏที่นี่</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
-                {log.slice().reverse().map((l) => (
-                  <div key={l.id} style={{ fontSize: 12.5, color: '#3c3a33', lineHeight: 1.5, borderBottom: '1px solid #f4f1ec', paddingBottom: 5 }}>
-                    <span style={{ fontWeight: 800, color: '#5c4a2e' }}>{l.characterName}</span> <span style={{ color: '#a8a59d', fontSize: 11 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
-                  </div>
-                ))}
+                {log.slice().reverse().map((l) => {
+                  const r = l.roll;
+                  return (
+                    <div key={l.id} style={{ fontSize: 12.5, color: '#3c3a33', lineHeight: 1.5, borderBottom: '1px solid #f4f1ec', paddingBottom: 6 }}>
+                      <span style={{ fontWeight: 800, color: '#5c4a2e' }}>{l.characterName}</span> <span style={{ color: '#a8a59d', fontSize: 11 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                      {r && (
+                        <div style={{ marginTop: 5, display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'center' }}>
+                            <span style={{ color: '#c0432a', fontWeight: 700 }}>Ego {r.ego}<span style={{ color: '#a8a59d', fontWeight: 400 }}> d{r.egoFaces}{rollSym(r.egoMode)}</span></span>
+                            <span style={{ color: '#2f7d6a', fontWeight: 700 }}>Amb {r.ambient}<span style={{ color: '#a8a59d', fontWeight: 400 }}>{rollSym(r.ambientMode)}</span></span>
+                            <span style={{ color: '#b4842a', fontWeight: 700 }}>For {r.fortuity}<span style={{ color: '#a8a59d', fontWeight: 400 }}>{rollSym(r.fortuityMode)}</span></span>
+                          </div>
+                          <div style={{ flex: 'none', textAlign: 'center', background: '#faf8f2', border: `1px solid ${rollTotalColor(r)}55`, borderRadius: 12, padding: '5px 13px', minWidth: 60 }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: '#a8a59d', letterSpacing: '.08em' }}>รวม</div>
+                            <div style={{ fontSize: 27, fontWeight: 800, color: rollTotalColor(r), lineHeight: 1 }}>{r.total}</div>
+                          </div>
+                        </div>
+                      )}
+                      {r?.special && <div style={{ marginTop: 3, fontSize: 11.5, color: '#b4842a' }}>✦ {r.special}</div>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
