@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -9,20 +9,12 @@ import layout from '../components/layout.module.css';
 import { BUFF_EFFECTS, STATUS_EFFECTS } from '../data/statusEffects';
 import type { CampaignDTO } from '../data/statusEffects';
 
-const DAYS = 30, MONTHS = 12, HRS = 24, MIN = 60;
+const DAYS = 30, MONTHS = 12;
 const MONTH_NAMES = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 interface Clock { year: number; month: number; day: number; hour: number; minute: number }
 const DEFAULT_CLOCK: Clock = { year: 1, month: 1, day: 1, hour: 8, minute: 0 };
-const toMin = (c: Clock) => ((((c.year - 1) * MONTHS + (c.month - 1)) * DAYS + (c.day - 1)) * HRS + c.hour) * MIN + c.minute;
-const fromMin = (t: number): Clock => {
-  let m = Math.max(0, Math.round(t));
-  const minute = m % MIN; m = Math.floor(m / MIN);
-  const hour = m % HRS; m = Math.floor(m / HRS);
-  const day = (m % DAYS) + 1; m = Math.floor(m / DAYS);
-  const month = (m % MONTHS) + 1; m = Math.floor(m / MONTHS);
-  return { year: m + 1, month, day, hour, minute };
-};
 const num = (v: unknown, def = 0) => (typeof v === 'number' && isFinite(v) ? v : def);
+const navBtn: React.CSSProperties = { width: 26, height: 26, borderRadius: 7, border: '1px solid #e0ded7', background: '#faf9f7', color: '#5f5c54', fontSize: 12, cursor: 'pointer' };
 const buffLabel = (k: string) => BUFF_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
@@ -67,11 +59,12 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; notes?: Note[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[] };
   const clock = { ...DEFAULT_CLOCK, ...(cdata.clock ?? {}) };
   const notes: Note[] = Array.isArray(cdata.notes) ? cdata.notes : [];
   const setData = (partial: Record<string, unknown>) => patchCamp.mutate({ data: { ...c.data, ...partial } });
-  const advance = (deltaMin: number) => setData({ clock: fromMin(toMin(clock) + deltaMin) });
+  const commitClock = (next: Clock) => setData({ clock: next, clockPrev: clock });
+  const prevClock = (cdata.clockPrev && typeof cdata.clockPrev === 'object' ? cdata.clockPrev : undefined) as Clock | undefined;
   const saveNotes = (n: Note[]) => setData({ notes: n });
 
   const applyTargets = targets ?? c.members.map((m) => m.character.id);
@@ -173,20 +166,40 @@ export function CampaignPage() {
         {/* RIGHT: clock/calendar + notes */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={box}>
-            <div style={secLabel}>นาฬิกา &amp; ปฏิทิน</div>
-            <div style={{ textAlign: 'center', background: '#15140f', borderRadius: 12, padding: '16px 12px', color: '#fff', marginBottom: c.isLibrarian ? 12 : 0 }}>
-              <div style={{ fontSize: 34, fontWeight: 800, color: '#f7dca0', letterSpacing: 1 }}>{String(clock.hour).padStart(2, '0')}:{String(clock.minute).padStart(2, '0')}</div>
-              <div style={{ fontSize: 13, color: '#cbc8c0', marginTop: 4 }}>วันที่ {clock.day} {MONTH_NAMES[clock.month - 1]} · ปีที่ {clock.year}</div>
+            <div style={secLabel}>นาฬิกา</div>
+            <AnalogClock hour={clock.hour} minute={clock.minute} editable={c.isLibrarian} onCommit={(hh, mm) => commitClock({ ...clock, hour: hh, minute: mm })} />
+            <div style={{ textAlign: 'center', fontSize: 12.5, color: '#9a978e', marginTop: 6 }}>
+              {c.isLibrarian ? 'ลากเข็มเพื่อตั้งเวลา · ' : ''}เวลา <b style={{ color: '#5c4a2e' }}>{pad(clock.hour)}:{pad(clock.minute)}</b>
+              {c.isLibrarian && <button onClick={() => commitClock({ ...clock, hour: (clock.hour + 12) % 24 })} title="สลับกลางวัน/กลางคืน" style={{ marginLeft: 8, border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 7, padding: '2px 9px', fontSize: 11, cursor: 'pointer' }}>{clock.hour < 12 ? '☀ กลางวัน' : '☾ กลางคืน'}</button>}
             </div>
-            {c.isLibrarian && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-                {([['−1วัน', -DAYS * HRS * MIN], ['−1ชม.', -HRS * MIN], ['+10น.', 10], ['+1ชม.', HRS * MIN]] as const).map(([lb, d]) => (
-                  <button key={lb} onClick={() => advance(d)} style={{ border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 8, padding: '7px 4px', fontSize: 11.5, fontWeight: 700, color: '#5f5c54', cursor: 'pointer' }}>{lb}</button>
-                ))}
-                <button onClick={() => advance(DAYS * HRS * MIN)} style={{ gridColumn: 'span 2', border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 8, padding: '7px', fontSize: 11.5, fontWeight: 700, color: '#5f5c54', cursor: 'pointer' }}>+1 วัน</button>
-                <button onClick={() => advance(DAYS * HRS * MIN * 30)} style={{ gridColumn: 'span 2', border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 8, padding: '7px', fontSize: 11.5, fontWeight: 700, color: '#5f5c54', cursor: 'pointer' }}>+1 เดือน</button>
-              </div>
-            )}
+          </div>
+
+          <div style={box}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={secLabel}>ปฏิทิน</span>
+              {c.isLibrarian && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button onClick={() => commitClock({ ...clock, month: ((clock.month - 2 + MONTHS) % MONTHS) + 1 })} style={navBtn}>◀</button>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#46443c', minWidth: 78, textAlign: 'center' }}>{MONTH_NAMES[clock.month - 1]}</span>
+                  <button onClick={() => commitClock({ ...clock, month: (clock.month % MONTHS) + 1 })} style={navBtn}>▶</button>
+                  <span style={{ fontSize: 11, color: '#a8a59d', marginLeft: 6 }}>ปีที่</span>
+                  <input type="number" defaultValue={clock.year} key={clock.year} onBlur={(e) => { const y = Math.max(1, Math.round(Number(e.target.value) || 1)); if (y !== clock.year) commitClock({ ...clock, year: y }); }} style={{ width: 54, border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 6px', fontSize: 12.5, textAlign: 'center' }} />
+                </span>
+              )}
+            </div>
+            {!c.isLibrarian && <div style={{ fontSize: 13, fontWeight: 700, color: '#46443c', marginBottom: 8 }}>{MONTH_NAMES[clock.month - 1]} · ปีที่ {clock.year}</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5 }}>
+              {Array.from({ length: DAYS }).map((_, i) => {
+                const day = i + 1;
+                const on = clock.day === day;
+                return (
+                  <button key={day} disabled={!c.isLibrarian} onClick={() => c.isLibrarian && commitClock({ ...clock, day })}
+                    style={{ aspectRatio: '1', border: `1px solid ${on ? '#e07a5f' : '#eee'}`, background: on ? '#e07a5f' : '#fff', color: on ? '#fff' : '#5f5c54', borderRadius: 8, fontSize: 13, fontWeight: on ? 800 : 600, cursor: c.isLibrarian ? 'pointer' : 'default' }}>{day}</button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: '#5f5c54', marginTop: 10, fontWeight: 700, textAlign: 'center' }}>ปัจจุบัน: วันที่ {clock.day} {MONTH_NAMES[clock.month - 1]} ปีที่ {clock.year}</div>
+            {prevClock && <div style={{ fontSize: 11, color: '#a8a59d', marginTop: 4, textAlign: 'center' }}>ก่อนหน้า: {fmtClock(prevClock)}</div>}
           </div>
 
           {c.isLibrarian && (
@@ -230,6 +243,62 @@ export function CampaignPage() {
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>แน่ใจแล้วใช่ไหมว่าจะลบ <b>{c.name}</b>? ผู้เล่นทั้งหมดจะถูกนำออกจากแคมเปญ (ตัวละครไม่ถูกลบ)</p>
       </Modal>
     </div>
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const fmtClock = (c: Clock) => `${pad(c.hour)}:${pad(c.minute)} · วันที่ ${c.day} ${MONTH_NAMES[c.month - 1]} ปีที่ ${c.year}`;
+
+// Decorative, draggable analog clock (does not tick; drag a hand to set the time).
+function AnalogClock({ hour, minute, editable, onCommit }: { hour: number; minute: number; editable: boolean; onCommit: (h: number, m: number) => void }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<'hour' | 'minute' | null>(null);
+  const [pv, setPv] = useState<{ h: number; m: number } | null>(null);
+  const h = pv?.h ?? hour;
+  const m = pv?.m ?? minute;
+  const mAng = m * 6;
+  const hAng = ((h % 12) + m / 60) * 30;
+  const C = 110, RN = 84;
+  const NUM = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+  const angleAt = (e: React.PointerEvent) => {
+    const r = svgRef.current!.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2);
+    const dy = e.clientY - (r.top + r.height / 2);
+    return (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+  };
+  const apply = (a: number, which: 'hour' | 'minute') => {
+    if (which === 'minute') setPv({ h, m: Math.round(a / 6) % 60 });
+    else { const base = Math.round(a / 30) % 12; setPv({ h: (h >= 12 ? 12 : 0) + base, m }); }
+  };
+  const down = (e: React.PointerEvent) => {
+    if (!editable) return;
+    const a = angleAt(e);
+    const dm = Math.abs(((a - mAng + 540) % 360) - 180);
+    const dh = Math.abs(((a - hAng + 540) % 360) - 180);
+    const which = dh < dm ? 'hour' : 'minute';
+    setDrag(which); apply(a, which);
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+  const tip = (ang: number, len: number) => ({ x: C + Math.sin(ang * Math.PI / 180) * len, y: C - Math.cos(ang * Math.PI / 180) * len });
+  const mt = tip(mAng, 90), ht = tip(hAng, 58);
+  return (
+    <svg
+      ref={svgRef} viewBox="0 0 220 220" width="100%" style={{ maxWidth: 230, display: 'block', margin: '0 auto', touchAction: 'none', cursor: editable ? (drag ? 'grabbing' : 'grab') : 'default' }}
+      onPointerDown={down}
+      onPointerMove={(e) => { if (drag) apply(angleAt(e), drag); }}
+      onPointerUp={() => { if (pv) onCommit(pv.h, pv.m); setDrag(null); setPv(null); }}
+      onPointerLeave={() => { if (pv) onCommit(pv.h, pv.m); setDrag(null); setPv(null); }}
+    >
+      <circle cx={C} cy={C} r={106} fill="#fff" stroke="#15140f" strokeWidth={3} />
+      <circle cx={C} cy={C} r={98} fill="none" stroke="#15140f" strokeWidth={1} />
+      {Array.from({ length: 60 }).map((_, i) => { const a = i * 6 * Math.PI / 180; const r1 = i % 5 === 0 ? 88 : 93; return <line key={i} x1={C + Math.sin(a) * r1} y1={C - Math.cos(a) * r1} x2={C + Math.sin(a) * 97} y2={C - Math.cos(a) * 97} stroke="#15140f" strokeWidth={i % 5 === 0 ? 2 : 0.7} />; })}
+      {NUM.map((n, i) => { const a = i * 30 * Math.PI / 180; return <text key={n} x={C + Math.sin(a) * RN} y={C - Math.cos(a) * RN + 5} textAnchor="middle" fontFamily="var(--font-serif), serif" fontSize={15} fontWeight={600} fill="#15140f">{n}</text>; })}
+      <line x1={C} y1={C} x2={ht.x} y2={ht.y} stroke="#15140f" strokeWidth={5} strokeLinecap="round" />
+      <line x1={C} y1={C} x2={mt.x} y2={mt.y} stroke="#5c4a2e" strokeWidth={3} strokeLinecap="round" />
+      {editable && <circle cx={mt.x} cy={mt.y} r={7} fill="#e07a5f" stroke="#fff" strokeWidth={2} />}
+      {editable && <circle cx={ht.x} cy={ht.y} r={7} fill="#15140f" stroke="#fff" strokeWidth={2} />}
+      <circle cx={C} cy={C} r={6} fill="#15140f" />
+    </svg>
   );
 }
 
