@@ -576,6 +576,7 @@ function CharacterSheet({
     sanStatuses.forEach((x) => s.add(x));
     activeWoundDebuffs.forEach((x) => s.add(x));
     if (s.has('บาดแผลทางจิตใจ')) { s.add('นอนไม่หลับ'); s.add('หูแว่วและภาพหลอน'); }
+    if (overloaded) s.add('Overburdened'); // แบกของหนักเกินพิกัด → แบกภาระเกิน
     return s;
   })();
   const insomnia = activeStatusSet.has('นอนไม่หลับ'); // blocks Long Rest
@@ -954,7 +955,8 @@ function CharacterSheet({
                 {['นอนไม่หลับ', 'หูแว่วและภาพหลอน'].filter((k) => activeStatusSet.has(k) && !statusOn[k]).map((k) => (
                   <span key={k} title="เกิดจากบาดแผลทางจิตใจ (อัตโนมัติ)" style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{k}</span>
                 ))}
-                {activeWoundDebuffs.length === 0 && !deathDoor && Object.keys(statusOn).length === 0 && !activeStatusSet.has('นอนไม่หลับ') && <span style={{ fontSize: 11.5, color: '#bdbab2' }}>ยังไม่มีสถานะผิดปกติ — กด “เลือก”</span>}
+                {overloaded && !statusOn['Overburdened'] && <span title={`แบกอยู่ ${carryKg} / ${carryMax} kg — เกินพิกัด 20% ของน้ำหนักตัว (อัตโนมัติ)`} style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4', cursor: 'help' }}>🪨 แบกของหนัก · แบกภาระเกิน</span>}
+                {activeWoundDebuffs.length === 0 && !deathDoor && Object.keys(statusOn).length === 0 && !activeStatusSet.has('นอนไม่หลับ') && !overloaded && <span style={{ fontSize: 11.5, color: '#bdbab2' }}>ยังไม่มีสถานะผิดปกติ — กด “เลือก”</span>}
               </div>
             </div>
             <div style={{ ...box, position: 'relative' }}>
