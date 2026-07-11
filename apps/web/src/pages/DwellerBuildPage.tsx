@@ -377,6 +377,12 @@ function CharacterSheet({
   const bodyKg = sv('bodyKg', 0);
   const carryMax = Math.round(bodyKg * 0.2 * 10) / 10; // cannot exceed 20% of body weight
   const overloaded = carryMax > 0 && carryKg > carryMax;
+  // Daily Calories needed scale off real body weight (~30 kcal/kg maintenance).
+  const calGoalAuto = Math.round(bodyKg * 30);
+  // BMI from weight + height (cm); height need not be realistic — only for the warning.
+  const heightCm = sv('heightCm', 0);
+  const bmi = heightCm > 0 && bodyKg > 0 ? bodyKg / Math.pow(heightCm / 100, 2) : 0;
+  const bmiWarn = bmi <= 0 ? '' : bmi < 18.5 ? 'ผอมเกินไป' : bmi < 23 ? '' : bmi < 25 ? 'ท้วม' : bmi < 30 ? 'น้ำหนักเกิน' : 'อ้วน';
   const setInv = (lineId: string, p: Partial<BagLine>) => setBag(bag.map((l) => (l.lineId === lineId ? { ...l, ...p } : l)));
   const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId && l.inBag !== lineId));
   // Move a free item into a specific worn bag — reject if it would exceed the bag's dev-set capacity.
@@ -1316,9 +1322,10 @@ function CharacterSheet({
                       })}
                       <div style={{ flex: 1.4, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45', marginBottom: 4, height: 16 }}>ดับหิว</div>
-                        <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                          <NumField value={sv('calGoal', 0)} onCommit={(v) => setSheet({ calGoal: v })} width={110} style={{ fontSize: 28, fontWeight: 800, color: '#5f5030', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} />
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52' }}>Calories ที่ต้องการ</div>
+                        <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} title="คำนวณจากน้ำหนักตัว (~30 kcal/kg)">
+                          <div style={{ fontSize: 28, fontWeight: 800, color: '#5f5030', lineHeight: 1 }}>{calGoalAuto}</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52' }}>Calories ที่ต้องการ{bmiWarn && <span style={{ color: '#b4513a' }}> ({bmiWarn})</span>}</div>
+                          {bmiWarn && <div style={{ fontSize: 9.5, color: '#b4513a', fontWeight: 700, marginTop: 1 }}>⚠️ BMI {bmi.toFixed(1)}</div>}
                         </div>
                       </div>
                       {(() => {
