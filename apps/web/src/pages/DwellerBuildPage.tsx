@@ -7,6 +7,7 @@ import { CATALOG_CONFIGS } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from '../components/Modal';
+import { CatalogDetail } from '../components/CatalogDetail';
 import { Button } from '../components/ui';
 import { DiceRoller } from '../components/DiceRoller';
 import layout from '../components/layout.module.css';
@@ -1321,7 +1322,7 @@ function CharacterSheet({
                         </div>
                       </div>
                       {(() => {
-                        const WATER_SLOTS = 6;
+                        const WATER_SLOTS = 2;
                         const drunk = Math.max(0, Math.min(WATER_SLOTS, sv('waterCur', 0)));
                         const thirsty = drunk === 0;
                         return (
@@ -1762,10 +1763,10 @@ function CharacterSheet({
         </div>
       )}
 
-      {/* ── Feature / Magic / Item detail — draggable floating window (full master copy) ── */}
+      {/* ── Feature / Magic / Item detail — draggable floating window (same view as the website) ── */}
       {info && (
-        <FloatWindow title={info.name} onClose={() => setInfo(null)}>
-          <ItemDetailView item={info} isFeature={infoIsFeature} />
+        <FloatWindow title={info.name} onClose={() => setInfo(null)} width={430}>
+          <CatalogDetail item={info} cfg={CATALOG_CONFIGS[info.category]} category={info.category} isFeature={infoIsFeature} onEdit={() => {}} />
         </FloatWindow>
       )}
 
