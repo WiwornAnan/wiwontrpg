@@ -33,6 +33,7 @@ const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
 
 interface Note { id: string; title: string; text: string }
+interface CalNote { id: string; year: number; month: number; day: number; text: string }
 interface RollData { ego: number; ambient: number; fortuity: number; total: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
 interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData }
 interface InitEntry { id: string; name: string; value: number; kind: string }
@@ -88,12 +89,14 @@ export function CampaignPage() {
   const [monName, setMonName] = useState('');
   const [monPicker, setMonPicker] = useState(false);
   const [monQuery, setMonQuery] = useState('');
+  const [selDay, setSelDay] = useState<number | null>(null); // calendar day whose notes are shown
+  const [calNoteText, setCalNoteText] = useState('');
   const { data: monsters } = useQuery({ queryKey: ['campaign-monsters'], queryFn: fetchMonsters, enabled: !!user });
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[] };
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
   const initiative: InitEntry[] = (Array.isArray(cdata.initiative) ? cdata.initiative : []).slice().sort((a, b) => b.value - a.value);
   const clock = { ...DEFAULT_CLOCK, ...(cdata.clock ?? {}) };
@@ -102,6 +105,8 @@ export function CampaignPage() {
   const commitClock = (next: Clock) => setData({ clock: next, clockPrev: clock });
   const prevClock = (cdata.clockPrev && typeof cdata.clockPrev === 'object' ? cdata.clockPrev : undefined) as Clock | undefined;
   const saveNotes = (n: Note[]) => setData({ notes: n });
+  const calNotes: CalNote[] = Array.isArray(cdata.calNotes) ? cdata.calNotes : [];
+  const saveCalNotes = (n: CalNote[]) => setData({ calNotes: n });
 
   const applyTargets = targets ?? c.members.map((m) => m.character.id);
   const anyPicked = Object.values(pickBuffs).some(Boolean) || Object.values(pickStatus).some(Boolean);
@@ -297,14 +302,46 @@ export function CampaignPage() {
               {Array.from({ length: DAYS }).map((_, i) => {
                 const day = i + 1;
                 const on = clock.day === day;
+                const sel = (selDay ?? clock.day) === day;
+                const hasNote = calNotes.some((n) => n.year === clock.year && n.month === clock.month && n.day === day);
                 return (
-                  <button key={day} disabled={!c.isLibrarian} onClick={() => c.isLibrarian && commitClock({ ...clock, day })}
-                    style={{ aspectRatio: '1', border: `1px solid ${on ? '#e07a5f' : '#eee'}`, background: on ? '#e07a5f' : '#fff', color: on ? '#fff' : '#5f5c54', borderRadius: 8, fontSize: 13, fontWeight: on ? 800 : 600, cursor: c.isLibrarian ? 'pointer' : 'default' }}>{day}</button>
+                  <button key={day} onClick={() => { setSelDay(day); if (c.isLibrarian) commitClock({ ...clock, day }); }}
+                    style={{ position: 'relative', aspectRatio: '1', border: `1px solid ${on ? '#e07a5f' : sel ? '#e8b6a8' : '#eee'}`, outline: sel && !on ? '1px solid #e8b6a8' : 'none', background: on ? '#e07a5f' : '#fff', color: on ? '#fff' : '#5f5c54', borderRadius: 8, fontSize: 13, fontWeight: on ? 800 : 600, cursor: 'pointer' }}>
+                    {day}
+                    {hasNote && <span style={{ position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)', width: 5, height: 5, borderRadius: '50%', background: on ? '#fff' : '#e07a5f' }} />}
+                  </button>
                 );
               })}
             </div>
             <div style={{ fontSize: 12, color: '#5f5c54', marginTop: 10, fontWeight: 700, textAlign: 'center' }}>ปัจจุบัน: วันที่ {clock.day} {MONTH_NAMES[clock.month - 1]} ปีที่ {clock.year}</div>
             {prevClock && <div style={{ fontSize: 11, color: '#a8a59d', marginTop: 4, textAlign: 'center' }}>ก่อนหน้า: {fmtClock(prevClock)}</div>}
+            {/* Per-day calendar notes */}
+            {(() => {
+              const d = selDay ?? clock.day;
+              const dayNotes = calNotes.filter((n) => n.year === clock.year && n.month === clock.month && n.day === d);
+              return (
+                <div style={{ marginTop: 12, borderTop: '1px solid #f0ece4', paddingTop: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: '#8a6a3a', marginBottom: 7 }}>📌 บันทึกวันที่ {d} {MONTH_NAMES[clock.month - 1]} ปีที่ {clock.year}</div>
+                  {dayNotes.length === 0 && <div style={{ fontSize: 11.5, color: '#bdbab2', marginBottom: 6 }}>— ยังไม่มีบันทึกของวันนี้ —</div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: c.isLibrarian ? 8 : 0 }}>
+                    {dayNotes.map((n) => (
+                      <div key={n.id} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', background: '#fffdf8', border: '1px solid #efe6d4', borderRadius: 8, padding: '7px 9px' }}>
+                        {c.isLibrarian
+                          ? <textarea key={n.text} defaultValue={n.text} onBlur={(e) => { if (e.target.value !== n.text) saveCalNotes(calNotes.map((x) => (x.id === n.id ? { ...x, text: e.target.value } : x))); }} rows={2} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit', color: '#46443c' }} />
+                          : <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.55, color: '#46443c', whiteSpace: 'pre-wrap' }}>{n.text}</span>}
+                        {c.isLibrarian && <button onClick={() => saveCalNotes(calNotes.filter((x) => x.id !== n.id))} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
+                      </div>
+                    ))}
+                  </div>
+                  {c.isLibrarian && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={calNoteText} onChange={(e) => setCalNoteText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && calNoteText.trim()) { saveCalNotes([...calNotes, { id: `cn${Date.now()}`, year: clock.year, month: clock.month, day: d, text: calNoteText.trim() }]); setCalNoteText(''); } }} placeholder={`เพิ่มบันทึกวันที่ ${d}…`} style={{ flex: 1, minWidth: 0, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12, outline: 'none', background: '#fff' }} />
+                      <button disabled={!calNoteText.trim()} onClick={() => { saveCalNotes([...calNotes, { id: `cn${Date.now()}`, year: clock.year, month: clock.month, day: d, text: calNoteText.trim() }]); setCalNoteText(''); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12, fontWeight: 700, cursor: calNoteText.trim() ? 'pointer' : 'not-allowed', background: calNoteText.trim() ? '#e07a5f' : '#e6e3dc', color: '#fff' }}>เพิ่ม</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {c.isLibrarian && (
