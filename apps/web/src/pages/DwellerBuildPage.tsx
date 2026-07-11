@@ -189,6 +189,7 @@ function CharacterSheet({
   const [bgTopic, setBgTopic] = useState<string | null>(null);
   const [invPicker, setInvPicker] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [bagWarn, setBagWarn] = useState(''); // over-capacity feedback for bags
   const [info, setInfo] = useState<CatalogItem | null>(null);
   const [infoIsFeature, setInfoIsFeature] = useState(true);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
@@ -210,13 +211,18 @@ function CharacterSheet({
   // Shared campaign roll/action log (real-time, if this character is in a campaign)
   interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
   interface InitEntry { id: string; name: string; value: number; kind: string }
+  interface LootItem { id: string; name: string; kg?: number; desc?: string; itemId?: string }
   const { data: campForChar } = useQuery({
     queryKey: ['sheet-campaign', character.id],
-    queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[] } | null }>(`/campaigns/for-character/${character.id}`),
+    queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[]; loot: LootItem[] } | null }>(`/campaigns/for-character/${character.id}`),
     refetchInterval: 4000,
   });
   const campaignId = campForChar?.campaign?.id;
   const campaignLog = campForChar?.campaign?.log ?? [];
+  const sharedLoot = campForChar?.campaign?.loot ?? [];
+  const lootAdd = useMutation({ mutationFn: (item: Partial<LootItem>) => api.post('/campaigns/loot/add', { characterId: character.id, item }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
+  const lootRemove = useMutation({ mutationFn: (lootId: string) => api.post('/campaigns/loot/remove', { characterId: character.id, lootId }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
+  const lootRename = useMutation({ mutationFn: (b: { lootId: string; name: string }) => api.post('/campaigns/loot/rename', { characterId: character.id, ...b }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const campaignInit = (campForChar?.campaign?.initiative ?? []).slice().sort((a, b) => b.value - a.value);
   const postLog = useMutation({
     mutationFn: (body: { kind: string; text: string }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
@@ -340,17 +346,46 @@ function CharacterSheet({
   const BAG_RE = /bag|backpack|sack|pouch|pack|กระเป๋า|เป้|ย่าม|ถุง/i;
   const isBagItem = (l: BagLine) => l.isBag ?? BAG_RE.test(l.name);
   const invZone = (l: BagLine) => l.zone ?? 'loot';
-  const hasBag = bag.some(isBagItem);
-  const loot = bag.filter((l) => invZone(l) === 'loot');
-  const ready = bag.filter((l) => invZone(l) === 'ready');
-  const carried = bag.filter((l) => invZone(l) === 'bag');
-  const carryKg = Math.round([...ready, ...carried].reduce((s, l) => s + numData(l.kg), 0) * 10) / 10;
+  const bagItems = bag.filter(isBagItem);
+  const wornBags = bagItems.filter((b) => b.worn);
+  const hasBag = bagItems.length > 0;
+  const contentsOf = (id: string) => bag.filter((l) => l.inBag === id);
+  const bagUsedKg = (id: string) => Math.round(contentsOf(id).reduce((s, l) => s + numData(l.kg), 0) * 10) / 10;
+  // A free-zone line is one not stored inside a bag and not a worn bag (worn bags render as containers).
+  const inFreeZone = (l: BagLine) => !l.inBag && !(isBagItem(l) && l.worn);
+  const loot = bag.filter((l) => invZone(l) === 'loot' && inFreeZone(l));
+  const ready = bag.filter((l) => invZone(l) === 'ready' && inFreeZone(l));
+  // Weight counts: non-bag Ready items always; a bag (and its contents) only when worn. Loot never counts.
+  const readyKg = ready.filter((l) => !isBagItem(l)).reduce((s, l) => s + numData(l.kg), 0);
+  const wornKg = wornBags.reduce((s, b) => s + numData(b.kg) + bagUsedKg(b.lineId), 0);
+  const carryKg = Math.round((readyKg + wornKg) * 10) / 10;
   const bodyKg = sv('bodyKg', 0);
   const carryMax = Math.round(bodyKg * 0.2 * 10) / 10; // cannot exceed 20% of body weight
   const overloaded = carryMax > 0 && carryKg > carryMax;
   const setInv = (lineId: string, p: Partial<BagLine>) => setBag(bag.map((l) => (l.lineId === lineId ? { ...l, ...p } : l)));
-  const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId));
-  const receiveItem = (m: CatalogItem) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: m.id, name: m.name, priceIC: 0, zone: 'loot', kg: numData(m.fields.weightNum), isBag: BAG_RE.test(m.name) || m.tags.some((t) => /bag|กระเป๋า|เป้|ย่าม|ถุง/i.test(t)) }]);
+  const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId && l.inBag !== lineId));
+  // Move a free item into a specific worn bag — reject if it would exceed the bag's dev-set capacity.
+  const moveToBag = (lineId: string, bagId: string) => {
+    if (lineId === bagId) return;
+    const item = bag.find((l) => l.lineId === lineId);
+    const bl = bag.find((l) => l.lineId === bagId);
+    if (!item || !bl) return;
+    const cap = numData(bl.cap);
+    if (cap > 0 && bagUsedKg(bagId) + numData(item.kg) > cap) {
+      setBagWarn(`“${bl.name}” เก็บได้สูงสุด ${cap} kg — ใส่ “${item.name}” (${numData(item.kg)} kg) ไม่ได้`);
+      window.setTimeout(() => setBagWarn(''), 3500);
+      return;
+    }
+    setInv(lineId, { zone: 'bag', inBag: bagId });
+  };
+  const takeFromBag = (lineId: string) => setInv(lineId, { zone: 'ready', inBag: undefined });
+  const receiveItem = (m: CatalogItem) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: m.id, name: m.name, priceIC: 0, zone: 'loot', kg: numData(m.fields.weightNum), isBag: BAG_RE.test(m.name) || m.tags.some((t) => /bag|กระเป๋า|เป้|ย่าม|ถุง/i.test(t)), cap: numData(m.fields.bagCapacity) }]);
+  const receiveCustom = (name: string, desc: string) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name, priceIC: 0, zone: 'loot', kg: 0, desc }]);
+  // Shared-loot (in a campaign) vs personal-loot (solo) helpers
+  const takeLoot = (it: LootItem) => { setBag([...bag, { lineId: `x${Date.now()}`, itemId: it.itemId ?? '', name: it.name, priceIC: 0, zone: 'ready', kg: numData(it.kg), desc: it.desc }]); lootRemove.mutate(it.id); };
+  const dropToLoot = (l: BagLine) => { if (campaignId) { lootAdd.mutate({ name: l.name, kg: numData(l.kg), desc: l.desc, itemId: l.itemId }); delInv(l.lineId); } else { setInv(l.lineId, { zone: 'loot', inBag: undefined, worn: false }); } };
+  const pickToInv = (m: CatalogItem) => { if (campaignId) lootAdd.mutate({ name: m.name, kg: numData(m.fields.weightNum), itemId: m.id }); else receiveItem(m); };
+  const addCustomInv = (name: string, desc: string) => { if (campaignId) lootAdd.mutate({ name, desc }); else receiveCustom(name, desc); };
   const zoneBd: Record<string, string> = { loot: '#ece9e3', ready: '#cbe0d2', bag: '#d6c7f0' };
   const zoneBg: Record<string, string> = { loot: '#fff', ready: '#f7fbf8', bag: '#faf8fd' };
   const moveStyle = (c: string, bd: string): React.CSSProperties => ({ padding: '3px 9px', border: `1px solid ${bd}`, background: '#fff', color: c, borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' });
@@ -367,20 +402,39 @@ function CharacterSheet({
             style={{ flex: 'none', cursor: 'grab', color: '#c9c5bd', fontSize: 14, lineHeight: 1, userSelect: 'none' }}
           >⠿</span>
           <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
-          {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า</span>}
+          {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
           <NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} />
           <span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span>
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
-          {z !== 'loot' && <button onClick={() => setInv(l.lineId, { zone: 'loot' })} style={moveStyle('#8d8a82', '#e0ded7')}>→ Loot</button>}
-          {hasBag && z !== 'bag' && <button onClick={() => setInv(l.lineId, { zone: 'bag' })} style={moveStyle('#5b3fa0', '#d6c7f0')}>→ สะพาย</button>}
+          {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
+          {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
+          {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
         </div>
         {CLOTHING_RE.test(l.name) && (
           <div style={{ marginTop: 6 }}>
             <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', marginBottom: 3 }}>👕 ลักษณะเสื้อผ้า</div>
             <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#fff', outline: 'none' }} />
+          </div>
+        )}
+        {WEAPON_RE.test(l.name) && (
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d' }}>🛡 ความทนทาน</span>
+              <NumField value={numData(l.dur)} onCommit={(v) => setInv(l.lineId, { dur: v })} width={44} style={{ fontSize: 11, padding: '2px 5px' }} />
+              <span style={{ fontSize: 11, color: '#a8a59d' }}>/</span>
+              <NumField value={numData(l.durMax)} onCommit={(v) => setInv(l.lineId, { durMax: v })} width={44} style={{ fontSize: 11, padding: '2px 5px' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', marginBottom: 3 }}>🌀 กระบวนท่า (เพิ่มเองได้)</div>
+              <textarea key={`a${l.arts}`} defaultValue={l.arts ?? ''} onBlur={(e) => { if (e.target.value !== (l.arts ?? '')) setInv(l.lineId, { arts: e.target.value }); }} placeholder="กระบวนท่าของอาวุธนี้ (บรรทัดละท่า)…" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#fff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5b3fa0', marginBottom: 3 }}>✨ สลักเวทมนตร์</div>
+              <textarea key={`e${l.engrave}`} defaultValue={l.engrave ?? ''} onBlur={(e) => { if (e.target.value !== (l.engrave ?? '')) setInv(l.lineId, { engrave: e.target.value }); }} placeholder="เวทมนตร์ที่สลักไว้ในอาวุธนี้…" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6c7f0', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#faf8fd', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+            </div>
           </div>
         )}
       </div>
@@ -390,7 +444,7 @@ function CharacterSheet({
   const dropZone = (zone: 'loot' | 'ready' | 'bag', children: React.ReactNode) => (
     <div
       onDragOver={(e) => { if (dragId) e.preventDefault(); }}
-      onDrop={(e) => { e.preventDefault(); if (dragId) { setInv(dragId, { zone }); setDragId(null); } }}
+      onDrop={(e) => { e.preventDefault(); if (dragId) { setInv(dragId, { zone, inBag: undefined }); setDragId(null); } }}
       style={{ display: 'flex', flexDirection: 'column', gap: 5, minHeight: 34, borderRadius: 8, outline: dragId ? '2px dashed #e0c4ba' : 'none', outlineOffset: 2, transition: 'outline .1s' }}
     >
       {children}
@@ -1182,9 +1236,28 @@ function CharacterSheet({
                   </div>
 
                   {/* LOOT */}
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#b06a2a', marginBottom: 6 }}>▾ LOOT (วางบนพื้น · ไม่นับน้ำหนัก)</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#b06a2a', marginBottom: 6 }}>▾ LOOT (วางบนพื้น · ไม่นับน้ำหนัก{campaignId ? ' · รวมของทั้งแคมเปญ' : ''})</div>
                   <div style={{ marginBottom: 14 }}>
-                    {dropZone('loot', loot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : loot.map(invRow))}
+                    {campaignId ? (
+                      sharedLoot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — (Loot รวมของแคมเปญ)</div> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {sharedLoot.map((it) => (
+                            <div key={it.id} style={{ border: '1px solid #ece9e3', borderRadius: 8, padding: '8px 10px', background: '#fff' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input key={it.name} defaultValue={it.name} onBlur={(e) => { if (e.target.value !== it.name) lootRename.mutate({ lootId: it.id, name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
+                                <button onClick={() => lootRemove.mutate(it.id)} title="ลบออกจาก Loot" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                                <span style={{ fontSize: 10.5, color: '#a8a59d', marginRight: 'auto' }}>{numData(it.kg)} kg{it.desc ? ` · ${it.desc}` : ''}</span>
+                                <button onClick={() => takeLoot(it)} style={moveStyle('#2f6b4f', '#cbe0d2')}>หยิบ → Ready</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      dropZone('loot', loot.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : loot.map(invRow))
+                    )}
                   </div>
 
                   {/* READY */}
@@ -1193,15 +1266,55 @@ function CharacterSheet({
                     {dropZone('ready', ready.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : ready.map(invRow))}
                   </div>
 
-                  {/* BAG — only once a bag-type item is owned */}
-                  {hasBag ? (
-                    <>
-                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#5b3fa0', marginBottom: 6 }}>▾ สะพาย / กระเป๋า (นับน้ำหนัก)</div>
-                      {dropZone('bag', carried.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : 'ลากของมาวางเพื่อเก็บเข้ากระเป๋า'}</div> : carried.map(invRow))}
-                    </>
-                  ) : (
+                  {/* BAG — worn bags become containers; each has its own capacity + drop zone */}
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#5b3fa0', marginBottom: 6 }}>▾ สะพาย / กระเป๋า (นับน้ำหนักเมื่อสวมใส่)</div>
+                  {bagWarn && <div style={{ fontSize: 11, color: '#c0432a', background: '#fdf1ee', border: '1px solid #f2cabf', borderRadius: 7, padding: '6px 10px', marginBottom: 8 }}>⚠️ {bagWarn}</div>}
+                  {!hasBag && (
                     <div style={{ fontSize: 10.5, color: '#a8a59d', padding: '9px 12px', border: '1px dashed #e0ded7', borderRadius: 8, lineHeight: 1.5 }}>🎒 ยังไม่มีกระเป๋า — เพิ่มกระเป๋าจาก Equipment &amp; Items เพื่อปลดล็อกพื้นที่ “สะพาย”</div>
                   )}
+                  {hasBag && wornBags.length === 0 && (
+                    <div style={{ fontSize: 10.5, color: '#a8a59d', padding: '9px 12px', border: '1px dashed #d6c7f0', borderRadius: 8, lineHeight: 1.5 }}>🎒 มีกระเป๋าแล้ว — กด “🎒 สวมใส่” ที่กระเป๋าใน LOOT/READY เพื่อเปิดใช้เป็นที่เก็บของ</div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {wornBags.map((b) => {
+                      const used = bagUsedKg(b.lineId);
+                      const cap = numData(b.cap);
+                      const full = cap > 0 && used >= cap;
+                      const items = contentsOf(b.lineId);
+                      return (
+                        <div key={b.lineId}
+                          onDragOver={(e) => { if (dragId) e.preventDefault(); }}
+                          onDrop={(e) => { e.preventDefault(); if (dragId) { moveToBag(dragId, b.lineId); setDragId(null); } }}
+                          style={{ border: `1px solid ${dragId ? '#c9a8f0' : '#e2d7f2'}`, borderRadius: 10, background: '#faf8fd', padding: '10px 11px', outline: dragId ? '2px dashed #d6c7f0' : 'none', outlineOffset: 2 }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <span style={{ flex: 'none', fontSize: 14 }}>🎒</span>
+                            <input key={b.name} defaultValue={b.name} onBlur={(e) => { if (e.target.value !== b.name) setInv(b.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontWeight: 800, color: '#4a3d6b' }} />
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: full ? '#c0432a' : '#7a6aa0' }}>{used}{cap > 0 ? ` / ${cap}` : ''} kg</span>
+                            <button onClick={() => setInv(b.lineId, { worn: false })} title="ถอดกระเป๋า (ไม่นับน้ำหนัก)" style={moveStyle('#8d8a82', '#e0ded7')}>ถอด</button>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {items.length === 0 ? (
+                              <div style={{ fontSize: 11, color: '#cbc8c0', padding: '4px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : 'ลากของมาวาง หรือกดปุ่ม “→ ' + b.name + '” ที่ไอเทม'}</div>
+                            ) : items.map((it) => (
+                              <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e2d7f2', borderRadius: 7, padding: '6px 9px', background: '#fff' }}>
+                                <span
+                                  draggable
+                                  onDragStart={(e) => { setDragId(it.lineId); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.lineId); }}
+                                  onDragEnd={() => setDragId(null)}
+                                  style={{ flex: 'none', cursor: 'grab', color: '#c9c5bd', fontSize: 13, lineHeight: 1, userSelect: 'none' }}
+                                >⠿</span>
+                                <input key={it.name} defaultValue={it.name} onBlur={(e) => { if (e.target.value !== it.name) setInv(it.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, fontWeight: 600, color: '#3c3a33' }} />
+                                <span style={{ fontSize: 10.5, color: '#a8a59d', flex: 'none' }}>{numData(it.kg)} kg</span>
+                                <button onClick={() => takeFromBag(it.lineId)} style={moveStyle('#2f6b4f', '#cbe0d2')}>เอาออก</button>
+                                <button onClick={() => delInv(it.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -1560,7 +1673,7 @@ function CharacterSheet({
       {/* ── Equipment & Items picker → receive into LOOT ── */}
       <Modal open={invPicker} onClose={() => setInvPicker(false)} title="Equipment & Items">
         <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เลือกสิ่งของแล้วกด “รับ” เพื่อเก็บเข้ากอง LOOT — จากนั้นลากไปยัง Ready หรือกระเป๋าได้</p>
-        <EquipPicker onPick={receiveItem} />
+        <EquipPicker onPick={pickToInv} onAddCustom={addCustomInv} />
       </Modal>
 
       {/* ── "ท้าทาย" per-skill challenge popup ── */}
@@ -3623,8 +3736,9 @@ const coinStr = (ic: number) => {
 };
 const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; worn?: boolean; cap?: number; inBag?: string }
 const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;
+const WEAPON_RE = /weapon|อาวุธ|sword|blade|ดาบ|axe|ขวาน|bow|ธนู|spear|หอก|dagger|มีด|gun|ปืน|hammer|ค้อน|shield|โล่/i;
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
@@ -3640,9 +3754,11 @@ async function fetchEquipment(): Promise<CatalogItem[]> {
 
 // Equipment & Items picker used on the sheet's inventory tab. Picking an item
 // "receives" it (no payment) into LOOT with its real weight from item data.
-function EquipPicker({ onPick, match, actionLabel = 'รับ' }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string }) {
+function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string; onAddCustom?: (name: string, desc: string) => void }) {
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [cName, setCName] = useState('');
+  const [cDesc, setCDesc] = useState('');
   const [added, setAdded] = useState<Record<string, number>>({});
   const { data: all, isLoading } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
   const pool = (all ?? []).filter((m) => !match || match(m));
@@ -3659,6 +3775,18 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ' }: { onPick: (m:
             const on = tagFilter === t;
             return <button key={t} onClick={() => setTagFilter(on ? null : t)} style={{ border: `1px solid ${on ? '#e07a5f' : '#e0ded7'}`, background: on ? '#fdf4f1' : '#fff', color: on ? '#c15a3f' : '#8d8a82', borderRadius: 20, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>{t}</button>;
           })}
+        </div>
+      )}
+      {onAddCustom && (
+        <div style={{ marginTop: 12, padding: '11px 12px', border: '1px dashed #d8d5cd', borderRadius: 12, background: '#faf9f6' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: '#8d8a82', letterSpacing: .3, marginBottom: 8 }}>＋ เพิ่มไอเทมเอง</div>
+          <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="ชื่อไอเทม" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 13, background: '#fff', marginBottom: 7 }} />
+          <textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)} placeholder="คำอธิบาย (ไม่บังคับ)" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 12.5, background: '#fff', resize: 'vertical', fontFamily: 'inherit' }} />
+          <button
+            disabled={!cName.trim()}
+            onClick={() => { onAddCustom(cName.trim(), cDesc.trim()); setCName(''); setCDesc(''); }}
+            style={{ marginTop: 8, width: '100%', border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 12.5, fontWeight: 700, cursor: cName.trim() ? 'pointer' : 'not-allowed', background: cName.trim() ? '#2f2c25' : '#d8d5cd', color: '#fff' }}
+          >เพิ่มลง Loot</button>
         </div>
       )}
       {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}

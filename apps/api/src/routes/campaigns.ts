@@ -130,7 +130,46 @@ campaignsRouter.get('/for-character/:characterId', async (req, res) => {
   if (!member) { res.json({ campaign: null }); return; }
   if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.json({ campaign: null }); return; }
   const data = parseData(member.campaign.data);
-  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [], initiative: Array.isArray(data.initiative) ? data.initiative : [] } });
+  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [], initiative: Array.isArray(data.initiative) ? data.initiative : [], loot: Array.isArray(data.loot) ? data.loot : [] } });
+});
+
+// Shared LOOT pool — every member of the campaign sees the same items.
+async function memberCampaign(characterId: string, meId: string) {
+  const m = await prisma.campaignMember.findUnique({ where: { characterId }, include: { campaign: true, character: true } });
+  if (!m) return null;
+  if (m.character.ownerUserId !== meId && m.campaign.librarianUserId !== meId) return null;
+  return m;
+}
+campaignsRouter.post('/loot/add', async (req, res) => {
+  const m = await memberCampaign(String(req.body?.characterId ?? ''), req.currentUser!.id);
+  if (!m) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  const it = (req.body?.item ?? {}) as Record<string, unknown>;
+  const data = parseData(m.campaign.data);
+  const loot = (Array.isArray(data.loot) ? data.loot : []) as unknown[];
+  data.loot = [...loot, { id: `L${Date.now()}${Math.floor(Math.random() * 999)}`, name: String(it.name ?? 'สิ่งของ'), kg: Number(it.kg) || 0, desc: typeof it.desc === 'string' ? it.desc : '', itemId: typeof it.itemId === 'string' ? it.itemId : '' }];
+  await prisma.campaign.update({ where: { id: m.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.post('/loot/remove', async (req, res) => {
+  const m = await memberCampaign(String(req.body?.characterId ?? ''), req.currentUser!.id);
+  if (!m) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  const lootId = String(req.body?.lootId ?? '');
+  const data = parseData(m.campaign.data);
+  const loot = (Array.isArray(data.loot) ? data.loot : []) as { id: string }[];
+  data.loot = loot.filter((x) => x.id !== lootId);
+  await prisma.campaign.update({ where: { id: m.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.post('/loot/rename', async (req, res) => {
+  const m = await memberCampaign(String(req.body?.characterId ?? ''), req.currentUser!.id);
+  if (!m) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  const lootId = String(req.body?.lootId ?? '');
+  const name = String(req.body?.name ?? '');
+  const data = parseData(m.campaign.data);
+  const loot = (Array.isArray(data.loot) ? data.loot : []) as { id: string; name: string }[];
+  data.loot = loot.map((x) => (x.id === lootId ? { ...x, name } : x));
+  await prisma.campaign.update({ where: { id: m.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
 });
 
 // Set/update a Dweller's initiative in its campaign's turn order (owner or librarian).
