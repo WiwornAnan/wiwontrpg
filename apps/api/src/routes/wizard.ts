@@ -32,22 +32,38 @@ function emptyLevels(): WizardLevel[] {
   return Array.from({ length: LEVELS }, (_, i) => ({ lv: i + 1, note: '', options: [] }));
 }
 
-wizardRouter.get('/class-levels/:refId', async (req, res) => {
-  const row = await prisma.wizardTemplate.findUnique({
-    where: { kind_refId: { kind: 'class-levels', refId: req.params.refId } },
-  });
-  let levels = emptyLevels();
-  if (row) {
-    try {
-      const parsed = templateSchema.safeParse(JSON.parse(row.data));
-      if (parsed.success) {
-        // Normalise to exactly Lv 1–15, keeping any authored level as-is.
-        const byLv = new Map(parsed.data.levels.map((l) => [l.lv, l]));
-        levels = emptyLevels().map((l) => byLv.get(l.lv) ?? l);
-      }
-    } catch {
-      /* fall back to empty */
+// Parse a class-levels row into a normalised Lv 1–15 table (or empty if absent).
+function levelsFromRow(row: { data: string } | null): WizardLevel[] {
+  if (!row) return emptyLevels();
+  try {
+    const parsed = templateSchema.safeParse(JSON.parse(row.data));
+    if (parsed.success) {
+      const byLv = new Map(parsed.data.levels.map((l) => [l.lv, l]));
+      return emptyLevels().map((l) => byLv.get(l.lv) ?? l);
     }
+  } catch {
+    /* fall back to empty */
+  }
+  return emptyLevels();
+}
+
+// Every class except Boundless shares Vanguard's default Lv 1–15 table (they're
+// identical to start); once a class saves its own table it uses that instead.
+const BOUNDLESS_RE = /boundless/i;
+const VANGUARD_REFS = ['Vanguard', 'Vanguard Class'];
+
+wizardRouter.get('/class-levels/:refId', async (req, res) => {
+  const refId = req.params.refId;
+  const row = await prisma.wizardTemplate.findUnique({
+    where: { kind_refId: { kind: 'class-levels', refId } },
+  });
+  let levels = levelsFromRow(row);
+  // No own table yet + not Boundless + not Vanguard itself → inherit Vanguard's.
+  if (!row && !BOUNDLESS_RE.test(refId) && !VANGUARD_REFS.includes(refId)) {
+    const vRow = await prisma.wizardTemplate.findFirst({
+      where: { kind: 'class-levels', refId: { in: VANGUARD_REFS } },
+    });
+    if (vRow) levels = levelsFromRow(vRow);
   }
   res.json({ template: { levels } });
 });

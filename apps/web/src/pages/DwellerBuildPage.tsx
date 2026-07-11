@@ -813,8 +813,21 @@ function CharacterSheet({
             ) : (
               <h1 onDoubleClick={() => setEditName(true)} title="ดับเบิลคลิกเพื่อเปลี่ยนชื่อ" style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 30, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}>{character.name || 'ตัวละครใหม่'}</h1>
             )}
-            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: <b style={{ color: '#eae7df', fontWeight: 800 }}>{raceName || '—'}{ancestryName ? ` | ${ancestryName}` : ''}</b></div>
-            <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 3 }}>Class Feature: {str('className') || '—'} | LV. {level}</div>
+            {(() => {
+              const raceItem = featItemById.get(str('race'));
+              const ancestryItem = featItemById.get(str('ancestry'));
+              const classItem = featItemById.get(str('classFeatureId'));
+              const link: React.CSSProperties = { color: '#f7dca0', fontWeight: 800, background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 };
+              const nameNode = (label: string, item?: CatalogItem) => item
+                ? <button onClick={() => openInfo(item, true)} title={`ดูข้อมูล: ${label}`} style={link}>{label} ⓘ</button>
+                : <b style={{ color: '#eae7df', fontWeight: 800 }}>{label}</b>;
+              return (
+                <>
+                  <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 6 }}>เผ่าพันธุ์: {raceName ? nameNode(raceName, raceItem) : <b style={{ color: '#eae7df' }}>—</b>}{ancestryName ? <> | {nameNode(ancestryName, ancestryItem)}</> : ''}</div>
+                  <div style={{ fontSize: 12.5, color: '#c9c5bd', marginTop: 3 }}>Class Feature: {str('className') ? nameNode(str('className'), classItem) : '—'} | LV. {level}</div>
+                </>
+              );
+            })()}
           </div>
           <div style={{ flex: 'none', width: 260, textAlign: 'right', overflow: 'hidden' }}>
             {editCamp ? (
