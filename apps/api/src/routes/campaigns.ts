@@ -232,7 +232,8 @@ campaignsRouter.post('/:id/initiative/clear', async (req, res) => {
 });
 
 // Append an entry to the campaign's shared log (roll / magic / feature use).
-const rollInput = z.object({ ego: z.number(), ambient: z.number(), fortuity: z.number(), total: z.number(), egoFaces: z.number(), egoMode: z.string().optional(), ambientMode: z.string().optional(), fortuityMode: z.string().optional(), special: z.string().optional() });
+const rollPart = z.object({ label: z.string(), value: z.number(), faces: z.number().optional(), mode: z.string().optional(), color: z.string().optional() });
+const rollInput = z.object({ total: z.number(), parts: z.array(rollPart).optional(), ego: z.number().optional(), ambient: z.number().optional(), fortuity: z.number().optional(), egoFaces: z.number().optional(), egoMode: z.string().optional(), ambientMode: z.string().optional(), fortuityMode: z.string().optional(), special: z.string().optional() });
 const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400), itemId: z.string().optional(), isFeature: z.boolean().optional(), roll: rollInput.optional() });
 campaignsRouter.post('/log', async (req, res) => {
   const me = req.currentUser!.id;

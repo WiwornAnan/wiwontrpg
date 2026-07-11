@@ -16,8 +16,21 @@ import type { SkillAttr } from '../data/dwellerSkills';
 
 const TOTAL_STEPS = 11;
 // Shared roll-log presentation (mirrors the Dice Astrolabe's own LOG panel).
-const rollSym = (m?: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
-const rollTotalColor = (r: { ego: number; ambient: number; fortuity: number }) => {
+const rollSym = (m?: string) => (m === 'adv' ? '▲' : m === 'dis' ? '▼' : '');
+interface RollPart { label: string; value: number; faces?: number; mode?: string; color?: string }
+interface RollLike { total: number; parts?: RollPart[]; ego?: number; ambient?: number; fortuity?: number; egoFaces?: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
+// Normalise any roll (new generic `parts`, or legacy Ego/Ambient/Fortuity) into a part list.
+const rollParts = (r: RollLike): RollPart[] => {
+  if (r.parts && r.parts.length) return r.parts;
+  if (r.ego !== undefined) return [
+    { label: 'Ego', value: r.ego, faces: r.egoFaces, mode: r.egoMode, color: '#e05a5a' },
+    { label: 'Amb', value: r.ambient ?? 0, faces: 8, mode: r.ambientMode, color: '#4fb99f' },
+    { label: 'For', value: r.fortuity ?? 0, faces: 10, mode: r.fortuityMode, color: '#f0c76a' },
+  ];
+  return [];
+};
+const rollTotalColor = (r: RollLike) => {
+  if (r.ego === undefined || r.ambient === undefined || r.fortuity === undefined) return '#f0c76a';
   const triple = r.ego === r.ambient && r.ambient === r.fortuity;
   if ((triple && r.ego === 1) || r.fortuity === 1) return '#f0554a';
   if ((triple && r.ego >= 2 && r.ego <= 8) || r.fortuity === 10) return '#f0c76a';
@@ -224,7 +237,7 @@ function CharacterSheet({
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
   // Shared campaign roll/action log (real-time, if this character is in a campaign)
-  interface RollData { ego: number; ambient: number; fortuity: number; total: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
+  interface RollData { total: number; parts?: Array<{ label: string; value: number; faces?: number; mode?: string; color?: string }>; ego?: number; ambient?: number; fortuity?: number; egoFaces?: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
   interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; itemId?: string; isFeature?: boolean; roll?: RollData }
   interface InitEntry { id: string; name: string; value: number; kind: string }
   interface LootItem { id: string; name: string; kg?: number; desc?: string; itemId?: string }
@@ -762,7 +775,11 @@ function CharacterSheet({
     const dex = rollDie(dexF), per = rollDie(perF);
     const val = 10 + dex + per;
     setSheet({ initiativeRolled: val });
-    logRef.current('roll', `⚔️ Initiative → ${val} (10 + DEX d${dexF}=${dex} + PER d${perF}=${per})`);
+    logRef.current('roll', `⚔️ Initiative`, { roll: { total: val, parts: [
+      { label: 'ฐาน', value: 10 },
+      { label: 'DEX', value: dex, faces: dexF, color: '#2a6fdb' },
+      { label: 'PER', value: per, faces: perF, color: '#c15a3f' },
+    ] } });
     if (campaignId) postInit.mutate(val);
   };
   const EHEN_DENSITY = [
@@ -1026,9 +1043,9 @@ function CharacterSheet({
                             {r && (
                               <div style={{ marginTop: 5, display: 'flex', gap: 12, alignItems: 'center' }}>
                                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'center' }}>
-                                  <span style={{ color: '#e05a5a', fontWeight: 700 }}>Ego {r.ego}<span style={{ color: '#7a7a72', fontWeight: 400 }}> d{r.egoFaces}{rollSym(r.egoMode)}</span></span>
-                                  <span style={{ color: '#4fb99f', fontWeight: 700 }}>Amb {r.ambient}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{rollSym(r.ambientMode)}</span></span>
-                                  <span style={{ color: '#f0c76a', fontWeight: 700 }}>For {r.fortuity}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{rollSym(r.fortuityMode)}</span></span>
+                                  {rollParts(r).map((p, pi) => (
+                                    <span key={pi} style={{ color: p.color ?? '#cbc3b4', fontWeight: 700 }}>{p.label} {p.value}<span style={{ color: '#7a7a72', fontWeight: 400 }}>{p.faces ? ` d${p.faces}` : ''}</span>{p.mode && p.mode !== 'normal' && <span style={{ marginLeft: 3, fontWeight: 800, color: p.mode === 'adv' ? '#2fd18b' : '#ff6a6a' }}>{rollSym(p.mode)}{p.mode === 'adv' ? 'Adv' : 'Dis'}</span>}</span>
+                                  ))}
                                 </div>
                                 <div style={{ flex: 'none', textAlign: 'center', background: '#1c1e12', border: `1px solid ${rollTotalColor(r)}55`, borderRadius: 12, padding: '5px 13px', minWidth: 60 }}>
                                   <div style={{ fontSize: 9, fontWeight: 700, color: '#a8a8a0', letterSpacing: '.08em' }}>รวม</div>
