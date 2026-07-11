@@ -223,7 +223,7 @@ function CharacterSheet({
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
   const [handWarn, setHandWarn] = useState(''); // "มือไม่ว่างพอ" for Two-Handed weapons
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
-  const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false });
+  const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false, noSleep: false });
   const [magicPicker, setMagicPicker] = useState(false);
   const [featPicker, setFeatPicker] = useState(false);
   const [magicTab, setMagicTab] = useState('known');
@@ -755,6 +755,7 @@ function CharacterSheet({
     if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
     if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
     if (!lr.safe) { scratchGain = Math.floor(scratchGain / 2); sanGain = Math.floor(sanGain / 2); wpGain = Math.floor(wpGain / 2); if (woundDelta < 0) woundDelta = Math.ceil(woundDelta / 2); notes.push('สถานที่ไม่ปลอดภัย — ผลฟื้นฟูเหลือครึ่ง (ปัดลง)'); }
+    if (lr.noSleep) { scratchGain = 0; notes.push('นอนไม่หลับ — ไม่ฟื้น Scratch'); }
     // Long Rest clears all Active-Feature use counts back to 0.
     const featReset = Object.fromEntries(Object.entries(featTrack).map(([k, v]) => [k, { ...v, used: 0 }]));
     const usedFeatCount = Object.values(featTrack).filter((v) => (v.used ?? 0) > 0).length;
@@ -1290,6 +1291,7 @@ function CharacterSheet({
                           {cbx('ฝันดี', lr.goodDream, () => setLr((v) => ({ ...v, goodDream: !v.goodDream })))}
                           {cbx('อาหารวันนี้ไม่อร่อย', lr.badFood, () => setLr((v) => ({ ...v, badFood: !v.badFood })))}
                           {cbx('ฝันร้าย', lr.badDream, () => setLr((v) => ({ ...v, badDream: !v.badDream })))}
+                          {cbx('นอนไม่หลับ', lr.noSleep, () => setLr((v) => ({ ...v, noSleep: !v.noSleep })))}
                         </div>
                         {(() => {
                           const usedFeats = featRows.filter((r) => (featTrack[r.key]?.used ?? 0) > 0);
