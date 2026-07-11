@@ -273,6 +273,20 @@ campaignsRouter.post('/:id/log/clear', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Librarian posts a GM roll/entry to the shared log (campaign-scoped, no member).
+campaignsRouter.post('/:id/log', async (req, res) => {
+  const c = await prisma.campaign.findUnique({ where: { id: req.params.id } });
+  if (!c || c.librarianUserId !== req.currentUser!.id) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const parsed = logInput.omit({ characterId: true }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); return; }
+  const data = parseData(c.data);
+  const log = Array.isArray(data.log) ? (data.log as unknown[]) : [];
+  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: '', characterName: 'Librarian 📖', kind: parsed.data.kind, text: parsed.data.text, ...(parsed.data.roll ? { roll: parsed.data.roll } : {}) });
+  data.log = log.slice(-80);
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+
 // Librarian broadcasts Buff/Debuff to every member's Dweller Sheet.
 const statusInput = z.object({
   buffsOn: z.record(z.boolean()).optional(),

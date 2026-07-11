@@ -8,18 +8,24 @@ import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 import { BUFF_EFFECTS, STATUS_EFFECTS } from '../data/statusEffects';
 import type { CampaignDTO } from '../data/statusEffects';
+import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
+import { CatalogDetail } from '../components/CatalogDetail';
+import { CATALOG_CONFIGS } from '@wiwonanant/shared';
 import type { CatalogItem } from '@wiwonanant/shared';
 
+const SKILL_DICE = [2, 4, 6, 8, 10, 12, 20];
+
 const STEP10: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, X: 2 };
-async function fetchMonsters(): Promise<CatalogItem[]> {
+async function fetchCatalogAll(category: string): Promise<CatalogItem[]> {
   const out: CatalogItem[] = [];
   for (let page = 1; page < 50; page++) {
-    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/monster?scope=all&page=${page}`);
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/${category}?scope=all&page=${page}`);
     out.push(...d.items);
     if (d.items.length === 0 || out.length >= d.total) break;
   }
   return out;
 }
+const fetchMonsters = () => fetchCatalogAll('monster');
 
 const DAYS = 30, MONTHS = 12;
 const MONTH_NAMES = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -36,7 +42,7 @@ interface Note { id: string; title: string; text: string }
 interface CalNote { id: string; year: number; month: number; day: number; text: string }
 interface RollPart { label: string; value: number; faces?: number; mode?: string; color?: string }
 interface RollData { total: number; parts?: RollPart[]; ego?: number; ambient?: number; fortuity?: number; egoFaces?: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
-interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData }
+interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData; itemId?: string; isFeature?: boolean }
 interface InitEntry { id: string; name: string; value: number; kind: string }
 const rollD = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
 const rollSym = (m?: string) => (m === 'adv' ? '▲' : m === 'dis' ? '▼' : '');
@@ -102,7 +108,13 @@ export function CampaignPage() {
   const [monQuery, setMonQuery] = useState('');
   const [selDay, setSelDay] = useState<number | null>(null); // calendar day whose notes are shown
   const [calNoteText, setCalNoteText] = useState('');
+  const [skillDie, setSkillDie] = useState<Record<string, number>>({}); // per-skill chosen die faces
+  const [skillQuery, setSkillQuery] = useState('');
+  const [detail, setDetail] = useState<CatalogItem | null>(null); // log ⓘ detail
   const { data: monsters } = useQuery({ queryKey: ['campaign-monsters'], queryFn: fetchMonsters, enabled: !!user });
+  const { data: magicAll } = useQuery({ queryKey: ['campaign-magic'], queryFn: () => fetchCatalogAll('magic'), enabled: !!user });
+  const magicById = new Map((magicAll ?? []).map((m) => [m.id, m]));
+  const postGMRoll = useMutation({ mutationFn: (b: { kind: string; text: string; roll?: RollData }) => api.post(`/campaigns/${id}/log`, b), onSuccess: invalidate });
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
@@ -288,9 +300,11 @@ export function CampaignPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
                 {log.slice().reverse().map((l) => {
                   const r = l.roll;
+                  const refItem = l.itemId ? magicById.get(l.itemId) : undefined;
                   return (
                     <div key={l.id} style={{ fontSize: 12.5, color: '#3c3a33', lineHeight: 1.5, borderBottom: '1px solid #f4f1ec', paddingBottom: 6 }}>
                       <span style={{ fontWeight: 800, color: '#5c4a2e' }}>{l.characterName}</span> <span style={{ color: '#a8a59d', fontSize: 11 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                      {refItem && <button onClick={() => setDetail(refItem)} title="ดูข้อมูลจากต้นฉบับ" style={{ marginTop: 3, display: 'inline-block', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ⓘ ดูข้อมูล{l.isFeature ? ' Feature' : 'เวท'}</button>}
                       {r && (
                         <div style={{ marginTop: 5, display: 'flex', gap: 12, alignItems: 'center' }}>
                           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, alignItems: 'center' }}>
@@ -311,6 +325,29 @@ export function CampaignPage() {
               </div>
             )}
           </div>
+
+          {/* Dweller Skill roller — Librarian picks the die and rolls (for NPCs / GM checks) */}
+          {c.isLibrarian && (
+            <div style={box}>
+              <div style={secLabel}>🎲 Dweller Skill <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เลือกลูกเต๋าแล้วทอยเอง</span></div>
+              <input value={skillQuery} onChange={(e) => setSkillQuery(e.target.value)} placeholder="🔍 ค้นหาสกิล…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 12.5, marginBottom: 8, background: '#fff' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
+                {DWELLER_SKILLS.flatMap((cat) => cat.skills).filter((sk) => { const q = skillQuery.trim().toLowerCase(); return !q || sk.name.toLowerCase().includes(q) || sk.en.toLowerCase().includes(q) || sk.attr.toLowerCase().includes(q); }).map((sk) => {
+                  const faces = skillDie[sk.en] ?? 6;
+                  return (
+                    <div key={sk.en} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, border: '1px solid #efece6', background: '#faf9f7' }}>
+                      <span style={{ flex: 'none', fontSize: 9.5, fontWeight: 800, color: '#fff', background: SKILL_ATTR_COLOR[sk.attr], borderRadius: 5, padding: '2px 6px' }}>{sk.attr}</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sk.desc}>{sk.name}</span>
+                      <select value={faces} onChange={(e) => setSkillDie((m) => ({ ...m, [sk.en]: Number(e.target.value) }))} style={{ flex: 'none', border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 6px', fontSize: 11.5, background: '#fff' }}>
+                        {SKILL_DICE.map((f) => <option key={f} value={f}>d{f}</option>)}
+                      </select>
+                      <button onClick={() => { const val = rollD(faces); postGMRoll.mutate({ kind: 'roll', text: `🎲 ${sk.name} (${sk.attr})`, roll: { total: val, parts: [{ label: sk.attr, value: val, faces, color: SKILL_ATTR_COLOR[sk.attr] }] } }); }} style={{ flex: 'none', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>ทอย</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: clock/calendar + notes */}
@@ -444,6 +481,10 @@ export function CampaignPage() {
       <Modal open={delOpen} onClose={() => setDelOpen(false)} title="ยืนยันการลบแคมเปญ"
         footer={<><Button variant="ghost" onClick={() => setDelOpen(false)}>ยกเลิก</Button><Button variant="danger" disabled={delCamp.isPending} onClick={() => delCamp.mutate()}>ลบถาวร</Button></>}>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>แน่ใจแล้วใช่ไหมว่าจะลบ <b>{c.name}</b>? ผู้เล่นทั้งหมดจะถูกนำออกจากแคมเปญ (ตัวละครไม่ถูกลบ)</p>
+      </Modal>
+
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''}>
+        {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS[detail.category]} category={detail.category} isFeature={!!detail.isFeature} onEdit={() => {}} />}
       </Modal>
     </div>
   );
