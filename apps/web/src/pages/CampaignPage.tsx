@@ -8,6 +8,18 @@ import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 import { BUFF_EFFECTS, STATUS_EFFECTS } from '../data/statusEffects';
 import type { CampaignDTO } from '../data/statusEffects';
+import type { CatalogItem } from '@wiwonanant/shared';
+
+const STEP10: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, X: 2 };
+async function fetchMonsters(): Promise<CatalogItem[]> {
+  const out: CatalogItem[] = [];
+  for (let page = 1; page < 50; page++) {
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/monster?scope=all&page=${page}`);
+    out.push(...d.items);
+    if (d.items.length === 0 || out.length >= d.total) break;
+  }
+  return out;
+}
 
 const DAYS = 30, MONTHS = 12;
 const MONTH_NAMES = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -65,6 +77,9 @@ export function CampaignPage() {
   const delInit = useMutation({ mutationFn: (entryId: string) => api.delete(`/campaigns/${id}/initiative/${entryId}`), onSuccess: invalidate });
   const clearInit = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/initiative/clear`, {}), onSuccess: invalidate });
   const [monName, setMonName] = useState('');
+  const [monPicker, setMonPicker] = useState(false);
+  const [monQuery, setMonQuery] = useState('');
+  const { data: monsters } = useQuery({ queryKey: ['campaign-monsters'], queryFn: fetchMonsters, enabled: !!user });
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
@@ -169,10 +184,13 @@ export function CampaignPage() {
               </div>
             )}
             {c.isLibrarian && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <input value={monName} onChange={(ev) => setMonName(ev.target.value)} placeholder="ชื่อมอนสเตอร์ / NPC" style={{ flex: 1, minWidth: 120, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
-                <button onClick={() => { if (monName.trim()) { addMonster.mutate({ name: monName.trim(), value: 10 + rollD(6) + rollD(6) }); setMonName(''); } }} disabled={!monName.trim()} title="เพิ่ม + ทอย Initiative (10 + d6 + d6)" style={{ border: 'none', background: monName.trim() ? '#b4513a' : '#cfccc4', color: '#fff', borderRadius: 8, padding: '7px 13px', fontSize: 12, fontWeight: 700, cursor: monName.trim() ? 'pointer' : 'not-allowed' }}>👹 เพิ่ม + ทอย</button>
-              </div>
+              <>
+                <button onClick={() => { setMonQuery(''); setMonPicker(true); }} style={{ width: '100%', border: '1px solid #f0d3cb', background: '#fbeae6', color: '#b4513a', borderRadius: 8, padding: '8px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', marginBottom: 6 }}>👹 เพิ่มจากคลัง Monster (ทอย 10 + DEX + PER)</button>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <input value={monName} onChange={(ev) => setMonName(ev.target.value)} placeholder="ชื่อ NPC เอง" style={{ flex: 1, minWidth: 120, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                  <button onClick={() => { if (monName.trim()) { addMonster.mutate({ name: monName.trim(), value: 10 + rollD(6) + rollD(6) }); setMonName(''); } }} disabled={!monName.trim()} title="เพิ่ม NPC + ทอย (10 + d6 + d6)" style={{ border: 'none', background: monName.trim() ? '#59544c' : '#cfccc4', color: '#fff', borderRadius: 8, padding: '7px 13px', fontSize: 12, fontWeight: 700, cursor: monName.trim() ? 'pointer' : 'not-allowed' }}>+ NPC</button>
+                </div>
+              </>
             )}
           </div>
 
@@ -295,6 +313,27 @@ export function CampaignPage() {
           )}
         </div>
       </div>
+
+      <Modal open={monPicker} onClose={() => setMonPicker(false)} title="เพิ่มมอนสเตอร์เข้า Initiative" dark>
+        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 10px' }}>กด “เพิ่ม + ทอย” เพื่อทอย Initiative = 10 + DEX + PER จากค่าจริงของมอนสเตอร์</p>
+        <input value={monQuery} onChange={(e) => setMonQuery(e.target.value)} placeholder="🔍 ค้นหามอนสเตอร์…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #3a3730', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#221f1a', color: '#f3ede1', outline: 'none', marginBottom: 10 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 400, overflowY: 'auto' }}>
+          {(monsters ?? []).filter((m) => !monQuery.trim() || m.name.toLowerCase().includes(monQuery.toLowerCase())).map((m) => {
+            const dexG = String(m.fields.coreDEX ?? '—'), perG = String(m.fields.corePER ?? '—');
+            const dexF = STEP10[dexG] ?? 0, perF = STEP10[perG] ?? 0;
+            return (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid #35322b', background: '#26231e' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#f3ede1' }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: '#9a978e' }}>DEX {dexG} (d{dexF || '?'}) · PER {perG} (d{perF || '?'})</div>
+                </div>
+                <button onClick={() => { const val = 10 + rollD(dexF) + rollD(perF); addMonster.mutate({ name: m.name, value: val }); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#b4513a', color: '#fff' }}>เพิ่ม + ทอย</button>
+              </div>
+            );
+          })}
+          {(monsters ?? []).length === 0 && <div style={{ fontSize: 12.5, color: '#8d8a82', textAlign: 'center', padding: '14px 0' }}>ยังไม่มีมอนสเตอร์ในคลัง</div>}
+        </div>
+      </Modal>
 
       <Modal open={delOpen} onClose={() => setDelOpen(false)} title="ยืนยันการลบแคมเปญ"
         footer={<><Button variant="ghost" onClick={() => setDelOpen(false)}>ยกเลิก</Button><Button variant="danger" disabled={delCamp.isPending} onClick={() => delCamp.mutate()}>ลบถาวร</Button></>}>

@@ -623,6 +623,7 @@ function CharacterSheet({
     setRestMsg(`พักยาว (Long Rest): ${notes.join(' · ')}`);
   };
   // Initiative = 10 + roll(DEX core die) + roll(PER core die)
+  const resetInitiative = () => { setSheet({ initiativeRolled: 0 }); if (campaignId) postInit.mutate(0); };
   const rollInitiative = () => {
     const dexF = STEP10_FACES[byAbbr['DEX'] ?? ''] ?? 0;
     const perF = STEP10_FACES[byAbbr['PER'] ?? ''] ?? 0;
@@ -858,20 +859,20 @@ function CharacterSheet({
 
           {/* Middle */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {campaignId && (
-              <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
-                {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
-                  <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4 }}>
-                    {campaignLog.slice().reverse().map((l) => (
-                      <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
-                        <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
+              {!campaignId ? (
+                <div style={{ fontSize: 12, color: '#6b6860', lineHeight: 1.6 }}>ตัวละครนี้ยังไม่อยู่ในแคมเปญ — เข้าร่วมแคมเปญ (หน้า Dweller → “เข้าร่วมด้วยรหัส”) เพื่อใช้ Log ประวัติการทอยร่วมกัน</div>
+              ) : campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
+                <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4 }}>
+                  {campaignLog.slice().reverse().map((l) => (
+                    <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
+                      <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div style={box}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ ...secTitle, color: '#2f6b4f' }}>สถานะเสริม (Buff)</span>
@@ -964,15 +965,14 @@ function CharacterSheet({
           {/* Right */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-              <button
-                onClick={rollInitiative}
-                title="ทอย Initiative = 10 + DEX + PER"
-                style={{ ...box, flex: 1, background: '#f4f2ee', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}
-              >
-                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL 🎲</span>
-                <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 20 }}>{sv('initiativeRolled', 0) || '—'}</b></span>
-                <span style={{ fontSize: 10, color: '#b0ada4' }}>10 + DEX + PER · กดเพื่อทอย</span>
-              </button>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+                <button onClick={resetInitiative} title="รีเซ็ต Initiative เป็น 0" style={{ position: 'absolute', top: 8, right: 8, border: '1px solid #d8d4cc', background: '#fff', color: '#8d8a82', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Reset</button>
+                <button onClick={rollInitiative} title="ทอย Initiative = 10 + DEX + PER" style={{ border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL 🎲</span>
+                  <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 20 }}>{sv('initiativeRolled', 0) || '—'}</b></span>
+                  <span style={{ fontSize: 10, color: '#b0ada4' }}>10 + DEX + PER · กดเพื่อทอย</span>
+                </button>
+              </div>
               <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
                 <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + naFromGear}</div>
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
