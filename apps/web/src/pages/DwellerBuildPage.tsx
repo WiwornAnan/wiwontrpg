@@ -695,10 +695,14 @@ function CharacterSheet({
   // ── On-Hand slots (right / left / tail) — only Weapon / Shield / Artifact ──
   interface HandItem { name: string; itemId?: string; kg?: number; na?: number; twoHand?: boolean; linkedTo?: string; secondary?: boolean }
   interface HandSlot { key: string; label: string; extra?: boolean }
-  const BASE_HAND_SLOTS: HandSlot[] = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
+  // Only the player's own slots: two hands by default. Extra slots (หาง / เกราะ /
+  // etc.) are added by the player. A legacy "tail" slot is kept only if it holds an item.
+  const handsNow = sheet.hands && typeof sheet.hands === 'object' ? (sheet.hands as Record<string, unknown>) : {};
+  const BASE_HAND_SLOTS: HandSlot[] = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, ...(handsNow.tail ? [{ key: 'tail', label: 'หาง' }] : [])];
   const handExtra: HandSlot[] = Array.isArray(sheet.handSlotsExtra) ? (sheet.handSlotsExtra as HandSlot[]).map((s) => ({ ...s, extra: true })) : [];
   const HAND_SLOTS: HandSlot[] = [...BASE_HAND_SLOTS, ...handExtra];
-  const addHandSlot = () => setSheet({ handSlotsExtra: [...handExtra.map(({ key, label }) => ({ key, label })), { key: `hs${Date.now()}`, label: 'สวมเกราะ' }] });
+  const addHandSlot = () => setSheet({ handSlotsExtra: [...handExtra.map(({ key, label }) => ({ key, label })), { key: `hs${Date.now()}`, label: 'ช่องใหม่' }] });
+  const renameHandSlot = (key: string, label: string) => setSheet({ handSlotsExtra: handExtra.map(({ key: k, label: l }) => (k === key ? { key: k, label } : { key: k, label: l })) });
   const removeHandSlot = (key: string) => { const n = { ...hands }; delete n[key]; setSheet({ handSlotsExtra: handExtra.filter((s) => s.key !== key).map(({ key: k, label }) => ({ key: k, label })), hands: n }); };
   const HAND_RE = /weapon|อาวุธ|shield|โล่|armor|เกราะ|artifact|อาร์ติแฟกต์|วัตถุโบราณ/i;
   const DEFENSIVE_RE = /shield|โล่|armor|เกราะ/i; // adds Natural Defense when equipped
@@ -1253,7 +1257,7 @@ function CharacterSheet({
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45' }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· Weapon / Shield / Artifact · กด Use เพื่อถือ</span></span>
-                          <button onClick={addHandSlot} style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#eef6f0', color: '#2f6b4f', borderRadius: 8, padding: '5px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ สวมเกราะ</button>
+                          <button onClick={addHandSlot} title="เพิ่มช่อง (หาง / เกราะ / อื่น ๆ)" style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#eef6f0', color: '#2f6b4f', borderRadius: 8, padding: '5px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ เพิ่มช่อง</button>
                         </div>
                         {handWarn && <div style={{ fontSize: 11.5, color: '#c0432a', background: '#fdf1ee', border: '1px solid #f2cabf', borderRadius: 8, padding: '7px 11px', marginBottom: 10 }}>⚠️ {handWarn}</div>}
                         {hasTitansGrip && <div style={{ fontSize: 11, color: '#8a6a3a', background: '#fff8ef', border: '1px solid #efe0cd', borderRadius: 8, padding: '6px 11px', marginBottom: 10 }}>💪 มี Feature “Titan’s Grip” — ถืออาวุธสองมือด้วยมือเดียวได้</div>}
@@ -1264,7 +1268,9 @@ function CharacterSheet({
                             return (
                               <div key={s.key} style={{ border: `1px solid ${on ? '#cbe0d2' : '#eae7e0'}`, borderRadius: 12, padding: 11, background: on ? '#f7fbf8' : '#f6f5f2', opacity: on ? 1 : 0.7 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
-                                  <span style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }}>{s.label}</span>
+                                  {s.extra
+                                    ? <input key={s.label} defaultValue={s.label} onBlur={(e) => { if (e.target.value.trim() && e.target.value !== s.label) renameHandSlot(s.key, e.target.value.trim()); }} title="แก้ชื่อช่อง" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }} />
+                                    : <span style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }}>{s.label}</span>}
                                   <button onClick={() => toggleHandSlot(s.key)} title={on ? 'ปิดช่องนี้' : 'เปิดช่องนี้'} style={{ border: '1px solid #e0ded7', background: '#fff', color: on ? '#2f6b4f' : '#a8a59d', borderRadius: 7, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{on ? 'เปิด' : 'ปิด'}</button>
                                   {s.extra && <button onClick={() => removeHandSlot(s.key)} title="ลบช่องนี้" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>}
                                 </div>
