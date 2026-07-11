@@ -94,6 +94,14 @@ export function Header() {
               {n.label}
             </Link>
           ))}
+          {user && (
+            <Link
+              to="/dweller"
+              className={`${styles.navBtn} ${styles.navDweller} ${isNavActive('/dweller', location.pathname) ? styles.navBtnActive : ''}`}
+            >
+              🗎 Dweller Sheet
+            </Link>
+          )}
         </nav>
 
         <div className={styles.right}>

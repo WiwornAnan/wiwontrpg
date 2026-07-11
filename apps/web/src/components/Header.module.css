@@ -74,6 +74,10 @@
 .navBtnActive:hover {
   background: var(--ink);
 }
+.navDweller:not(.navBtnActive) {
+  color: var(--coral);
+  font-weight: 700;
+}
 .badge {
   position: absolute;
   top: -3px;
@@ -277,4 +281,41 @@
   align-items: center;
   gap: 12px;
   font-size: 13px;
+}
+
+/* ── Responsive: keep the nav from overlapping the brand on tablets/phones ── */
+@media (max-width: 1180px) {
+  /* Let the nav scroll horizontally instead of overflowing onto the brand. */
+  .nav {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .searchBox {
+    width: 118px;
+  }
+  .iconBtn {
+    display: none;
+  }
+  .avatarName {
+    display: none;
+  }
+  .avatar {
+    padding: 4px;
+  }
+}
+@media (max-width: 640px) {
+  .brandName {
+    display: none;
+  }
+  .bar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
 }
