@@ -347,44 +347,57 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const fmtClock = (c: Clock) => `${pad(c.hour)}:${pad(c.minute)} · วันที่ ${c.day} ${MONTH_NAMES[c.month - 1]} ปีที่ ${c.year}`;
 
 // Decorative, draggable analog clock (does not tick; drag a hand to set the time).
+// The time is tracked as a continuous 0–1439 minute total and driven by *signed
+// angular deltas*, so a hand moves smoothly and rolls through XII into the next
+// 12-hour half (12→13…) instead of snapping back to the same hour.
 function AnalogClock({ hour, minute, editable, onCommit }: { hour: number; minute: number; editable: boolean; onCommit: (h: number, m: number) => void }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [drag, setDrag] = useState<'hour' | 'minute' | null>(null);
+  const drag = useRef<{ hand: 'hour' | 'minute'; total: number; lastA: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [pv, setPv] = useState<{ h: number; m: number } | null>(null);
   const h = pv?.h ?? hour;
   const m = pv?.m ?? minute;
-  const mAng = m * 6;
-  const hAng = ((h % 12) + m / 60) * 30;
+  const mAng = (m % 60) * 6;
+  const hAng = ((h % 12) * 60 + m) * 0.5; // 0.5° per minute → 360° over 12h, includes minute offset
   const C = 110, RN = 84;
   const NUM = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+  const dist = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
   const angleAt = (e: React.PointerEvent) => {
     const r = svgRef.current!.getBoundingClientRect();
     const dx = e.clientX - (r.left + r.width / 2);
     const dy = e.clientY - (r.top + r.height / 2);
     return (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
   };
-  const apply = (a: number, which: 'hour' | 'minute') => {
-    if (which === 'minute') setPv({ h, m: Math.round(a / 6) % 60 });
-    else { const base = Math.round(a / 30) % 12; setPv({ h: (h >= 12 ? 12 : 0) + base, m }); }
-  };
   const down = (e: React.PointerEvent) => {
     if (!editable) return;
     const a = angleAt(e);
-    const dm = Math.abs(((a - mAng + 540) % 360) - 180);
-    const dh = Math.abs(((a - hAng + 540) % 360) - 180);
-    const which = dh < dm ? 'hour' : 'minute';
-    setDrag(which); apply(a, which);
+    const hand: 'hour' | 'minute' = dist(a, hAng) < dist(a, mAng) ? 'hour' : 'minute';
+    drag.current = { hand, total: (((hour % 24) + 24) % 24) * 60 + minute, lastA: a };
+    setDragging(true);
+    setPv({ h: hour, m: minute });
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
+  const move = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const a = angleAt(e);
+    const delta = ((a - d.lastA + 540) % 360) - 180; // shortest signed step
+    d.lastA = a;
+    // minute hand: 6°/min · hour hand: 0.5°/min → 2 min per degree
+    d.total = (d.total + (d.hand === 'minute' ? delta / 6 : delta * 2) + 1440) % 1440;
+    const rt = Math.round(d.total) % 1440;
+    setPv({ h: Math.floor(rt / 60), m: rt % 60 });
+  };
+  const finish = () => { if (drag.current && pv) onCommit(pv.h, pv.m); drag.current = null; setDragging(false); setPv(null); };
   const tip = (ang: number, len: number) => ({ x: C + Math.sin(ang * Math.PI / 180) * len, y: C - Math.cos(ang * Math.PI / 180) * len });
   const mt = tip(mAng, 90), ht = tip(hAng, 58);
   return (
     <svg
-      ref={svgRef} viewBox="0 0 220 220" width="100%" style={{ maxWidth: 230, display: 'block', margin: '0 auto', touchAction: 'none', cursor: editable ? (drag ? 'grabbing' : 'grab') : 'default' }}
+      ref={svgRef} viewBox="0 0 220 220" width="100%" style={{ maxWidth: 230, display: 'block', margin: '0 auto', touchAction: 'none', cursor: editable ? (dragging ? 'grabbing' : 'grab') : 'default' }}
       onPointerDown={down}
-      onPointerMove={(e) => { if (drag) apply(angleAt(e), drag); }}
-      onPointerUp={() => { if (pv) onCommit(pv.h, pv.m); setDrag(null); setPv(null); }}
-      onPointerLeave={() => { if (pv) onCommit(pv.h, pv.m); setDrag(null); setPv(null); }}
+      onPointerMove={move}
+      onPointerUp={finish}
+      onPointerLeave={finish}
     >
       <circle cx={C} cy={C} r={106} fill="#fff" stroke="#15140f" strokeWidth={3} />
       <circle cx={C} cy={C} r={98} fill="none" stroke="#15140f" strokeWidth={1} />

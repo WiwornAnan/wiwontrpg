@@ -200,6 +200,7 @@ function CharacterSheet({
   const [magicPicker, setMagicPicker] = useState(false);
   const [featPicker, setFeatPicker] = useState(false);
   const [magicTab, setMagicTab] = useState('known');
+  const [logNote, setLogNote] = useState(''); // free-form entry to broadcast to the campaign Log
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
@@ -285,7 +286,7 @@ function CharacterSheet({
   const n = (k: string) => numData(s10[k]);
   const a = (k: string) => (isAncestry ? numData(adj[k]) : 0);
   const faces = (abbr: string) => facesOf(byAbbr, abbr);
-  const scratchMax = n('baseScratch') + n('scratchRollEND') + a('scratch');
+  const scratchMax = n('baseScratch') + n('scratchRollEND') + a('scratch') + sumLvScratch(character);
   const sanityMax = n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity');
   const natureDef = n('natureBase') + faces('DEX') + faces('PER') + a('natureDef');
   const movement = n('movement') + a('movement');
@@ -918,14 +919,29 @@ function CharacterSheet({
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
               {!campaignId ? (
                 <div style={{ fontSize: 12, color: '#6b6860', lineHeight: 1.6 }}>ตัวละครนี้ยังไม่อยู่ในแคมเปญ — เข้าร่วมแคมเปญ (หน้า Dweller → “เข้าร่วมด้วยรหัส”) เพื่อใช้ Log ประวัติการทอยร่วมกัน</div>
-              ) : campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
-                <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4 }}>
-                  {campaignLog.slice().reverse().map((l) => (
-                    <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
-                      <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+              ) : (
+                <>
+                  {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860', marginBottom: 8 }}>ยังไม่มีบันทึก — ทอยเต๋า ใช้ Magic/Feature หรือพิมพ์ข้อความด้านล่างเพื่อบันทึก</div> : (
+                    <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4, marginBottom: 8 }}>
+                      {campaignLog.slice().reverse().map((l) => (
+                        <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
+                          <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                  {/* Free-form broadcast → everyone in the campaign sees it in the shared Log */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={logNote}
+                      onChange={(e) => setLogNote(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && logNote.trim()) { logRef.current('note', `📝 ${logNote.trim()}`); setLogNote(''); } }}
+                      placeholder="ส่งรายละเอียด/แอ็คชันเข้า Log ให้ทุกคนเห็น…"
+                      style={{ flex: 1, minWidth: 0, border: '1px solid #3a3730', background: '#221f1a', color: '#f3ede1', borderRadius: 8, padding: '7px 10px', fontSize: 12, outline: 'none' }}
+                    />
+                    <button onClick={() => { if (logNote.trim()) { logRef.current('note', `📝 ${logNote.trim()}`); setLogNote(''); } }} disabled={!logNote.trim()} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: logNote.trim() ? 'pointer' : 'not-allowed', background: logNote.trim() ? '#e07a5f' : '#3a3730', color: '#fff' }}>ส่ง</button>
+                  </div>
+                </>
               )}
             </div>
             <div style={box}>
@@ -4036,6 +4052,11 @@ function ShopList({ walletIC, onBuy, onInfo }: { walletIC: number; onBuy: (m: Ca
 const STEP10_FACES: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, X: 2 };
 const facesOf = (byAbbr: Record<string, string>, abbr: string) => STEP10_FACES[byAbbr[abbr] ?? ''] ?? 0;
 const rollDie = (faces: number) => (faces > 0 ? 1 + Math.floor(Math.random() * faces) : 0);
+// Blood (Scratch) rolled per level-up (level 2..15), keyed by level. Reverting a
+// level drops the entries above the new level; re-leveling rolls fresh (same system).
+const lvScratchMap = (character: Character): Record<string, number> =>
+  character.data.lvScratch && typeof character.data.lvScratch === 'object' ? (character.data.lvScratch as Record<string, number>) : {};
+const sumLvScratch = (character: Character) => Object.values(lvScratchMap(character)).reduce((s, v) => s + numData(v), 0);
 
 // A number field that keeps local focus while typing and commits on blur.
 function NumField({ value, onCommit, width = 76, style }: { value: number; onCommit: (v: number) => void; width?: number; style?: React.CSSProperties }) {
@@ -4100,7 +4121,7 @@ function Step10Details({
   const faceCVN = facesOf(byAbbr, 'CVN');
 
   // totals
-  const scratchTotal = n('baseScratch') + n('scratchRollEND') + a('scratch');
+  const scratchTotal = n('baseScratch') + n('scratchRollEND') + a('scratch') + sumLvScratch(character);
   const woundTotal = n('wound') + a('wound');
   const natureTotal = n('natureBase') + faceDEX + facePER + a('natureDef');
   const sanityTotal = n('sanityBase') + faceCVN + n('sanityRollINT') + a('sanity');
@@ -4136,6 +4157,7 @@ function Step10Details({
           {lbl('Base')}
           <NumField value={n('baseScratch')} onCommit={(v) => setS10({ baseScratch: v })} />
           {rollPart('scratchRollEND', 'END')}
+          {sumLvScratch(character) > 0 && <span style={{ fontSize: 12, color: '#a06a44', fontWeight: 700 }}>+ โบนัสเลือดจากเลเวล (ทอย END ต่อเลเวล): {sumLvScratch(character)}</span>}
         </StatCard>
 
         <StatCard title="Wound Point" total={woundTotal} isAncestry={isAncestry} adjVal={a('wound')} onAdj={(v) => setAdj('wound', v)}>
@@ -4355,6 +4377,8 @@ function LevelTable({
   const { isDev } = useAuth();
   const qc = useQueryClient();
   const claims = claimsOf(character);
+  const byAbbr = useEffectiveGrades(character);
+  const endFaces = facesOf(byAbbr, 'END'); // blood (Scratch) rolled per level-up
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<WizardLevel[]>([]);
   const [cancelTarget, setCancelTarget] = useState<number | null>(null);
@@ -4426,16 +4450,25 @@ function LevelTable({
     patch.mutate({ data: { ...character.data, levelClaims: next, levelGrantPicks: nextPicks } }, { onSuccess: () => setCancelTarget(null) });
   };
 
+  // Blood per level: keep existing rolls for retained levels (2..target), roll a
+  // fresh END die for any newly-gained level, and drop levels above the target.
+  const buildLvScratch = (target: number) => {
+    const cur = lvScratchMap(character);
+    const next: Record<string, number> = {};
+    for (let lv = 2; lv <= target; lv++) next[lv] = cur[lv] != null ? cur[lv] : rollDie(endFaces);
+    return next;
+  };
+
   // Changing LV: if lowering below a level that's already claimed, confirm first
-  // — accepting wipes every claim in the table.
+  // — accepting wipes every claim in the table. Blood (Scratch) is re-derived either way.
   const changeLevel = (n: number) => {
     const hasClaimAbove = Object.keys(claims).some((lv) => Number(lv) > n);
     if (hasClaimAbove) setPendingLevel(n);
-    else patch.mutate({ data: { ...character.data, level: n } });
+    else patch.mutate({ data: { ...character.data, level: n, lvScratch: buildLvScratch(n) } });
   };
   const confirmLevelDown = () => {
     if (pendingLevel == null) return;
-    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {}, levelGrantPicks: {} } }, { onSuccess: () => setPendingLevel(null) });
+    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {}, levelGrantPicks: {}, lvScratch: buildLvScratch(pendingLevel) } }, { onSuccess: () => setPendingLevel(null) });
   };
 
   const view = editing ? draft : levels;
@@ -4486,6 +4519,14 @@ function LevelTable({
           ))}
         </select>
         <span style={{ fontSize: 12, color: '#a8a59d' }}>ตารางจะเปิดถึง Lv {charLevel}</span>
+      </div>
+      <div style={{ fontSize: 12, color: '#a06a44', background: '#fff8ef', border: '1px solid #efe0cd', borderRadius: 9, padding: '8px 12px', marginTop: 10, lineHeight: 1.6 }}>
+        🩸 เลือด (Scratch) จากเลเวล — ทุกครั้งที่เลเวลอัพจะทอย END (d{endFaces}) เพิ่มเป็นลำดับขั้น · ย้อนเลเวลจะล้างของเลเวลที่สูงกว่าทิ้ง
+        <br />
+        รวมโบนัสตอนนี้: <b style={{ color: '#8a4a2a' }}>+{sumLvScratch(character)} Scratch</b>
+        {charLevel > 1 && (
+          <span style={{ color: '#b79a7a' }}> · {Array.from({ length: charLevel - 1 }, (_, i) => i + 2).map((lv) => `Lv${lv}:+${numData(lvScratchMap(character)[lv])}`).join('  ')}</span>
+        )}
       </div>
 
       <div style={{ fontSize: 12.5, fontWeight: 700, margin: '16px 0 10px' }}>ตาราง Lv 1–{charLevel}</div>
