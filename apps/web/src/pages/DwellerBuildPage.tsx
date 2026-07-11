@@ -1322,9 +1322,14 @@ function CharacterSheet({
                       })}
                       <div style={{ flex: 1.4, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45', marginBottom: 4, height: 16 }}>ดับหิว</div>
-                        <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} title="คำนวณจากน้ำหนักตัว (~30 kcal/kg)">
-                          <div style={{ fontSize: 28, fontWeight: 800, color: '#5f5030', lineHeight: 1 }}>{calGoalAuto}</div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52' }}>Calories ที่ต้องการ{bmiWarn && <span style={{ color: '#b4513a' }}> ({bmiWarn})</span>}</div>
+                        <div style={{ flex: 1, background: '#d4e1b7', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} title="ฐานจากน้ำหนักตัว (~30 kcal/kg) + ปรับเองได้">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <button onClick={() => setSheet({ calGoalAdj: sv('calGoalAdj', 0) - 100 })} title="ลด 100" style={{ flex: 'none', width: 24, height: 24, borderRadius: 7, border: '1px solid #b7c98f', background: '#eaf1d8', color: '#5f5030', fontSize: 15, fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>−</button>
+                            <div style={{ fontSize: 28, fontWeight: 800, color: '#5f5030', lineHeight: 1, minWidth: 66 }}>{Math.max(0, calGoalAuto + sv('calGoalAdj', 0))}</div>
+                            <button onClick={() => setSheet({ calGoalAdj: sv('calGoalAdj', 0) + 100 })} title="เพิ่ม 100" style={{ flex: 'none', width: 24, height: 24, borderRadius: 7, border: '1px solid #b7c98f', background: '#eaf1d8', color: '#5f5030', fontSize: 15, fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52', marginTop: 2 }}>Calories ที่ต้องการ{bmiWarn && <span style={{ color: '#b4513a' }}> ({bmiWarn})</span>}</div>
+                          {sv('calGoalAdj', 0) !== 0 && <div style={{ fontSize: 9, color: '#8a7a52' }}>ฐาน {calGoalAuto} · ปรับ {sv('calGoalAdj', 0) > 0 ? '+' : ''}{sv('calGoalAdj', 0)}<button onClick={() => setSheet({ calGoalAdj: 0 })} style={{ marginLeft: 5, border: 'none', background: 'none', color: '#a08a5a', cursor: 'pointer', fontSize: 9, textDecoration: 'underline' }}>รีเซ็ต</button></div>}
                           {bmiWarn && <div style={{ fontSize: 9.5, color: '#b4513a', fontWeight: 700, marginTop: 1 }}>⚠️ BMI {bmi.toFixed(1)}</div>}
                         </div>
                       </div>
