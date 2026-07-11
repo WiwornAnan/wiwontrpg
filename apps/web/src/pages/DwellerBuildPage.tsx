@@ -203,8 +203,36 @@ function CharacterSheet({
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
 
+  const qc = useQueryClient();
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
+  // Shared campaign roll/action log (real-time, if this character is in a campaign)
+  interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
+  const { data: campForChar } = useQuery({
+    queryKey: ['sheet-campaign', character.id],
+    queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[] } | null }>(`/campaigns/for-character/${character.id}`),
+    refetchInterval: 4000,
+  });
+  const campaignId = campForChar?.campaign?.id;
+  const campaignLog = campForChar?.campaign?.log ?? [];
+  const postLog = useMutation({
+    mutationFn: (body: { kind: string; text: string }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
+  });
+  const rollLabelRef = useRef('');
+  const logRef = useRef<(kind: string, text: string) => void>(() => {});
+  logRef.current = (kind, text) => { if (campaignId) postLog.mutate({ kind, text }); };
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { ego: number; egoFaces: number; special?: string };
+      const label = rollLabelRef.current || 'ทอยลูกเต๋า';
+      const extra = d.special ? ` · ${d.special}` : '';
+      logRef.current('roll', `🎲 ${label} → Ego ${d.ego} (d${d.egoFaces})${extra}`);
+      rollLabelRef.current = '';
+    };
+    window.addEventListener('wiwon-dice', handler);
+    return () => window.removeEventListener('wiwon-dice', handler);
+  }, []);
   // Full catalog (all Wiwon, all levels) for the Magic/Feature pickers + detail resolution
   const { data: allMagic } = useQuery({ queryKey: ['sheet-all-magic'], queryFn: () => fetchMagicSpells([]) });
   const { data: allFeatures } = useQuery({ queryKey: ['sheet-all-features'], queryFn: () => fetchFeaturesByTag('', []) });
@@ -695,7 +723,7 @@ function CharacterSheet({
               return (
                 <div key={attr} style={{ position: 'relative', background: '#fbfaf8', border: '1px solid #e8e5df', borderRadius: 14, padding: '18px 8px 12px', minHeight: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <button
-                    onClick={() => dFaces > 0 && setRoll({ faces: dFaces, adv: false, dis: aDis })}
+                    onClick={() => { if (dFaces > 0) { rollLabelRef.current = `${name} (${abbr})`; setRoll({ faces: dFaces, adv: false, dis: aDis }); } }}
                     title={`ทอย ${abbr} (d${dFaces})${aDis ? ` · Disadvantage: ${aReasons.join(', ')}` : ''}`}
                     style={{ position: 'absolute', top: -13, left: 10, background: aDis ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 14, fontWeight: 800, borderRadius: 9, padding: '5px 11px', border: '2px solid #fff', boxShadow: '0 3px 8px rgba(224,122,95,.45)', cursor: dFaces > 0 ? 'pointer' : 'default', lineHeight: 1 }}
                   >d{dFaces || '?'}{aDis && ' ▼'}</button>
@@ -1142,6 +1170,20 @@ function CharacterSheet({
 
               {tab === 'Dweller Skill' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {campaignId && (
+                    <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนในแคมเปญเห็นเหมือนกัน</span></div>
+                      {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยลูกเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 180, overflowY: 'auto' }}>
+                          {campaignLog.slice().reverse().map((l) => (
+                            <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5 }}>
+                              <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#9a978e' }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 10, padding: '9px 14px' }}>
                     <span style={{ fontSize: 13.5, fontWeight: 800, color: '#8d6a4a' }}>Endeavor Points = <span style={{ color: '#c15a3f' }}>{endeavor}</span></span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1178,7 +1220,7 @@ function CharacterSheet({
                               {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
                               {hasDis && <span title={`Disadvantage: ${reasons.join(', ')}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
                               <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
-                              <button onClick={() => setRoll({ faces: info.roll, adv: advNet, dis: disNet })} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
+                              <button onClick={() => { rollLabelRef.current = `${s.name}${advNet ? ' (Adv)' : ''}${disNet ? ' (Dis)' : ''}`; setRoll({ faces: info.roll, adv: advNet, dis: disNet }); }} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
                             </div>
                           );
                         })}
@@ -1224,6 +1266,7 @@ function CharacterSheet({
                             <div style={{ display: 'flex', gap: 3, flex: 'none' }} title="ย้ายระดับ">
                               {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => setMagTier(r.key, tt.key)} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>
+                            <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
                             {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
                             {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
                           </div>
@@ -1252,7 +1295,7 @@ function CharacterSheet({
                               ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameFeat(r.key, e.target.value); }} style={{ flex: 1, minWidth: 120, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
                               : <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
                             {r.item && <button onClick={() => openInfo(r.item, true)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
-                            <button onClick={() => setFeatTrack(r.key, { used: max != null ? Math.min(max, used + 1) : used + 1 })} title="ใช้ Feature นี้" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#faf6f4', color: '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
+                            <button onClick={() => { setFeatTrack(r.key, { used: max != null ? Math.min(max, used + 1) : used + 1 }); logRef.current('feature', `✦ ใช้ Feature: ${r.name}`); }} title="ใช้ Feature นี้ (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#faf6f4', color: '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
                             {used > 0 && <button onClick={() => setFeatTrack(r.key, { used: Math.max(0, used - 1) })} title="ลดจำนวน" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#fff', color: '#b4513a', borderRadius: 7, padding: '4px 9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>−</button>}
                             <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#a8a59d', fontWeight: 600 }}>สูงสุด<input defaultValue={max ?? ''} key={`mx${max}`} onBlur={(e) => { const v = e.target.value.trim(); setFeatTrack(r.key, { max: v === '' ? null : Math.max(0, Math.round(Number(v) || 0)) }); }} inputMode="numeric" placeholder="∞" style={{ width: 34, border: '1px solid #e0ded7', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none' }} /></label>
                             <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#5b3fa0', fontWeight: 600 }}>CP<input defaultValue={t.cp ?? ''} key={`cp${t.cp}`} onBlur={(e) => setFeatTrack(r.key, { cp: Math.max(0, Math.round(Number(e.target.value) || 0)) })} inputMode="numeric" placeholder="0" style={{ width: 38, border: '1px solid #d6c7f0', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none', background: '#faf8fd' }} /></label>

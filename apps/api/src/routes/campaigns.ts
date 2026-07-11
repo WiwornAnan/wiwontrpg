@@ -123,6 +123,33 @@ campaignsRouter.delete('/:id/members/:characterId', async (req, res) => {
   res.json({ ok: true });
 });
 
+// The campaign a character belongs to (for the Dweller Sheet's shared roll log).
+campaignsRouter.get('/for-character/:characterId', async (req, res) => {
+  const me = req.currentUser!.id;
+  const member = await prisma.campaignMember.findUnique({ where: { characterId: req.params.characterId }, include: { campaign: true, character: true } });
+  if (!member) { res.json({ campaign: null }); return; }
+  if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.json({ campaign: null }); return; }
+  const data = parseData(member.campaign.data);
+  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [] } });
+});
+
+// Append an entry to the campaign's shared log (roll / magic / feature use).
+const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400) });
+campaignsRouter.post('/log', async (req, res) => {
+  const me = req.currentUser!.id;
+  const parsed = logInput.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); return; }
+  const member = await prisma.campaignMember.findUnique({ where: { characterId: parsed.data.characterId }, include: { campaign: true, character: true } });
+  if (!member) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
+  const data = parseData(member.campaign.data);
+  const log = Array.isArray(data.log) ? (data.log as unknown[]) : [];
+  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: member.characterId, characterName: member.character.name || 'ตัวละคร', kind: parsed.data.kind, text: parsed.data.text });
+  data.log = log.slice(-80);
+  await prisma.campaign.update({ where: { id: member.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+
 // Librarian broadcasts Buff/Debuff to every member's Dweller Sheet.
 const statusInput = z.object({
   buffsOn: z.record(z.boolean()).optional(),

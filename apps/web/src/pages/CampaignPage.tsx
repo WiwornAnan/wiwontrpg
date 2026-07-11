@@ -20,6 +20,7 @@ const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
 
 interface Note { id: string; title: string; text: string }
+interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
 
 export function CampaignPage() {
   const { id } = useParams();
@@ -59,7 +60,8 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[] };
+  const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
   const clock = { ...DEFAULT_CLOCK, ...(cdata.clock ?? {}) };
   const notes: Note[] = Array.isArray(cdata.notes) ? cdata.notes : [];
   const setData = (partial: Record<string, unknown>) => patchCamp.mutate({ data: { ...c.data, ...partial } });
@@ -161,6 +163,20 @@ export function CampaignPage() {
               </div>
             </div>
           )}
+
+          {/* shared roll/action log */}
+          <div style={box}>
+            <div style={secLabel}>📜 LOG แคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เรียลไทม์</span></div>
+            {log.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2' }}>ยังไม่มีบันทึก — เมื่อผู้เล่นทอยเต๋าหรือใช้ Magic/Feature จะปรากฏที่นี่</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                {log.slice().reverse().map((l) => (
+                  <div key={l.id} style={{ fontSize: 12.5, color: '#3c3a33', lineHeight: 1.5, borderBottom: '1px solid #f4f1ec', paddingBottom: 5 }}>
+                    <span style={{ fontWeight: 800, color: '#5c4a2e' }}>{l.characterName}</span> <span style={{ color: '#a8a59d', fontSize: 11 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* RIGHT: clock/calendar + notes */}
