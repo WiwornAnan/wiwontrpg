@@ -33,6 +33,8 @@ export interface AddField {
   kind: AddFieldKind;
   options?: string[];
   placeholder?: string;
+  /** Only show this field when another field's value is one of these (e.g. bagCapacity only for Bag tag). */
+  showWhen?: { key: string; in: string[] };
 }
 
 /** A detail-panel row: [display label, data key]. */
@@ -114,7 +116,7 @@ const EQUIPMENT: CatalogConfig = {
   ],
   addFields: [
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
-    { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket'] },
+    { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', kind: 'select', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
     { key: 'availability', label: 'Availability', kind: 'select', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
     { key: 'cost', label: 'Cost', kind: 'text', placeholder: 'เช่น 2 Cr.' },
@@ -123,7 +125,7 @@ const EQUIPMENT: CatalogConfig = {
     { key: 'professionalLevel', label: 'Professional Level', kind: 'select', options: ['Amateur', 'Journeyman', 'Expert', 'Master'] },
     { key: 'damage', label: 'Damage', kind: 'select', options: ['Piercing', 'Slashing', 'Bludgeoning', 'None'] },
     { key: 'weight', label: 'Weight', kind: 'text', placeholder: 'เช่น 2 Kg' },
-    { key: 'bagCapacity', label: 'ความจุกระเป๋า (kg)', kind: 'text', placeholder: 'สำหรับ Bag เท่านั้น เช่น 15' },
+    { key: 'bagCapacity', label: 'ความจุกระเป๋า (kg)', kind: 'text', placeholder: 'เช่น 15', showWhen: { key: 'tag', in: ['Bag Category'] } },
     { key: 'requirements', label: 'Requirements', kind: 'select', options: ['None', 'Strength', 'Dexterity', 'Proficiency'] },
     { key: 'wielding', label: 'Wielding', kind: 'select', options: ['One-Handed', 'Two-Handed', 'Worn', 'None'] },
   ],
@@ -203,6 +205,7 @@ const MAGIC: CatalogConfig = {
       ['Mode', 'mode'],
       ['Type', 'tag'],
       ['Capacity', 'rarity'],
+      ['จำนวนครั้งที่ใช้ได้', 'uses'],
       ['Cooldown', 'duration'],
       ['Quality of Life', 'ql'],
       ['Curiosity Point', 'curiosity'],
@@ -224,6 +227,7 @@ const MAGIC: CatalogConfig = {
     addFields: [
       { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
       { key: 'mode', label: 'รูปแบบ Feature', kind: 'radio', options: ['Active', 'Passive'] },
+      { key: 'uses', label: 'จำนวนครั้งที่ใช้ได้ (ต่อ Long Rest)', kind: 'text', placeholder: 'เฉพาะ Active เช่น 3 (เว้นว่าง = ไม่จำกัด)', showWhen: { key: 'mode', in: ['Active'] } },
       { key: 'tag', label: 'Tags', kind: 'select', options: ['Active', 'Passive', 'Reaction', 'Stance', 'Life lesson', 'Local Knowledge', 'Species', 'Social', 'Weapon Arts'] },
       { key: 'class', label: 'Class', kind: 'select', options: ['Vanguard', 'Defender', 'Sharpshooter', 'Caster', 'Support', 'Striker', 'Specialist'] },
       { key: 'rarity', label: 'Capacity', kind: 'select', options: ['Common', 'Uncommon', 'Rare', 'Legendary'] },

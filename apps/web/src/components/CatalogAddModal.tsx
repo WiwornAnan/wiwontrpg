@@ -160,7 +160,7 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
       }
     >
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {addFields.map((f) => (
+        {addFields.filter((f) => !f.showWhen || f.showWhen.in.includes(fields[f.showWhen.key] ?? '')).map((f) => (
           <div key={f.key} style={{ gridColumn: f.key === 'name' || f.kind === 'checks' ? '1 / -1' : 'auto' }}>
             <label style={labelStyle}>{f.label}</label>
             {renderField(f)}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLevel, WizardLevelOption } from '@wiwonanant/shared';
@@ -510,6 +511,14 @@ function CharacterSheet({
     ...featExtra.map((x) => ({ key: x.id, name: x.name, item: x.itemId ? (featItemById.get(x.itemId) ?? null) : null, custom: true })),
   ];
   const setFeatTrack = (key: string, p: Partial<{ used: number; max: number | null; cp: number }>) => setSheet({ featTrack: { ...featTrack, [key]: { ...(featTrack[key] || {}), ...p } } });
+  // A Feature is "Active" (usable, shows the ใช้ button) unless its master data marks it Passive.
+  const featIsActive = (r: { item: CatalogItem | null; custom: boolean }) => {
+    const mode = String(r.item?.fields?.mode ?? '').toLowerCase();
+    const tags = (r.item?.tags ?? []).map((t) => t.toLowerCase());
+    if (mode === 'passive' || (tags.includes('passive') && !tags.includes('active'))) return false;
+    return true; // default (incl. custom) = Active
+  };
+  const featUsesMax = (r: { item: CatalogItem | null }) => { const v = numData(r.item?.fields?.uses); return v > 0 ? v : null; };
   const addFeatItem = (m: CatalogItem) => setSheet({ featExtra: [...featExtra, { id: `f${Date.now()}`, name: m.name, itemId: m.id }] });
   const renameFeat = (id: string, name: string) => setSheet({ featExtra: featExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
   const removeFeat = (id: string) => setSheet({ featExtra: featExtra.filter((x) => x.id !== id) });
@@ -670,11 +679,16 @@ function CharacterSheet({
     if (lr.goodDream) { const s = rollDie(6); sanGain += s; notes.push(`ฝันดี +${s} Sanity`); }
     if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
     if (!lr.safe) { scratchGain = Math.floor(scratchGain / 2); sanGain = Math.floor(sanGain / 2); wpGain = Math.floor(wpGain / 2); if (woundDelta < 0) woundDelta = Math.ceil(woundDelta / 2); notes.push('สถานที่ไม่ปลอดภัย — ผลฟื้นฟูเหลือครึ่ง (ปัดลง)'); }
+    // Long Rest clears all Active-Feature use counts back to 0.
+    const featReset = Object.fromEntries(Object.entries(featTrack).map(([k, v]) => [k, { ...v, used: 0 }]));
+    const usedFeatCount = Object.values(featTrack).filter((v) => (v.used ?? 0) > 0).length;
+    if (usedFeatCount > 0) notes.push(`คืนการใช้ Active Feature ${usedFeatCount} รายการ`);
     setSheet({
       scratchCur: Math.min(scrMax, scrCur + scratchGain),
       sanCur: Math.min(sanMax, sanCur + sanGain),
       wpCur: Math.min(WP_MAX, sv('wpCur', WP_MAX) + wpGain),
       woundLevel: Math.max(0, Math.min(5, woundLevel + woundDelta)),
+      featTrack: featReset,
     });
     setRestMsg(`พักยาว (Long Rest): ${notes.join(' · ')}`);
   };
@@ -1149,6 +1163,18 @@ function CharacterSheet({
                           {cbx('อาหารวันนี้ไม่อร่อย', lr.badFood, () => setLr((v) => ({ ...v, badFood: !v.badFood })))}
                           {cbx('ฝันร้าย', lr.badDream, () => setLr((v) => ({ ...v, badDream: !v.badDream })))}
                         </div>
+                        {(() => {
+                          const usedFeats = featRows.filter((r) => (featTrack[r.key]?.used ?? 0) > 0);
+                          if (usedFeats.length === 0) return null;
+                          return (
+                            <div style={{ marginBottom: 10, border: '1px solid #e6e0cf', borderRadius: 9, background: '#faf8f2', padding: '8px 11px' }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 800, color: '#a0894a', marginBottom: 6 }}>✦ Active Feature ที่ใช้ไป — พักยาวจะคืนทั้งหมด</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {usedFeats.map((r) => <span key={r.key} style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 7, background: '#fff', color: '#8a6a3a', border: '1px solid #eadfc7' }}>{r.name} · ใช้ {featTrack[r.key]?.used}{featUsesMax(r) != null ? `/${featUsesMax(r)}` : ''}</span>)}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {insomnia && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', background: '#fbeae6', border: '1px solid #f0d3cb', borderRadius: 9, padding: '8px 11px', marginBottom: 8 }}>🚫 ติดสถานะ “นอนไม่หลับ” — ไม่สามารถพักยาวได้</div>}
                         <button onClick={doLongRest} disabled={insomnia} style={{ width: '100%', padding: 12, background: insomnia ? '#cfccc4' : '#15140f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: insomnia ? 'not-allowed' : 'pointer' }}>🌙 ทำการพักยาว</button>
                         {restMsg && <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: '#5f5030', background: '#f6f4ea', border: '1px solid #e6e0cf', borderRadius: 9, padding: '9px 12px', lineHeight: 1.6 }}>{restMsg}</div>}
@@ -1418,7 +1444,7 @@ function CharacterSheet({
                               ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameMagic(r.key, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
                               : <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
                             <div style={{ display: 'flex', gap: 3, flex: 'none' }} title="ย้ายระดับ">
-                              {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => setMagTier(r.key, tt.key)} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
+                              {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => { setMagTier(r.key, tt.key); setMagicTab(tt.key); }} title={`ย้ายไประดับ “${tt.label}”`} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>
                             <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
                             {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
@@ -1442,18 +1468,31 @@ function CharacterSheet({
                       {featRows.map((r) => {
                         const t = featTrack[r.key] || {};
                         const used = t.used ?? 0;
-                        const max = t.max ?? null;
+                        const active = featIsActive(r);
+                        const catalogMax = featUsesMax(r); // dev-set max from master data
+                        const max = catalogMax != null ? catalogMax : (t.max ?? null); // catalog wins; custom may set its own
+                        const atMax = max != null && used >= max;
                         return (
                           <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, background: '#fff', flexWrap: 'wrap' }}>
                             {r.custom
                               ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameFeat(r.key, e.target.value); }} style={{ flex: 1, minWidth: 120, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
                               : <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
+                            <span style={{ flex: 'none', fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 5, background: active ? '#fdeee9' : '#eef1f4', color: active ? '#c15a3f' : '#8d97a3' }}>{active ? 'ACTIVE' : 'PASSIVE'}</span>
                             {r.item && <button onClick={() => openInfo(r.item, true)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
-                            <button onClick={() => { setFeatTrack(r.key, { used: max != null ? Math.min(max, used + 1) : used + 1 }); logRef.current('feature', `✦ ใช้ Feature: ${r.name}`); }} title="ใช้ Feature นี้ (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#faf6f4', color: '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
-                            {used > 0 && <button onClick={() => setFeatTrack(r.key, { used: Math.max(0, used - 1) })} title="ลดจำนวน" style={{ flex: 'none', border: '1px solid #e0c4ba', background: '#fff', color: '#b4513a', borderRadius: 7, padding: '4px 9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>−</button>}
-                            <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#a8a59d', fontWeight: 600 }}>สูงสุด<input defaultValue={max ?? ''} key={`mx${max}`} onBlur={(e) => { const v = e.target.value.trim(); setFeatTrack(r.key, { max: v === '' ? null : Math.max(0, Math.round(Number(v) || 0)) }); }} inputMode="numeric" placeholder="∞" style={{ width: 34, border: '1px solid #e0ded7', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none' }} /></label>
+                            {active && (
+                              <>
+                                <button disabled={atMax} onClick={() => { setFeatTrack(r.key, { used: used + 1 }); logRef.current('feature', `✦ ใช้ Feature: ${r.name}${max != null ? ` (${used + 1}/${max})` : ''}`); }} title="ใช้ Feature นี้ (ลดแต้ม + ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #e0c4ba', background: atMax ? '#f2efe9' : '#faf6f4', color: atMax ? '#bdbab2' : '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: atMax ? 'not-allowed' : 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
+                                <span style={{ flex: 'none', display: 'inline-flex', gap: 3 }} title="ปรับด้วยมือ">
+                                  <button onClick={() => setFeatTrack(r.key, { used: Math.max(0, used - 1) })} style={{ border: '1px solid #e0c4ba', background: '#fff', color: '#b4513a', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>−</button>
+                                  <button disabled={atMax} onClick={() => setFeatTrack(r.key, { used: used + 1 })} style={{ border: '1px solid #e0c4ba', background: '#fff', color: atMax ? '#bdbab2' : '#b4513a', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, cursor: atMax ? 'not-allowed' : 'pointer' }}>＋</button>
+                                </span>
+                                {catalogMax == null && (
+                                  <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#a8a59d', fontWeight: 600 }}>สูงสุด<input defaultValue={t.max ?? ''} key={`mx${t.max}`} onBlur={(e) => { const v = e.target.value.trim(); setFeatTrack(r.key, { max: v === '' ? null : Math.max(0, Math.round(Number(v) || 0)) }); }} inputMode="numeric" placeholder="∞" style={{ width: 34, border: '1px solid #e0ded7', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none' }} /></label>
+                                )}
+                              </>
+                            )}
                             <label style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#5b3fa0', fontWeight: 600 }}>CP<input defaultValue={t.cp ?? ''} key={`cp${t.cp}`} onBlur={(e) => setFeatTrack(r.key, { cp: Math.max(0, Math.round(Number(e.target.value) || 0)) })} inputMode="numeric" placeholder="0" style={{ width: 38, border: '1px solid #d6c7f0', borderRadius: 6, textAlign: 'center', fontSize: 11, padding: '3px 2px', outline: 'none', background: '#faf8fd' }} /></label>
-                            {r.custom && <button onClick={() => removeFeat(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
+                            {r.custom && <button onClick={() => removeFeat(r.key)} title="ลบออกจาก Dweller Sheet" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
                           </div>
                         );
                       })}
@@ -1625,20 +1664,22 @@ function CharacterSheet({
         </div>
       )}
 
-      {/* ── Feature / Magic detail popup ── */}
-      <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
-        {info && <ItemDetailView item={info} isFeature={infoIsFeature} />}
-      </Modal>
+      {/* ── Feature / Magic / Item detail — draggable floating window (full master copy) ── */}
+      {info && (
+        <FloatWindow title={info.name} onClose={() => setInfo(null)}>
+          <ItemDetailView item={info} isFeature={infoIsFeature} />
+        </FloatWindow>
+      )}
 
       {/* ── On-Hand fallback detail (custom item without catalog data) ── */}
-      <Modal open={!!handInfo} onClose={() => setHandInfo(null)} title={handInfo?.name ?? ''}>
-        {handInfo && (
+      {handInfo && (
+        <FloatWindow title={handInfo.name} onClose={() => setHandInfo(null)} width={340}>
           <div style={{ fontSize: 13, color: '#3c3a33', lineHeight: 1.7 }}>
             <div>น้ำหนัก: <b>{numData(handInfo.kg)} kg</b></div>
             <div style={{ color: '#9a978e', marginTop: 4 }}>สิ่งของนี้เพิ่มเอง — ไม่มีรายละเอียดจากคลัง Equipment</div>
           </div>
-        )}
-      </Modal>
+        </FloatWindow>
+      )}
 
       {/* ── Buff picker ── */}
       <Modal open={buffModal} onClose={() => setBuffModal(false)} title="เลือก Buff">
@@ -3370,18 +3411,53 @@ function WalletCard({
 
 // Full read-only detail for a catalog item (all stat rows + description + tags),
 // shared by the Feature and Magic exchange popups.
+// A free-floating window you can drag anywhere by holding on it (interactive
+// elements inside still work). Used for the Dweller Sheet's ⓘ detail popups so
+// several can be positioned side-by-side while cross-referencing.
+function FloatWindow({ title, onClose, children, width = 430 }: { title: string; onClose: () => void; children: React.ReactNode; width?: number }) {
+  const [pos, setPos] = useState(() => ({ x: Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) / 2 - width / 2), y: 96 }));
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, textarea, select')) return; // keep controls usable
+    drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  };
+  return createPortal(
+    <div
+      onPointerDown={onDown}
+      onPointerMove={(e) => { if (drag.current) setPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }); }}
+      onPointerUp={() => { drag.current = null; }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '82vh', zIndex: 400, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
+        <span style={{ fontSize: 13, color: '#c9c5bd' }}>⠿</span>
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</span>
+        <button onClick={onClose} title="ปิด" style={{ flex: 'none', border: 'none', background: 'none', color: '#a8a59d', cursor: 'pointer', fontSize: 17, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ padding: '14px 16px', overflowY: 'auto' }}>{children}</div>
+    </div>,
+    document.body,
+  );
+}
+
 function ItemDetailView({ item, isFeature }: { item: CatalogItem; isFeature: boolean }) {
   const cfg = CATALOG_CONFIGS.magic;
   const src = isFeature && cfg.feature ? cfg.feature : cfg;
   const fv = (key: string) =>
     key === 'source' ? item.source : key === 'tag' ? String(item.fields.tag ?? item.tags[0] ?? '') : item.fields[key] != null ? String(item.fields[key]) : '';
-  const rows = src.detailKeys.map(([label, key]) => ({ label, value: fv(key) })).filter((r) => r.value !== '');
+  const rows = src.detailKeys.map(([label, key]) => ({ label, key, value: fv(key) })).filter((r) => r.value !== '');
+  // Full copy of the master data: append any remaining non-empty fields the
+  // config's detailKeys don't already cover, so nothing from the source is hidden.
+  const shownKeys = new Set(src.detailKeys.map(([, k]) => k));
+  const extra = Object.entries(item.fields)
+    .filter(([k, v]) => !shownKeys.has(k) && v != null && v !== '' && typeof v !== 'object')
+    .map(([k, v]) => ({ label: k, value: String(v) }));
   return (
     <div>
       {item.subtitle && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>{item.subtitle}</div>}
-      {rows.length > 0 && (
+      {(rows.length > 0 || extra.length > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '7px 16px', margin: '4px 0 14px', fontSize: 13 }}>
-          {rows.map((r) => (
+          {[...rows, ...extra].map((r) => (
             <div key={r.label} style={{ display: 'contents' }}>
               <div style={{ color: '#a8a59d', fontWeight: 600 }}>{r.label}</div>
               <div style={{ color: '#2f2c25', fontWeight: 600 }}>{r.value}</div>
