@@ -344,8 +344,9 @@ function CharacterSheet({
   const addProf = (id: string) => setSheet({ proficiencies: [...proficiencies, id] });
   const removeProf = (id: string) => setSheet({ proficiencies: proficiencies.filter((x) => x !== id) });
 
-  // Wallet
-  const walletIC = numData(d.walletIC);
+  // Wallet — coins held as discrete denominations (no auto-rollup); IC is the derived total.
+  const coins = coinsOf(d);
+  const walletIC = coinsToIC(coins);
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
   const setBag = (next: BagLine[]) => patch.mutate({ data: { ...d, bag: next } });
 
@@ -493,23 +494,20 @@ function CharacterSheet({
 
   // ── Finance / จัดการสินทรัพย์ (ported from the old design) ──
   interface Pouch { id: string; name: string; coins: Record<string, number> }
-  const coins = decomposeIC(walletIC);
   const pouches: Pouch[] = Array.isArray(d.pouches) ? (d.pouches as Pouch[]) : [];
-  const icOf = (key: string) => COIN_DEFS.find((c) => c.key === key)?.ic ?? 0;
-  const setWalletIC = (v: number) => patch.mutate({ data: { ...d, walletIC: Math.max(0, Math.round(v)) } });
-  const setCoinCount = (key: string, count: number) => setWalletIC(walletIC - coins[key] * icOf(key) + Math.max(0, count) * icOf(key));
-  const adjMain = (key: string, sign: 1 | -1) => { const amt = Math.max(0, Math.round(Number(coinAdj[key] || 0))); if (amt) setWalletIC(walletIC + sign * amt * icOf(key)); };
+  const writeCoins = (next: Record<string, number>, extra: Record<string, unknown> = {}) => patch.mutate({ data: { ...d, walletCoins: next, walletIC: coinsToIC(next), ...extra } });
+  const setCoinCount = (key: string, count: number) => writeCoins({ ...coins, [key]: Math.max(0, Math.round(count)) });
+  const adjMain = (key: string, sign: 1 | -1) => { const amt = Math.max(0, Math.round(Number(coinAdj[key] || 0))); if (amt) writeCoins(addCoins(coins, { [key]: sign * amt })); };
   const clearAdj = () => setCoinAdj({});
   const addPouch = () => patch.mutate({ data: { ...d, pouches: [...pouches, { id: `p${Date.now()}`, name: 'กองเงินใหม่', coins: {} }] } });
   const renamePouch = (id: string, name: string) => patch.mutate({ data: { ...d, pouches: pouches.map((p) => (p.id === id ? { ...p, name } : p)) } });
-  const removePouch = (id: string) => { const p = pouches.find((x) => x.id === id); if (!p) return; const back = Object.entries(p.coins).reduce((s, [k, c]) => s + icOf(k) * c, 0); patch.mutate({ data: { ...d, pouches: pouches.filter((x) => x.id !== id), walletIC: walletIC + back } }); };
+  const removePouch = (id: string) => { const p = pouches.find((x) => x.id === id); if (!p) return; writeCoins(addCoins(coins, p.coins), { pouches: pouches.filter((x) => x.id !== id) }); };
   const moveCoin = (pid: string, key: string, dir: 'in' | 'out') => {
     const p = pouches.find((x) => x.id === pid); if (!p) return;
     const amt = Math.max(0, Math.round(Number(coinAdj[`${pid}:${key}`] || 1))) || 1;
     const cur = p.coins[key] ?? 0;
-    const ic = icOf(key);
-    if (dir === 'in') { const move = Math.min(amt, coins[key]); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur + move } } : x)), walletIC: walletIC - move * ic } }); }
-    else { const move = Math.min(amt, cur); if (move <= 0) return; patch.mutate({ data: { ...d, pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur - move } } : x)), walletIC: walletIC + move * ic } }); }
+    if (dir === 'in') { const move = Math.min(amt, coins[key]); if (move <= 0) return; writeCoins(addCoins(coins, { [key]: -move }), { pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur + move } } : x)) }); }
+    else { const move = Math.min(amt, cur); if (move <= 0) return; writeCoins(addCoins(coins, { [key]: move }), { pouches: pouches.map((x) => (x.id === pid ? { ...x, coins: { ...x.coins, [key]: cur - move } } : x)) }); }
   };
 
   // ── ภูมิหลัง (Background) ──
@@ -3423,6 +3421,31 @@ const decomposeIC = (total: number) => {
   return out;
 };
 const numData = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
+// ── Per-coin wallet: coins are held as discrete denominations (no auto-rollup).
+// walletCoins is the source of truth; walletIC is kept in sync as the derived total.
+const ZERO_COINS: Record<string, number> = { PC: 0, GC: 0, SC: 0, CC: 0, IC: 0 };
+const coinsOf = (d: Record<string, unknown>): Record<string, number> => {
+  const w = d.walletCoins;
+  if (w && typeof w === 'object') return { ...ZERO_COINS, ...(w as Record<string, number>) };
+  return { ...ZERO_COINS, ...decomposeIC(numData(d.walletIC)) }; // migrate legacy IC-only wallets
+};
+const coinsToIC = (c: Record<string, number>) => COIN_DEFS.reduce((s, def) => s + numData(c[def.key]) * def.ic, 0);
+const addCoins = (c: Record<string, number>, delta: Record<string, number>) => {
+  const out = { ...ZERO_COINS, ...c };
+  for (const def of COIN_DEFS) out[def.key] = Math.max(0, numData(out[def.key]) + numData(delta[def.key]));
+  return out;
+};
+// Pay `amount` IC largest-coin-first, returning change in the fewest coins — so
+// only the coins actually needed to pay are broken; the rest of the purse is untouched.
+const spendCoins = (c: Record<string, number>, amount: number): Record<string, number> | null => {
+  if (coinsToIC(c) < amount) return null;
+  const out = { ...ZERO_COINS, ...c };
+  let paid = 0;
+  for (const def of COIN_DEFS) { while (out[def.key] > 0 && paid < amount) { out[def.key] -= 1; paid += def.ic; } }
+  const change = decomposeIC(paid - amount);
+  for (const def of COIN_DEFS) out[def.key] += numData(change[def.key]);
+  return out;
+};
 
 interface RoyalBond { id: string; price: number } // price in GC
 
@@ -3506,19 +3529,22 @@ function WalletCard({
   availableQL: number;
 }) {
   const [qlInput, setQlInput] = useState(1);
-  const walletIC = numData(character.data.walletIC);
+  const coins = coinsOf(character.data);
+  const walletIC = coinsToIC(coins);
   const qlConverted = numData(character.data.qlConverted);
   const rb: RoyalBond[] = Array.isArray(character.data.walletRB) ? (character.data.walletRB as RoyalBond[]) : [];
-  const coins = decomposeIC(walletIC);
   const rbTotalGC = rb.reduce((s, b) => s + numData(b.price), 0);
   const grandGC = walletIC / 1000 + rbTotalGC;
 
   const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
-  const adjustCoin = (deltaIC: number) => setData({ walletIC: Math.max(0, walletIC + deltaIC) });
+  const writeCoins = (next: Record<string, number>) => setData({ walletCoins: next, walletIC: coinsToIC(next) });
+  // Adjust a single denomination by ±1 — no rollup into a higher coin.
+  const adjustCoin = (key: string, sign: 1 | -1) => writeCoins(addCoins(coins, { [key]: sign }));
   const convertQL = () => {
     const amt = Math.max(0, Math.min(Math.floor(qlInput || 0), availableQL));
     if (amt <= 0) return;
-    setData({ walletIC: walletIC + amt * QL_TO_IC, qlConverted: qlConverted + amt });
+    // Convert to coins as discrete denominations (adds new coins, doesn't merge existing).
+    setData({ walletCoins: addCoins(coins, decomposeIC(amt * QL_TO_IC)), walletIC: walletIC + amt * QL_TO_IC, qlConverted: qlConverted + amt });
   };
   const addBond = () => setData({ walletRB: [...rb, { id: crypto.randomUUID(), price: 0 }] });
   const setBond = (id: string, price: number) => setData({ walletRB: rb.map((b) => (b.id === id ? { ...b, price } : b)) });
@@ -3528,8 +3554,8 @@ function WalletCard({
     <div style={{ ...cardPlain, marginTop: 16 }}>
       <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 22 }}>กระเป๋าเงิน</h2>
       <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
-        10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — ระบบรวบยอดเหรียญให้อัตโนมัติ
-      </p>
+        10 IC = 1 CC · 10 CC = 1 SC · 10 SC = 1 GC · 10 GC = 1 PC — เก็บเหรียญแยกตามชนิด ไม่รวบยอดให้อัตโนมัติ
+</p>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 460, borderCollapse: 'collapse', fontSize: 13.5 }}>
@@ -3555,8 +3581,8 @@ function WalletCard({
                 <td style={{ padding: '9px 0', textAlign: 'center', fontSize: 17, fontWeight: 800, color: coins[c.key] > 0 ? '#2f2c25' : '#cfccc4' }}>{coins[c.key]}</td>
                 <td style={{ padding: '9px 0' }}>
                   <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                    <button onClick={() => adjustCoin(-c.ic)} disabled={walletIC < c.ic} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: walletIC < c.ic ? '#f5f3ef' : '#fff', color: walletIC < c.ic ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: walletIC < c.ic ? 'not-allowed' : 'pointer' }}>−</button>
-                    <button onClick={() => adjustCoin(c.ic)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                    <button onClick={() => adjustCoin(c.key, -1)} disabled={coins[c.key] <= 0} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: coins[c.key] <= 0 ? '#f5f3ef' : '#fff', color: coins[c.key] <= 0 ? '#cfccc4' : '#6b6860', fontSize: 15, fontWeight: 800, cursor: coins[c.key] <= 0 ? 'not-allowed' : 'pointer' }}>−</button>
+                    <button onClick={() => adjustCoin(c.key, 1)} style={{ width: 26, height: 24, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>+</button>
                   </div>
                 </td>
               </tr>
@@ -4171,6 +4197,7 @@ function Step9Money({
 }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sellTarget, setSellTarget] = useState<BagLine | null>(null);
+  const [buyTarget, setBuyTarget] = useState<CatalogItem | null>(null); // confirm before buying
   const [info, setInfo] = useState<CatalogItem | null>(null);
 
   // Available QL (shared pool) → caps QL→money conversion in the wallet.
@@ -4184,30 +4211,37 @@ function Step9Money({
   const availableQL = totalQL - sink('step7Purchases') - numData(character.data.qlConverted) - sink('step8Magic');
 
   const started = character.data.walletStart === true;
-  const walletIC = numData(character.data.walletIC);
+  const coins = coinsOf(character.data);
+  const walletIC = coinsToIC(coins);
   const tradeIC = numData(character.data.walletTradeIC);
   const bag: BagLine[] = Array.isArray(character.data.bag) ? (character.data.bag as BagLine[]) : [];
   const hasTrades = bag.length > 0 || tradeIC !== 0;
 
   const setData = (partial: Record<string, unknown>) => patch.mutate({ data: { ...character.data, ...partial } });
-  const claim = () => setData({ walletStart: true, walletIC: walletIC + START_GOLD_IC });
+  // Start money = 10 Gold coins (kept as GC, never consolidated into 1 Platinum).
+  const claim = () => { const next = addCoins(coins, { GC: 10 }); setData({ walletStart: true, walletCoins: next, walletIC: coinsToIC(next) }); };
   const cancelStart = () => {
     if (hasTrades) { setConfirmReset(true); return; }
-    setData({ walletStart: false, walletIC: Math.max(0, walletIC - START_GOLD_IC) });
+    const next = addCoins(coins, { GC: -10 });
+    setData({ walletStart: false, walletCoins: next, walletIC: coinsToIC(next) });
   };
   const doReset = () => {
     // Undo every trade, drop the bag, then pull the 10 Gold back out.
-    setData({ walletStart: false, walletIC: Math.max(0, walletIC - tradeIC - START_GOLD_IC), walletTradeIC: 0, bag: [] });
+    const restIC = Math.max(0, walletIC - tradeIC - START_GOLD_IC);
+    setData({ walletStart: false, walletCoins: decomposeIC(restIC), walletIC: restIC, walletTradeIC: 0, bag: [] });
     setConfirmReset(false);
   };
   const buy = (m: CatalogItem) => {
     const p = priceOf(m);
-    if (walletIC < p) return;
-    setData({ walletIC: walletIC - p, walletTradeIC: tradeIC - p, bag: [...bag, { lineId: crypto.randomUUID(), itemId: m.id, name: m.name, priceIC: p }] });
+    const next = spendCoins(coins, p); // pay largest-first, keep change; leaves the rest of the purse intact
+    if (!next) return;
+    setData({ walletCoins: next, walletIC: coinsToIC(next), walletTradeIC: tradeIC - p, bag: [...bag, { lineId: crypto.randomUUID(), itemId: m.id, name: m.name, priceIC: p }] });
+    setBuyTarget(null);
   };
   const sell = (line: BagLine) => {
     const refund = Math.floor(line.priceIC * SELL_RATE);
-    setData({ walletIC: walletIC + refund, walletTradeIC: tradeIC + refund, bag: bag.filter((l) => l.lineId !== line.lineId) });
+    const next = addCoins(coins, decomposeIC(refund));
+    setData({ walletCoins: next, walletIC: coinsToIC(next), walletTradeIC: tradeIC + refund, bag: bag.filter((l) => l.lineId !== line.lineId) });
     setSellTarget(null);
   };
 
@@ -4241,7 +4275,7 @@ function Step9Money({
         <div style={{ ...cardPlain, flex: '1 1 320px', minWidth: 280 }}>
           <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 20 }}>ร้านค้า</h2>
           <p style={{ color: '#8d8a82', fontSize: 12.5, margin: '6px 0 12px' }}>จาก Equipment &amp; Items — กด “ซื้อ” เพื่อหักเงินและเก็บเข้ากระเป๋า</p>
-          <ShopList walletIC={walletIC} onBuy={buy} onInfo={setInfo} />
+          <ShopList walletIC={walletIC} onBuy={setBuyTarget} onInfo={setInfo} />
         </div>
 
         <div style={{ ...cardPlain, flex: '1 1 260px', minWidth: 240 }}>
@@ -4290,6 +4324,26 @@ function Step9Money({
             </div>
           </>
         )}
+      </Modal>
+
+      <Modal open={!!buyTarget} onClose={() => setBuyTarget(null)} title="ยืนยันการซื้อ">
+        {buyTarget && (() => {
+          const p = priceOf(buyTarget);
+          const afford = walletIC >= p;
+          return (
+            <>
+              <p style={{ fontSize: 13.5, color: '#3c3a33', lineHeight: 1.7, margin: 0 }}>
+                แน่ใจไหมว่าจะซื้อ <b>{buyTarget.name}</b>?<br />
+                ราคา <b style={{ color: '#c15a3f' }}>{coinStr(p)}</b> · หลังซื้อเหลือ <b>{coinStr(Math.max(0, walletIC - p))}</b>
+                {!afford && <span style={{ color: '#b4513a' }}><br />⚠️ เงินไม่พอ</span>}
+              </p>
+              <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
+                <Button variant="ghost" onClick={() => setBuyTarget(null)}>ยกเลิก</Button>
+                <Button variant="coral" disabled={!afford} onClick={() => buy(buyTarget)}>ยืนยันการซื้อ</Button>
+              </div>
+            </>
+          );
+        })()}
       </Modal>
 
       <Modal open={!!info} onClose={() => setInfo(null)} title={info?.name ?? ''}>
@@ -4398,7 +4452,13 @@ function Step10Details({
 }) {
   const byAbbr = useEffectiveGrades(character);
   const raceName = typeof character.data.raceName === 'string' ? (character.data.raceName as string) : '';
+  const ancestryName = typeof character.data.ancestryName === 'string' ? (character.data.ancestryName as string) : '';
+  const className = typeof character.data.className === 'string' ? (character.data.className as string) : '';
   const isAncestry = raceHasAncestry(raceName);
+  // Race Feature chosen in Step 1 — surfaced here for reference.
+  const raceId = typeof character.data.race === 'string' ? (character.data.race as string) : '';
+  const { data: racePool } = useQuery({ enabled: !!raceId, queryKey: ['race-feat', wiwonIdsOf(character).join(',')], queryFn: () => fetchFeaturesByTag('Race', wiwonIdsOf(character)) });
+  const raceFeat = (racePool ?? []).find((f) => f.id === raceId);
 
   const s10 = character.data.step10 && typeof character.data.step10 === 'object' ? (character.data.step10 as Record<string, number>) : {};
   const adj = character.data.step10adj && typeof character.data.step10adj === 'object' ? (character.data.step10adj as Record<string, number>) : {};
@@ -4421,7 +4481,6 @@ function Step10Details({
   const natureTotal = n('natureBase') + faceDEX + facePER + a('natureDef');
   const sanityTotal = n('sanityBase') + faceCVN + n('sanityRollINT') + a('sanity');
   const moveTotal = n('movement') + a('movement');
-  const initTotal = 10 + n('initRollDEX') + n('initRollCVN') + a('initiative');
   const wpTotal = n('willpower') + a('willpower');
 
   const rollBtn = (faces: number): React.CSSProperties => ({ border: '1px solid #d9c3a8', background: '#fff8ef', color: '#a06a44', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, cursor: faces > 0 ? 'pointer' : 'not-allowed', opacity: faces > 0 ? 1 : 0.5, whiteSpace: 'nowrap' });
@@ -4441,6 +4500,23 @@ function Step10Details({
       <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
         ตั้งชื่อตัวละครและกำหนดค่าสำคัญ — ลูกเต๋าอ้างอิงเกรดสุดท้าย (A d10 · B d8 · C d6 · D d4 · X d2){isAncestry ? ' · เผ่า Ancestry ปรับ ± ได้เพิ่ม' : ''}
       </p>
+
+      {(raceName || className) && (
+        <div style={{ border: '1px solid #eae7e0', borderRadius: 12, background: '#faf9f7', padding: '12px 14px', marginBottom: 18 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', color: '#a8a59d', marginBottom: 8 }}>ข้อมูลจากการสร้างตัวละคร (Step 1)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {raceName && <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 11px', borderRadius: 8, background: '#f0ece4', color: '#6b5b45' }}>เผ่าพันธุ์: {raceName}</span>}
+            {ancestryName && <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 11px', borderRadius: 8, background: '#e5edfb', color: '#2a5fbd' }}>สายเลือด: {ancestryName}</span>}
+            {className && <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 11px', borderRadius: 8, background: '#ede7f6', color: '#5b3fa0' }}>คลาส: {className}</span>}
+          </div>
+          {raceFeat && (raceFeat.subtitle || raceFeat.description) && (
+            <div style={{ marginTop: 9, fontSize: 12, color: '#6b6860', lineHeight: 1.6 }}>
+              {raceFeat.subtitle && <div style={{ fontWeight: 600, color: '#46443c' }}>{raceFeat.subtitle}</div>}
+              {raceFeat.description && <div style={{ marginTop: 3 }} dangerouslySetInnerHTML={{ __html: raceFeat.description }} />}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ marginBottom: 18 }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82' }}>ชื่อตัวละคร</label>
@@ -4477,12 +4553,6 @@ function Step10Details({
         <StatCard title="Movement" total={moveTotal} isAncestry={isAncestry} adjVal={a('movement')} onAdj={(v) => setAdj('movement', v)}>
           {lbl('ระบุเอง')}
           <NumField value={n('movement')} onCommit={(v) => setS10({ movement: v })} />
-        </StatCard>
-
-        <StatCard title="Initiative" total={initTotal} isAncestry={isAncestry} adjVal={a('initiative')} onAdj={(v) => setAdj('initiative', v)}>
-          {lbl('ฐาน 10')}
-          {rollPart('initRollDEX', 'DEX')}
-          {rollPart('initRollCVN', 'CVN')}
         </StatCard>
 
         <StatCard title="Willpower Point" total={wpTotal} isAncestry={isAncestry} adjVal={a('willpower')} onAdj={(v) => setAdj('willpower', v)}>
