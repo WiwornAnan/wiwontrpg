@@ -535,17 +535,25 @@ function CharacterSheet({
 
   // ── On-Hand slots (right / left / tail) — only Weapon / Shield / Artifact ──
   interface HandItem { name: string; itemId?: string; kg?: number; na?: number }
-  const HAND_SLOTS = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
+  interface HandSlot { key: string; label: string; extra?: boolean }
+  const BASE_HAND_SLOTS: HandSlot[] = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
+  const handExtra: HandSlot[] = Array.isArray(sheet.handSlotsExtra) ? (sheet.handSlotsExtra as HandSlot[]).map((s) => ({ ...s, extra: true })) : [];
+  const HAND_SLOTS: HandSlot[] = [...BASE_HAND_SLOTS, ...handExtra];
+  const addHandSlot = () => setSheet({ handSlotsExtra: [...handExtra.map(({ key, label }) => ({ key, label })), { key: `hs${Date.now()}`, label: 'สวมเกราะ' }] });
+  const removeHandSlot = (key: string) => { const n = { ...hands }; delete n[key]; setSheet({ handSlotsExtra: handExtra.filter((s) => s.key !== key).map(({ key: k, label }) => ({ key: k, label })), hands: n }); };
   const HAND_RE = /weapon|อาวุธ|shield|โล่|armor|เกราะ|artifact|อาร์ติแฟกต์|วัตถุโบราณ/i;
   const DEFENSIVE_RE = /shield|โล่|armor|เกราะ/i; // adds Natural Defense when equipped
   const isHandItem = (m: CatalogItem) => HAND_RE.test(`${m.fields.type ?? ''} ${m.fields.tag ?? ''} ${m.tags.join(' ')} ${m.name}`);
   const isDefensive = (name: string) => DEFENSIVE_RE.test(name);
   const hands = sheet.hands && typeof sheet.hands === 'object' ? (sheet.hands as Record<string, HandItem>) : {};
-  const naFromGear = HAND_SLOTS.reduce((s, slot) => { const it = hands[slot.key]; return s + (it && isDefensive(it.name) ? numData(it.na) : 0); }, 0);
+  const naFromGear = Object.values(hands).reduce((s, it) => s + (it && isDefensive(it.name) ? numData(it.na) : 0), 0);
   const handOn = (slot: string) => (sheet.handsOn && typeof sheet.handsOn === 'object' ? (sheet.handsOn as Record<string, boolean>)[slot] : undefined) ?? (slot !== 'tail');
   const setHand = (slot: string, item: HandItem) => setSheet({ hands: { ...hands, [slot]: item } });
   const clearHand = (slot: string) => { const n = { ...hands }; delete n[slot]; setSheet({ hands: n }); };
   const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
+  // Dweller Skill round tick toggle
+  const skillChecked = sheet.skillChecked && typeof sheet.skillChecked === 'object' ? (sheet.skillChecked as Record<string, boolean>) : {};
+  const toggleSkillCheck = (key: string) => { const n = { ...skillChecked }; if (n[key]) delete n[key]; else n[key] = true; setSheet({ skillChecked: n }); };
 
   // ── Short / Long Rest mechanics ──
   const WP_MAX = 3;
@@ -824,7 +832,10 @@ function CharacterSheet({
                   const st = STATUS_EFFECTS.find((e) => e[0] === k);
                   return <span key={k} title={st?.[2]} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, padding: '4px 6px 4px 11px', borderRadius: 8, background: '#fbeae6', color: '#b4513a', border: '1px solid #f0d3cb', cursor: 'help' }}>{st?.[1] ?? k}<button onClick={() => toggleStatus(k)} style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button></span>;
                 })}
-                {activeWoundDebuffs.length === 0 && !deathDoor && Object.keys(statusOn).length === 0 && <span style={{ fontSize: 11.5, color: '#bdbab2' }}>ยังไม่มีสถานะผิดปกติ — กด “เลือก”</span>}
+                {['นอนไม่หลับ', 'หูแว่วและภาพหลอน'].filter((k) => activeStatusSet.has(k) && !statusOn[k]).map((k) => (
+                  <span key={k} title="เกิดจากบาดแผลทางจิตใจ (อัตโนมัติ)" style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 8, background: '#f9eeea', color: '#b0432a', border: '1px solid #f0d0c4' }}>{k}</span>
+                ))}
+                {activeWoundDebuffs.length === 0 && !deathDoor && Object.keys(statusOn).length === 0 && !activeStatusSet.has('นอนไม่หลับ') && <span style={{ fontSize: 11.5, color: '#bdbab2' }}>ยังไม่มีสถานะผิดปกติ — กด “เลือก”</span>}
               </div>
             </div>
             <div style={{ ...box, position: 'relative' }}>
@@ -928,16 +939,20 @@ function CharacterSheet({
                   <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {phase === 'On Hand' ? (
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· เฉพาะ Weapon / Shield / Artifact · กด Use เพื่อถือ</span></div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45' }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· Weapon / Shield / Artifact · กด Use เพื่อถือ</span></span>
+                          <button onClick={addHandSlot} style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#eef6f0', color: '#2f6b4f', borderRadius: 8, padding: '5px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ สวมเกราะ</button>
+                        </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                           {HAND_SLOTS.map((s) => {
                             const on = handOn(s.key);
                             const item = hands[s.key];
                             return (
                               <div key={s.key} style={{ border: `1px solid ${on ? '#cbe0d2' : '#eae7e0'}`, borderRadius: 12, padding: 11, background: on ? '#f7fbf8' : '#f6f5f2', opacity: on ? 1 : 0.7 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                  <span style={{ fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }}>{s.label}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 8 }}>
+                                  <span style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: on ? '#2f6b4f' : '#a8a59d' }}>{s.label}</span>
                                   <button onClick={() => toggleHandSlot(s.key)} title={on ? 'ปิดช่องนี้' : 'เปิดช่องนี้'} style={{ border: '1px solid #e0ded7', background: '#fff', color: on ? '#2f6b4f' : '#a8a59d', borderRadius: 7, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{on ? 'เปิด' : 'ปิด'}</button>
+                                  {s.extra && <button onClick={() => removeHandSlot(s.key)} title="ลบช่องนี้" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>}
                                 </div>
                                 {!on ? (
                                   <div style={{ fontSize: 11, color: '#bdbab2', padding: '6px 0' }}>— ปิดช่องอยู่ —</div>
@@ -1152,6 +1167,7 @@ function CharacterSheet({
                           const disNet = hasDis && !hasAdv;
                           return (
                             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ec' }}>
+                              <button onClick={() => toggleSkillCheck(key)} title="ติ๊ก / ยกเลิก" style={{ width: 18, height: 18, borderRadius: '50%', flex: 'none', border: `2px solid ${skillChecked[key] ? '#2f7d4f' : '#cfccc4'}`, background: skillChecked[key] ? '#2f7d4f' : '#fff', color: '#fff', fontSize: 10, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{skillChecked[key] ? '✓' : ''}</button>
                               <span style={{ width: 26, height: 22, borderRadius: 6, background: SKILL_ATTR_COLOR[s.attr], color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{s.attr}</span>
                               <span
                                 onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setSkillTip({ name: s.name, desc: s.desc, x: Math.min(r.left, window.innerWidth - 336), y: r.bottom }); }}
