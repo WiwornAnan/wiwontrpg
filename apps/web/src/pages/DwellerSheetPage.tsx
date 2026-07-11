@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Character } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { Modal } from '../components/Modal';
+import { Button } from '../components/ui';
 import layout from '../components/layout.module.css';
 
 const TOTAL_STEPS = 12;
@@ -11,6 +14,12 @@ export function DwellerSheetPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [delTarget, setDelTarget] = useState<Character | null>(null);
+
+  const del = useMutation({
+    mutationFn: (id: string) => api.delete(`/characters/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['characters'] }); setDelTarget(null); },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['characters'],
@@ -88,7 +97,7 @@ export function DwellerSheetPage() {
             {characters.map((c) => {
               const done = c.status === 'complete';
               return (
-                <button
+                <div
                   key={c.id}
                   onClick={() => openCharacter(c)}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: '#faf9f7', border: '1px solid #eae7e0', borderRadius: 11, padding: '12px 14px', cursor: 'pointer', width: '100%' }}
@@ -107,12 +116,34 @@ export function DwellerSheetPage() {
                   <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '3px 9px', background: done ? '#e6f4ea' : '#fdf6e8', color: done ? '#2f7d4f' : '#b4844a' }}>
                     {done ? 'เสร็จแล้ว' : 'ร่าง'}
                   </span>
-                </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDelTarget(c); }}
+                    title="ลบตัวละคร"
+                    style={{ flex: 'none', width: 30, height: 30, borderRadius: 8, border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}
+                  >🗑</button>
+                </div>
               );
             })}
           </div>
         </section>
       </div>
+
+      <Modal
+        open={!!delTarget}
+        onClose={() => setDelTarget(null)}
+        title="ยืนยันการลบตัวละคร"
+        footer={
+          <>
+            <Button variant="ghost" disabled={del.isPending} onClick={() => setDelTarget(null)}>ยกเลิก</Button>
+            <Button variant="danger" disabled={del.isPending} onClick={() => delTarget && del.mutate(delTarget.id)}>{del.isPending ? 'กำลังลบ…' : 'ลบถาวร'}</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#3c3a33' }}>
+          แน่ใจแล้วใช่ไหมว่าจะลบ <b>{delTarget?.name || 'ตัวละครใหม่'}</b>?<br />
+          <span style={{ color: '#b4513a', fontWeight: 600 }}>การลบนี้ถาวร — ข้อมูลตัวละคร ชีต และของทั้งหมดจะหายไปและกู้คืนไม่ได้</span>
+        </p>
+      </Modal>
     </div>
   );
 }

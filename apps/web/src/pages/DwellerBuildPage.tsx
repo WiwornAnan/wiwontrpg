@@ -534,11 +534,14 @@ function CharacterSheet({
   };
 
   // ── On-Hand slots (right / left / tail) — only Weapon / Shield / Artifact ──
-  interface HandItem { name: string; itemId?: string; kg?: number }
+  interface HandItem { name: string; itemId?: string; kg?: number; na?: number }
   const HAND_SLOTS = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
-  const HAND_RE = /weapon|อาวุธ|shield|โล่|artifact|อาร์ติแฟกต์|วัตถุโบราณ/i;
+  const HAND_RE = /weapon|อาวุธ|shield|โล่|armor|เกราะ|artifact|อาร์ติแฟกต์|วัตถุโบราณ/i;
+  const DEFENSIVE_RE = /shield|โล่|armor|เกราะ/i; // adds Natural Defense when equipped
   const isHandItem = (m: CatalogItem) => HAND_RE.test(`${m.fields.type ?? ''} ${m.fields.tag ?? ''} ${m.tags.join(' ')} ${m.name}`);
+  const isDefensive = (name: string) => DEFENSIVE_RE.test(name);
   const hands = sheet.hands && typeof sheet.hands === 'object' ? (sheet.hands as Record<string, HandItem>) : {};
+  const naFromGear = HAND_SLOTS.reduce((s, slot) => { const it = hands[slot.key]; return s + (it && isDefensive(it.name) ? numData(it.na) : 0); }, 0);
   const handOn = (slot: string) => (sheet.handsOn && typeof sheet.handsOn === 'object' ? (sheet.handsOn as Record<string, boolean>)[slot] : undefined) ?? (slot !== 'tail');
   const setHand = (slot: string, item: HandItem) => setSheet({ hands: { ...hands, [slot]: item } });
   const clearHand = (slot: string) => { const n = { ...hands }; delete n[slot]; setSheet({ hands: n }); };
@@ -894,14 +897,10 @@ function CharacterSheet({
                 <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL</span>
                 <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 16 }}>{initiative}</b></span>
               </button>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + sv('ndArmorBonus', 0)}</div>
+              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
+                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + naFromGear}</div>
                 <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
-                  <button onClick={() => setSheet({ ndArmorBonus: Math.max(0, sv('ndArmorBonus', 0) - 1) })} style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #d8d4cc', background: '#fff', color: '#6b6860', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>−</button>
-                  <span style={{ fontSize: 10.5, color: '#8d8a82', fontWeight: 700 }} title="โบนัสจากเกราะ / โล่">เกราะ/โล่ +{sv('ndArmorBonus', 0)}</span>
-                  <button onClick={() => setSheet({ ndArmorBonus: sv('ndArmorBonus', 0) + 1 })} style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #d8d4cc', background: '#fff', color: '#2f6b4f', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>+</button>
-                </div>
+                {naFromGear > 0 && <div style={{ fontSize: 10, color: '#2f6b4f', fontWeight: 700, marginTop: 2 }}>เกราะ/โล่ +{naFromGear}</div>}
               </div>
               <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
                 <div style={{ fontSize: 30, fontWeight: 800, color: movementHalf ? '#b4513a' : '#5c4a2e' }}>{effMovement}<span style={{ fontSize: 14 }}> M.</span>{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
@@ -946,6 +945,12 @@ function CharacterSheet({
                                   <div>
                                     <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25' }}>{item.name}</div>
                                     <div style={{ fontSize: 10.5, color: '#9a978e', marginBottom: 8 }}>{numData(item.kg)} kg</div>
+                                    {isDefensive(item.name) && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, background: '#eef6f0', border: '1px solid #cfe6d6', borderRadius: 8, padding: '4px 8px' }}>
+                                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2f6b4f' }}>Natural Defense +</span>
+                                        <NumField value={numData(item.na)} onCommit={(v) => setHand(s.key, { ...item, na: v })} width={44} style={{ fontSize: 12, padding: '2px 5px' }} />
+                                      </div>
+                                    )}
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       <button onClick={() => { const it = item.itemId ? equipById.get(item.itemId) : undefined; if (it) { setInfoIsFeature(false); setInfo(it); } else setHandInfo({ lineId: s.key, itemId: item.itemId ?? '', name: item.name, priceIC: 0, kg: item.kg }); }} title="รายละเอียด" style={{ flex: 1, border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 8, padding: '5px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ รายละเอียด</button>
                                       <button onClick={() => clearHand(s.key)} title="เอาออกจากมือ" style={{ flex: 'none', border: '1px solid #f0d3cb', background: '#fbeae6', color: '#b4513a', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>เอาออก</button>
@@ -1435,7 +1440,7 @@ function CharacterSheet({
       {/* ── On-Hand "Use" picker (Weapon / Shield / Artifact only) ── */}
       <Modal open={!!handSlot} onClose={() => setHandSlot(null)} title={`Use ไอเทมเข้า${HAND_SLOTS.find((s) => s.key === handSlot)?.label ?? 'มือ'}`}>
         <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เฉพาะ Weapon / Shield / Artifact — กด “Use” เพื่อถือเข้าช่องนี้</p>
-        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot) { setHand(handSlot, { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum) }); setHandSlot(null); } }} />
+        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot) { setHand(handSlot, { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum), na: isDefensive(m.name) ? 1 : 0 }); setHandSlot(null); } }} />
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
