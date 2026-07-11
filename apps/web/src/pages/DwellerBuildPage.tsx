@@ -203,21 +203,28 @@ function CharacterSheet({
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
   const [logOpen, setLogOpen] = useState(false);
+  const [initOpen, setInitOpen] = useState(false);
 
   const qc = useQueryClient();
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
   // Shared campaign roll/action log (real-time, if this character is in a campaign)
   interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
+  interface InitEntry { id: string; name: string; value: number; kind: string }
   const { data: campForChar } = useQuery({
     queryKey: ['sheet-campaign', character.id],
-    queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[] } | null }>(`/campaigns/for-character/${character.id}`),
+    queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[] } | null }>(`/campaigns/for-character/${character.id}`),
     refetchInterval: 4000,
   });
   const campaignId = campForChar?.campaign?.id;
   const campaignLog = campForChar?.campaign?.log ?? [];
+  const campaignInit = (campForChar?.campaign?.initiative ?? []).slice().sort((a, b) => b.value - a.value);
   const postLog = useMutation({
     mutationFn: (body: { kind: string; text: string }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
+  });
+  const postInit = useMutation({
+    mutationFn: (value: number) => api.post('/campaigns/initiative/set', { characterId: character.id, value }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
   });
   const rollLabelRef = useRef('');
@@ -277,7 +284,6 @@ function CharacterSheet({
   const sanityMax = n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity');
   const natureDef = n('natureBase') + faces('DEX') + faces('PER') + a('natureDef');
   const movement = n('movement') + a('movement');
-  const initiative = 10 + n('initRollDEX') + n('initRollCVN') + a('initiative');
 
   // Ehen
   const ehenType = str('ehenType');
@@ -611,6 +617,16 @@ function CharacterSheet({
     });
     setRestMsg(`พักยาว (Long Rest): ${notes.join(' · ')}`);
   };
+  // Initiative = 10 + roll(DEX core die) + roll(PER core die)
+  const rollInitiative = () => {
+    const dexF = STEP10_FACES[byAbbr['DEX'] ?? ''] ?? 0;
+    const perF = STEP10_FACES[byAbbr['PER'] ?? ''] ?? 0;
+    const dex = rollDie(dexF), per = rollDie(perF);
+    const val = 10 + dex + per;
+    setSheet({ initiativeRolled: val });
+    logRef.current('roll', `⚔️ Initiative → ${val} (10 + DEX d${dexF}=${dex} + PER d${perF}=${per})`);
+    if (campaignId) postInit.mutate(val);
+  };
   const EHEN_DENSITY = [
     { key: 'thin', label: 'เบาบาง', faces: 4 },
     { key: 'normal', label: 'ปกติ', faces: 6 },
@@ -930,12 +946,13 @@ function CharacterSheet({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
               <button
-                onClick={() => setRoll({ faces: 20, adv: false })}
-                title="ทอย Initiative (d20)"
-                style={{ ...box, flex: 1, background: '#f4f2ee', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}
+                onClick={rollInitiative}
+                title="ทอย Initiative = 10 + DEX + PER"
+                style={{ ...box, flex: 1, background: '#f4f2ee', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}
               >
-                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL</span>
-                <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 16 }}>{initiative}</b></span>
+                <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL 🎲</span>
+                <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 20 }}>{sv('initiativeRolled', 0) || '—'}</b></span>
+                <span style={{ fontSize: 10, color: '#b0ada4' }}>10 + DEX + PER · กดเพื่อทอย</span>
               </button>
               <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
                 <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + naFromGear}</div>
@@ -1418,11 +1435,37 @@ function CharacterSheet({
       </div>
       <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} egoDisadvantage={roll?.dis ?? false} onClose={() => setRoll(null)} />
 
-      {/* ── Campaign LOG: floating button + floating window (only when in a campaign) ── */}
+      {/* ── Campaign LOG + Initiative: floating buttons + windows (only when in a campaign) ── */}
       {campaignId && (
         <>
           <button
-            onClick={() => setLogOpen((o) => !o)}
+            onClick={() => { setInitOpen((o) => !o); setLogOpen(false); }}
+            title="Initiative — ลำดับการเล่นของแคมเปญ"
+            style={{ position: 'fixed', right: 22, bottom: 154, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 22, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            ⚔️{campaignInit.length > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, background: '#5b3fa0', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{campaignInit.length}</span>}
+          </button>
+          {initOpen && (
+            <div style={{ position: 'fixed', right: 22, bottom: 218, zIndex: 151, width: 320, maxWidth: 'calc(100vw - 44px)', maxHeight: '60vh', background: '#1b1813', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.45)', border: '1px solid #35322b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid #35322b' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#f3ede1' }}>⚔️ INITIATIVE <span style={{ fontSize: 10.5, fontWeight: 400, color: '#8d8a82' }}>· ลำดับการเล่น</span></span>
+                <button onClick={() => setInitOpen(false)} style={{ background: 'none', border: 'none', color: '#9a978e', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {campaignInit.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860', padding: '8px 0' }}>ยังไม่มีใครทอย Initiative — กด INITIATIVE ROLL</div> : (
+                  campaignInit.map((e, i) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', borderRadius: 9, background: e.id === `d:${character.id}` ? '#2f2a4a' : '#26231e', border: `1px solid ${e.kind === 'monster' ? '#5a3a3a' : '#35322b'}` }}>
+                      <span style={{ flex: 'none', width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#f7dca0' : '#35322b', color: i === 0 ? '#15140f' : '#cbc3b4', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: e.kind === 'monster' ? '#e6a3a8' : '#e8e4db' }}>{e.name}{e.kind === 'monster' && ' 👹'}</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: '#f7dca0' }}>{e.value}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => { setLogOpen((o) => !o); setInitOpen(false); }}
             title="Log ประวัติการทอยของแคมเปญ"
             style={{ position: 'fixed', right: 22, bottom: 88, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 24, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >

@@ -130,7 +130,66 @@ campaignsRouter.get('/for-character/:characterId', async (req, res) => {
   if (!member) { res.json({ campaign: null }); return; }
   if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.json({ campaign: null }); return; }
   const data = parseData(member.campaign.data);
-  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [] } });
+  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [], initiative: Array.isArray(data.initiative) ? data.initiative : [] } });
+});
+
+// Set/update a Dweller's initiative in its campaign's turn order (owner or librarian).
+campaignsRouter.post('/initiative/set', async (req, res) => {
+  const me = req.currentUser!.id;
+  const characterId = String(req.body?.characterId ?? '');
+  const value = Math.round(Number(req.body?.value) || 0);
+  const member = await prisma.campaignMember.findUnique({ where: { characterId }, include: { campaign: true, character: true } });
+  if (!member) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
+  if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
+  const data = parseData(member.campaign.data);
+  const init = (Array.isArray(data.initiative) ? data.initiative : []) as { id: string }[];
+  const entryId = `d:${characterId}`;
+  data.initiative = [...init.filter((e) => e.id !== entryId), { id: entryId, name: member.character.name || 'ตัวละคร', value, kind: 'dweller' }];
+  await prisma.campaign.update({ where: { id: member.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+
+// Librarian: add a monster/NPC combatant, remove one, or clear the tracker.
+async function librarianCampaign(id: string, meId: string) {
+  const c = await prisma.campaign.findUnique({ where: { id } });
+  return c && c.librarianUserId === meId ? c : null;
+}
+campaignsRouter.post('/:id/initiative/monster', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  const init = (Array.isArray(data.initiative) ? data.initiative : []) as unknown[];
+  data.initiative = [...init, { id: `m${Date.now()}${Math.floor(Math.random() * 999)}`, name: String(req.body?.name ?? 'มอนสเตอร์'), value: Math.round(Number(req.body?.value) || 0), kind: 'monster' }];
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.delete('/:id/initiative/:entryId', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  const init = (Array.isArray(data.initiative) ? data.initiative : []) as { id: string }[];
+  data.initiative = init.filter((e) => e.id !== req.params.entryId);
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.post('/:id/initiative/set-value', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const entryId = String(req.body?.entryId ?? '');
+  const value = Math.round(Number(req.body?.value) || 0);
+  const data = parseData(c.data);
+  const init = (Array.isArray(data.initiative) ? data.initiative : []) as { id: string; value: number }[];
+  data.initiative = init.map((e) => (e.id === entryId ? { ...e, value } : e));
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.post('/:id/initiative/clear', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  data.initiative = [];
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
 });
 
 // Append an entry to the campaign's shared log (roll / magic / feature use).

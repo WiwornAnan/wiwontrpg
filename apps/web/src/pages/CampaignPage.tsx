@@ -15,12 +15,15 @@ interface Clock { year: number; month: number; day: number; hour: number; minute
 const DEFAULT_CLOCK: Clock = { year: 1, month: 1, day: 1, hour: 8, minute: 0 };
 const num = (v: unknown, def = 0) => (typeof v === 'number' && isFinite(v) ? v : def);
 const navBtn: React.CSSProperties = { width: 26, height: 26, borderRadius: 7, border: '1px solid #e0ded7', background: '#faf9f7', color: '#5f5c54', fontSize: 12, cursor: 'pointer' };
+const initStep: React.CSSProperties = { width: 22, height: 22, borderRadius: 6, border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', fontSize: 13, fontWeight: 800, cursor: 'pointer', flex: 'none' };
 const buffLabel = (k: string) => BUFF_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
 
 interface Note { id: string; title: string; text: string }
 interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
+interface InitEntry { id: string; name: string; value: number; kind: string }
+const rollD = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
 
 export function CampaignPage() {
   const { id } = useParams();
@@ -56,12 +59,19 @@ export function CampaignPage() {
     mutationFn: () => api.delete(`/campaigns/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); navigate('/dweller'); },
   });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['campaign', id] });
+  const addMonster = useMutation({ mutationFn: (b: { name: string; value: number }) => api.post(`/campaigns/${id}/initiative/monster`, b), onSuccess: invalidate });
+  const setInitValue = useMutation({ mutationFn: (b: { entryId: string; value: number }) => api.post(`/campaigns/${id}/initiative/set-value`, b), onSuccess: invalidate });
+  const delInit = useMutation({ mutationFn: (entryId: string) => api.delete(`/campaigns/${id}/initiative/${entryId}`), onSuccess: invalidate });
+  const clearInit = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/initiative/clear`, {}), onSuccess: invalidate });
+  const [monName, setMonName] = useState('');
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[] };
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
+  const initiative: InitEntry[] = (Array.isArray(cdata.initiative) ? cdata.initiative : []).slice().sort((a, b) => b.value - a.value);
   const clock = { ...DEFAULT_CLOCK, ...(cdata.clock ?? {}) };
   const notes: Note[] = Array.isArray(cdata.notes) ? cdata.notes : [];
   const setData = (partial: Record<string, unknown>) => patchCamp.mutate({ data: { ...c.data, ...partial } });
@@ -130,6 +140,38 @@ export function CampaignPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* initiative tracker — shared across the campaign */}
+          <div style={box}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={secLabel}>⚔️ INITIATIVE <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· ลำดับการเล่น</span></span>
+              {c.isLibrarian && initiative.length > 0 && <button onClick={() => clearInit.mutate()} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ล้าง</button>}
+            </div>
+            {initiative.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', marginBottom: c.isLibrarian ? 10 : 0 }}>ยังไม่มีใครทอย Initiative</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: c.isLibrarian ? 12 : 0 }}>
+                {initiative.map((e, i) => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 9, background: '#faf9f7', border: `1px solid ${e.kind === 'monster' ? '#f0d3cb' : '#ece9e3'}` }}>
+                    <span style={{ flex: 'none', width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#f7dca0' : '#ece9e3', color: '#5c4a2e', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: e.kind === 'monster' ? '#b4513a' : '#2f2c25' }}>{e.name}{e.kind === 'monster' && ' 👹'}</span>
+                    {c.isLibrarian ? (
+                      <>
+                        <button onClick={() => setInitValue.mutate({ entryId: e.id, value: e.value - 1 })} style={initStep}>−</button>
+                        <span style={{ minWidth: 26, textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#5c4a2e' }}>{e.value}</span>
+                        <button onClick={() => setInitValue.mutate({ entryId: e.id, value: e.value + 1 })} style={initStep}>+</button>
+                        <button onClick={() => delInit.mutate(e.id)} title="ลบ" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>
+                      </>
+                    ) : <span style={{ fontSize: 15, fontWeight: 800, color: '#5c4a2e' }}>{e.value}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {c.isLibrarian && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <input value={monName} onChange={(ev) => setMonName(ev.target.value)} placeholder="ชื่อมอนสเตอร์ / NPC" style={{ flex: 1, minWidth: 120, border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                <button onClick={() => { if (monName.trim()) { addMonster.mutate({ name: monName.trim(), value: 10 + rollD(6) + rollD(6) }); setMonName(''); } }} disabled={!monName.trim()} title="เพิ่ม + ทอย Initiative (10 + d6 + d6)" style={{ border: 'none', background: monName.trim() ? '#b4513a' : '#cfccc4', color: '#fff', borderRadius: 8, padding: '7px 13px', fontSize: 12, fontWeight: 700, cursor: monName.trim() ? 'pointer' : 'not-allowed' }}>👹 เพิ่ม + ทอย</button>
               </div>
             )}
           </div>
