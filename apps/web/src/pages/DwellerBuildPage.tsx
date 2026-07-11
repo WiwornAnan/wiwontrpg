@@ -239,10 +239,17 @@ function CharacterSheet({
   logRef.current = (kind, text) => { if (campaignId) postLog.mutate({ kind, text }); };
   useEffect(() => {
     const handler = (e: Event) => {
-      const d = (e as CustomEvent).detail as { ego: number; egoFaces: number; special?: string };
+      const d = (e as CustomEvent).detail as { ego: number; ambient: number; fortuity: number; total?: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string };
       const label = rollLabelRef.current || 'ทอยลูกเต๋า';
+      const sym = (m?: string) => (m === 'adv' ? ' ▲' : m === 'dis' ? ' ▼' : '');
+      const total = d.total ?? d.ego + d.ambient + d.fortuity;
+      const parts = [
+        `Ego ${d.ego} (d${d.egoFaces}${sym(d.egoMode)})`,
+        `Ambient ${d.ambient} (d8${sym(d.ambientMode)})`,
+        `Fortuity ${d.fortuity} (d10${sym(d.fortuityMode)})`,
+      ];
       const extra = d.special ? ` · ${d.special}` : '';
-      logRef.current('roll', `🎲 ${label} → Ego ${d.ego} (d${d.egoFaces})${extra}`);
+      logRef.current('roll', `🎲 ${label} → ${parts.join(' · ')} = รวม ${total}${extra}`);
       rollLabelRef.current = '';
     };
     window.addEventListener('wiwon-dice', handler);
