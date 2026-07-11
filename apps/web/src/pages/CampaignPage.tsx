@@ -143,29 +143,53 @@ export function CampaignPage() {
             {c.members.length === 0 ? <div style={{ fontSize: 13, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีผู้เล่นเข้าร่วม — แชร์รหัส {c.joinCode}</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {c.members.map(({ character: ch }) => {
-                  const sheet = ((ch.data as Record<string, unknown>).sheet ?? {}) as Record<string, unknown>;
+                  const cd = ch.data as Record<string, unknown>;
+                  const sheet = (cd.sheet ?? {}) as Record<string, unknown>;
+                  const sm = (sheet.summary ?? {}) as Record<string, number>;
                   const buffs = Object.keys((sheet.buffsOn ?? {}) as Record<string, boolean>);
                   const status = Object.keys((sheet.statusOn ?? {}) as Record<string, boolean>);
                   const wl = num(sheet.woundLevel);
+                  const raceName = typeof cd.raceName === 'string' ? cd.raceName : '';
+                  const className = typeof cd.className === 'string' ? cd.className : '';
+                  const has = (v: unknown) => v !== undefined && v !== null;
+                  const val = (v: unknown, max?: number) => (has(v) ? `${v}${max !== undefined ? ` / ${max}` : ''}` : '—');
+                  const drank = num(sheet.waterCur) > 0;
+                  const stat = (label: string, node: React.ReactNode, color = '#5f5c54') => (
+                    <div style={{ background: '#fff', border: '1px solid #efece6', borderRadius: 8, padding: '5px 8px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: '#a8a59d', letterSpacing: '.03em' }}>{label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color }}>{node}</div>
+                    </div>
+                  );
                   return (
                     <div key={ch.id} style={{ border: '1px solid #ece9e3', borderRadius: 11, padding: '11px 13px', background: '#faf9f7' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                         <span style={{ flex: 1, fontSize: 14, fontWeight: 800, color: '#2f2c25' }}>{ch.name || 'ตัวละคร'}</span>
                         {c.isLibrarian && <Link to={`/dweller/sheet/${ch.id}`} style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#5b3fa0', borderRadius: 7, padding: '5px 11px', textDecoration: 'none' }}>เปิด Dweller Sheet</Link>}
                         {c.isLibrarian && <button onClick={() => removeMember.mutate(ch.id)} title="เอาออกจากแคมเปญ" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15 }}>×</button>}
                       </div>
-                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#5f5c54' }}>
-                        <span>SAN <b>{sheet.sanCur !== undefined ? String(sheet.sanCur) : '—'}</b></span>
-                        <span>Scratch <b>{sheet.scratchCur !== undefined ? String(sheet.scratchCur) : '—'}</b></span>
-                        <span>WP <b>{sheet.wpCur !== undefined ? String(sheet.wpCur) : '—'}</b></span>
-                        <span>Wounds <b style={{ color: wl >= 4 ? '#b4513a' : '#5f5c54' }}>{WOUND_NAMES[wl] ?? wl}</b></span>
-                      </div>
-                      {(buffs.length > 0 || status.length > 0) && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
-                          {buffs.map((k) => <span key={k} style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 7, background: '#eef6f0', color: '#2f6b4f', border: '1px solid #cfe6d6' }}>{buffLabel(k)}</span>)}
-                          {status.map((k) => <span key={k} style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 7, background: '#fbeae6', color: '#b4513a', border: '1px solid #f0d3cb' }}>{statusLabel(k)}</span>)}
+                      {(raceName || className) && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
+                          {raceName && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 7, background: '#f0ece4', color: '#6b5b45' }}>เผ่า {raceName}</span>}
+                          {className && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 7, background: '#ede7f6', color: '#5b3fa0' }}>คลาส {className}</span>}
                         </div>
                       )}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 6 }}>
+                        {stat('SAN', val(sheet.sanCur, sm.sanMax), '#2a5fbd')}
+                        {stat('Scratch', val(sheet.scratchCur, sm.scrMax), '#c15a3f')}
+                        {stat('WP', val(sheet.wpCur, 3), '#2f6b4f')}
+                        {stat('Nat. Def', has(sm.natDef) ? String(sm.natDef) : '—', '#5c4a2e')}
+                        {stat('Wounds', <span style={{ color: wl >= 4 ? '#b4513a' : '#5f5c54' }}>{WOUND_NAMES[wl] ?? wl} <span style={{ fontSize: 9, fontWeight: 600, color: '#a8a59d' }}>{wl}/5</span></span>)}
+                        {stat('Cal (ทาน/สะสม)', `${num(sheet.calEaten)}/${num(sheet.calStored)}`, '#5f5030')}
+                        {stat('ดื่มน้ำ', <span style={{ color: drank ? '#2f6b4f' : '#b4513a' }}>{drank ? '💧 แล้ว' : '🫗 ยัง'}</span>)}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 9 }}>
+                        {buffs.length === 0 && status.length === 0
+                          ? <span style={{ fontSize: 10.5, color: '#bdbab2' }}>ไม่มีบัฟ/ดีบัฟ · ไม่ได้รับพร</span>
+                          : <>
+                              {buffs.map((k) => <span key={k} title="บัฟ / พร" style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 7, background: '#eef6f0', color: '#2f6b4f', border: '1px solid #cfe6d6' }}>✦ {buffLabel(k)}</span>)}
+                              {status.map((k) => <span key={k} title="ดีบัฟ" style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 7, background: '#fbeae6', color: '#b4513a', border: '1px solid #f0d3cb' }}>▼ {statusLabel(k)}</span>)}
+                            </>}
+                      </div>
                     </div>
                   );
                 })}

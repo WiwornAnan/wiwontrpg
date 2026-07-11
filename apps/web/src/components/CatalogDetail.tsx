@@ -21,6 +21,10 @@ interface WeaponArtRef {
 // Weapon-art capacity by the item's Professional Level.
 const PRO_ARTS: Record<string, number> = { Amateur: 0, Journeyman: 1, Expert: 2, Master: 3 };
 
+// Monster Core Attributes — displayed as a grid, not plain rows.
+const CORE_ATTR_KEYS = ['coreSTR', 'coreDEX', 'coreEND', 'corePER', 'coreINT', 'coreAUT', 'coreCVN'];
+const GRADE_COLOR: Record<string, string> = { A: '#b4842a', B: '#2f6b4f', C: '#2a6fdb', D: '#8d7a4a', X: '#b4513a' };
+
 function fv(item: CatalogItem, key: string): string {
   if (key === 'source') return item.source;
   if (key === 'tag') return String(item.fields.tag ?? item.tags[0] ?? '');
@@ -106,6 +110,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const stats = source.filterFields
     .filter((f) => {
       if (EXCLUDE_STAT.has(f.key)) return false;
+      if (CORE_ATTR_KEYS.includes(f.key)) return false; // shown in the Core Attribute grid instead
       if ((isMagicSpell || isMagicFeature) && MAGIC_EXCLUDE.has(f.key)) return false;
       if (seen.has(f.key)) return false;
       seen.add(f.key);
@@ -113,6 +118,8 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     })
     .map((f) => ({ label: f.label, value: f.key === 'components' ? abbrevComponents(fv(item, f.key)) : fv(item, f.key) }))
     .filter((s) => s.value !== '' && s.label !== 'Cost' && s.label !== 'Rarity' && s.label !== 'School');
+  // Monster Core Attributes → their own grid (STR/DEX/END/PER/INT/AUT/CVN).
+  const coreAttrs = CORE_ATTR_KEYS.map((k) => ({ abbr: k.replace('core', ''), grade: fv(item, k) })).filter((c) => c.grade);
 
   const keyStats = isMagicSpell
     ? [
@@ -316,6 +323,23 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
           {cost && !isMagicSpell && <Row label="Cost" value={cost} />}
         </div>
       </div>
+
+      {coreAttrs.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 9 }}>Core Attribute</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 7 }}>
+            {coreAttrs.map((c) => {
+              const col = GRADE_COLOR[c.grade] ?? '#5f5c54';
+              return (
+                <div key={c.abbr} style={{ background: '#faf9f7', border: '1px solid #ece9e3', borderRadius: 10, padding: '9px 4px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', letterSpacing: '.04em' }}>{c.abbr}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: col, lineHeight: 1.15, marginTop: 2 }}>{c.grade}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {category === 'equipment' && (canEdit || hasCoins) && (
         <div style={{ marginTop: 16 }}>

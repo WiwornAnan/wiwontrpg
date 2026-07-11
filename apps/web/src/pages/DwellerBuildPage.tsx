@@ -204,6 +204,7 @@ function CharacterSheet({
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
+  const [handWarn, setHandWarn] = useState(''); // "มือไม่ว่างพอ" for Two-Handed weapons
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
   const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false });
   const [magicPicker, setMagicPicker] = useState(false);
@@ -650,7 +651,7 @@ function CharacterSheet({
   };
 
   // ── On-Hand slots (right / left / tail) — only Weapon / Shield / Artifact ──
-  interface HandItem { name: string; itemId?: string; kg?: number; na?: number }
+  interface HandItem { name: string; itemId?: string; kg?: number; na?: number; twoHand?: boolean; linkedTo?: string; secondary?: boolean }
   interface HandSlot { key: string; label: string; extra?: boolean }
   const BASE_HAND_SLOTS: HandSlot[] = [{ key: 'right', label: 'มือขวา' }, { key: 'left', label: 'มือซ้าย' }, { key: 'tail', label: 'หาง' }];
   const handExtra: HandSlot[] = Array.isArray(sheet.handSlotsExtra) ? (sheet.handSlotsExtra as HandSlot[]).map((s) => ({ ...s, extra: true })) : [];
@@ -665,7 +666,39 @@ function CharacterSheet({
   const naFromGear = Object.values(hands).reduce((s, it) => s + (it && isDefensive(it.name) ? numData(it.na) : 0), 0);
   const handOn = (slot: string) => (sheet.handsOn && typeof sheet.handsOn === 'object' ? (sheet.handsOn as Record<string, boolean>)[slot] : undefined) ?? (slot !== 'tail');
   const setHand = (slot: string, item: HandItem) => setSheet({ hands: { ...hands, [slot]: item } });
-  const clearHand = (slot: string) => { const n = { ...hands }; delete n[slot]; setSheet({ hands: n }); };
+  const clearHand = (slot: string) => { const it = hands[slot]; const n = { ...hands }; delete n[slot]; if (it?.linkedTo) delete n[it.linkedTo]; setSheet({ hands: n }); };
+  // Titan's Grip Feature lets a Two-Handed weapon be wielded one-handed.
+  const hasTitansGrip = featRows.some((r) => /titan.?s?\s*grip/i.test(r.name));
+  // Use an item into a hand slot. Two-Handed weapons occupy a second free hand
+  // (unless Titan's Grip); if none is free, warn "มือไม่ว่างพอ" and place nothing.
+  const useHandItem = (slot: string, m: CatalogItem): boolean => {
+    const twoH = /two|สองมือ/i.test(String(m.fields.wielding ?? ''));
+    const base: HandItem = { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum), na: isDefensive(m.name) ? 1 : 0 };
+    if (twoH && !hasTitansGrip) {
+      const second = HAND_SLOTS.find((s) => s.key !== slot && handOn(s.key) && !hands[s.key]);
+      if (!second) {
+        setHandWarn(`มือไม่ว่างพอ — “${m.name}” เป็นอาวุธสองมือ (Two-Handed) ต้องมีมือว่าง 2 ช่อง`);
+        window.setTimeout(() => setHandWarn(''), 4000);
+        return false;
+      }
+      setSheet({ hands: { ...hands, [slot]: { ...base, twoHand: true, linkedTo: second.key }, [second.key]: { name: m.name, itemId: m.id, kg: 0, twoHand: true, linkedTo: slot, secondary: true } } });
+      return true;
+    }
+    setSheet({ hands: { ...hands, [slot]: { ...base, ...(twoH ? { twoHand: true } : {}) } } });
+    return true;
+  };
+  // Persist derived totals (Natural Defense, Scratch/SAN max) into the sheet so the
+  // Librarian roster can display them without re-deriving grades. Guarded to write once per value set.
+  const summaryRef = useRef('');
+  useEffect(() => {
+    const natDef = natureDef + naFromGear;
+    const key = `${natDef}|${scrMax}|${sanMax}`;
+    if (summaryRef.current === key) return;
+    summaryRef.current = key;
+    const cur = (sheet.summary && typeof sheet.summary === 'object' ? sheet.summary : {}) as Record<string, number>;
+    if (cur.natDef !== natDef || cur.scrMax !== scrMax || cur.sanMax !== sanMax) setSheet({ summary: { natDef, scrMax, sanMax } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [natureDef, naFromGear, scrMax, sanMax]);
   const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
   // Dweller Skill round tick toggle
   const skillChecked = sheet.skillChecked && typeof sheet.skillChecked === 'object' ? (sheet.skillChecked as Record<string, boolean>) : {};
@@ -1085,23 +1118,32 @@ function CharacterSheet({
 
           {/* Right */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
-                <button onClick={resetInitiative} title="รีเซ็ต Initiative เป็น 0" style={{ position: 'absolute', top: 8, right: 8, border: '1px solid #d8d4cc', background: '#fff', color: '#8d8a82', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Reset</button>
-                <button onClick={rollInitiative} title="ทอย Initiative = 10 + DEX + PER" style={{ border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: '#5c4a2e' }}>INITIATIVE ROLL 🎲</span>
-                  <span style={{ fontSize: 12, color: '#9a978e' }}>Initiative <b style={{ color: '#e07a5f', fontSize: 20 }}>{sv('initiativeRolled', 0) || '—'}</b></span>
-                  <span style={{ fontSize: 10, color: '#b0ada4' }}>10 + DEX + PER · กดเพื่อทอย</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr 1fr', gap: 12, alignItems: 'stretch' }}>
+              {/* INITIATIVE — clickable to roll, coral accent */}
+              <div style={{ position: 'relative', borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#fdf3ee,#f7ede2)', border: '1px solid #eeddcb', boxShadow: '0 1px 0 #fff inset', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ flex: 'none', width: 26, height: 26, borderRadius: 8, background: '#e07a5f', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, boxShadow: '0 2px 6px rgba(224,122,95,.4)' }}>⚔️</span>
+                  <span style={{ flex: 1, fontFamily: 'var(--font-serif)', fontSize: 13.5, fontWeight: 700, color: '#8a5a44', letterSpacing: '.02em' }}>INITIATIVE</span>
+                  <button onClick={resetInitiative} title="รีเซ็ตเป็น 0" style={{ flex: 'none', border: '1px solid #ecd7cc', background: '#fff', color: '#b0725e', borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>↺ Reset</button>
+                </div>
+                <button onClick={rollInitiative} title="ทอย Initiative = 10 + DEX + PER" style={{ border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: 34, fontWeight: 800, color: '#e07a5f', lineHeight: 1 }}>{sv('initiativeRolled', 0) || '—'}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#c58a72', background: '#fff', border: '1px solid #f0dbcf', borderRadius: 7, padding: '3px 9px' }}>🎲 ทอย</span>
                 </button>
+                <span style={{ fontSize: 9.5, color: '#bb9a86' }}>10 + DEX + PER · กดเลขเพื่อทอย</span>
               </div>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: '#5c4a2e' }}>{natureDef + naFromGear}</div>
-                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Natural Defense</div>
-                {naFromGear > 0 && <div style={{ fontSize: 10, color: '#2f6b4f', fontWeight: 700, marginTop: 2 }}>เกราะ/โล่ +{naFromGear}</div>}
+              {/* NATURAL DEFENSE — teal accent */}
+              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#eef7f1,#e6f1ea)', border: '1px solid #cfe6d6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
+                <span style={{ fontSize: 16 }}>🛡️</span>
+                <div style={{ fontSize: 32, fontWeight: 800, color: '#2f6b4f', lineHeight: 1 }}>{natureDef + naFromGear}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5a8a72', letterSpacing: '.03em' }}>Natural Defense</div>
+                {naFromGear > 0 && <div style={{ fontSize: 9.5, color: '#2f6b4f', fontWeight: 700, background: '#fff', border: '1px solid #cfe6d6', borderRadius: 6, padding: '1px 7px' }}>เกราะ/โล่ +{naFromGear}</div>}
               </div>
-              <div style={{ ...box, flex: 1, background: '#f4f2ee', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
-                <div style={{ fontSize: 30, fontWeight: 800, color: movementHalf ? '#b4513a' : '#5c4a2e' }}>{effMovement}<span style={{ fontSize: 14 }}> M.</span>{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
-                <div style={{ fontSize: 11, color: '#8d8a82', marginTop: 2 }}>Movement</div>
+              {/* MOVEMENT — earthy accent */}
+              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#faf5ea,#f4ecdb)', border: '1px solid #e8dcc2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
+                <span style={{ fontSize: 16 }}>👣</span>
+                <div style={{ fontSize: 32, fontWeight: 800, color: movementHalf ? '#b4513a' : '#8a6a3a', lineHeight: 1 }}>{effMovement}<span style={{ fontSize: 14 }}> M.</span>{movementHalf && <span style={{ fontSize: 13 }}> ½</span>}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a08a5a', letterSpacing: '.03em' }}>Movement</div>
               </div>
             </div>
             {(() => {
@@ -1129,6 +1171,8 @@ function CharacterSheet({
                           <span style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45' }}>ของในมือ (On Hand) <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· Weapon / Shield / Artifact · กด Use เพื่อถือ</span></span>
                           <button onClick={addHandSlot} style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#eef6f0', color: '#2f6b4f', borderRadius: 8, padding: '5px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>＋ สวมเกราะ</button>
                         </div>
+                        {handWarn && <div style={{ fontSize: 11.5, color: '#c0432a', background: '#fdf1ee', border: '1px solid #f2cabf', borderRadius: 8, padding: '7px 11px', marginBottom: 10 }}>⚠️ {handWarn}</div>}
+                        {hasTitansGrip && <div style={{ fontSize: 11, color: '#8a6a3a', background: '#fff8ef', border: '1px solid #efe0cd', borderRadius: 8, padding: '6px 11px', marginBottom: 10 }}>💪 มี Feature “Titan’s Grip” — ถืออาวุธสองมือด้วยมือเดียวได้</div>}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                           {HAND_SLOTS.map((s) => {
                             const on = handOn(s.key);
@@ -1144,7 +1188,7 @@ function CharacterSheet({
                                   <div style={{ fontSize: 11, color: '#bdbab2', padding: '6px 0' }}>— ปิดช่องอยู่ —</div>
                                 ) : item ? (
                                   <div>
-                                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25' }}>{item.name}</div>
+                                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2f2c25' }}>{item.name}{item.twoHand && <span title="อาวุธสองมือ" style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 5, background: '#efe6f6', color: '#5b3fa0' }}>✋✋ สองมือ{item.secondary ? ' (มือรอง)' : ''}</span>}</div>
                                     <div style={{ fontSize: 10.5, color: '#9a978e', marginBottom: 8 }}>{numData(item.kg)} kg</div>
                                     {isDefensive(item.name) && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, background: '#eef6f0', border: '1px solid #cfe6d6', borderRadius: 8, padding: '4px 8px' }}>
@@ -1779,8 +1823,8 @@ function CharacterSheet({
 
       {/* ── On-Hand "Use" picker (Weapon / Shield / Artifact only) ── */}
       <Modal open={!!handSlot} onClose={() => setHandSlot(null)} title={`Use ไอเทมเข้า${HAND_SLOTS.find((s) => s.key === handSlot)?.label ?? 'มือ'}`}>
-        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เฉพาะ Weapon / Shield / Artifact — กด “Use” เพื่อถือเข้าช่องนี้</p>
-        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot) { setHand(handSlot, { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum), na: isDefensive(m.name) ? 1 : 0 }); setHandSlot(null); } }} />
+        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เฉพาะ Weapon / Shield / Artifact — กด “Use” เพื่อถือเข้าช่องนี้ · อาวุธสองมือจะใช้สองช่อง{hasTitansGrip ? ' (ยกเว้น: มี Titan’s Grip)' : ''}</p>
+        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot && useHandItem(handSlot, m)) setHandSlot(null); }} />
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
