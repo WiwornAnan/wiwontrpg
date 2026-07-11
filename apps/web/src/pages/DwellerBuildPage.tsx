@@ -97,9 +97,17 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   }
 
   if (mode === 'sheet') {
+    const isOwner = character.ownerUserId === user.id;
     return (
       <div className={layout.page} style={{ paddingTop: 40, maxWidth: 1340 }}>
-        {back}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          {back}
+          {isOwner && (
+            <Link to={`/dweller/build/${character.id}`} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#5b3fa0', borderRadius: 9, padding: '8px 16px', textDecoration: 'none' }} title="กลับไปหน้าสร้างตัวละครเพื่อแก้ไข">
+              ✎ แก้ไขตัวละคร
+            </Link>
+          )}
+        </div>
         <div style={{ marginTop: 16 }}>
           <CharacterSheet character={character} covers={covers} patch={patch} />
         </div>

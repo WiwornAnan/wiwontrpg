@@ -163,7 +163,12 @@ export function CampaignPage() {
                   const raceName = typeof cd.raceName === 'string' ? cd.raceName : '';
                   const className = typeof cd.className === 'string' ? cd.className : '';
                   const has = (v: unknown) => v !== undefined && v !== null;
-                  const val = (v: unknown, max?: number) => (has(v) ? `${v}${max !== undefined ? ` / ${max}` : ''}` : '—');
+                  // Current pools default to their max on the sheet until changed, so fall
+                  // back to the summary max here too (matches what the Dweller Sheet shows).
+                  const cur = (v: unknown, max: number | undefined) => {
+                    const c = has(v) ? Number(v) : has(max) ? Number(max) : undefined;
+                    return c === undefined ? '—' : `${c}${has(max) ? ` / ${max}` : ''}`;
+                  };
                   const drank = num(sheet.waterCur) > 0;
                   const stat = (label: string, node: React.ReactNode, color = '#5f5c54') => (
                     <div style={{ background: '#fff', border: '1px solid #efece6', borderRadius: 8, padding: '5px 8px' }}>
@@ -185,9 +190,9 @@ export function CampaignPage() {
                         </div>
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 6 }}>
-                        {stat('SAN', val(sheet.sanCur, sm.sanMax), '#2a5fbd')}
-                        {stat('Scratch', val(sheet.scratchCur, sm.scrMax), '#c15a3f')}
-                        {stat('WP', val(sheet.wpCur, 3), '#2f6b4f')}
+                        {stat('SAN', cur(sheet.sanCur, sm.sanMax), '#2a5fbd')}
+                        {stat('Scratch', cur(sheet.scratchCur, sm.scrMax), '#c15a3f')}
+                        {stat('WP', cur(sheet.wpCur, 3), '#2f6b4f')}
                         {stat('Nat. Def', has(sm.natDef) ? String(sm.natDef) : '—', '#5c4a2e')}
                         {stat('Wounds', <span style={{ color: wl >= 4 ? '#b4513a' : '#5f5c54' }}>{WOUND_NAMES[wl] ?? wl} <span style={{ fontSize: 9, fontWeight: 600, color: '#a8a59d' }}>{wl}/5</span></span>)}
                         {stat('Cal (ทาน/สะสม)', `${num(sheet.calEaten)}/${num(sheet.calStored)}`, '#5f5030')}
