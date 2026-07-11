@@ -428,6 +428,7 @@ function CharacterSheet({
   const moveStyle = (c: string, bd: string): React.CSSProperties => ({ padding: '3px 9px', border: `1px solid ${bd}`, background: '#fff', color: c, borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' });
   const invRow = (l: BagLine) => {
     const z = invZone(l);
+    const catItem = l.itemId ? equipById.get(l.itemId) : undefined; // resolved master item (if from catalog)
     return (
       <div key={l.lineId} style={{ border: `1px solid ${zoneBd[z]}`, borderRadius: 8, padding: '8px 10px', background: zoneBg[z], opacity: dragId === l.lineId ? 0.45 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -440,11 +441,13 @@ function CharacterSheet({
           >⠿</span>
           <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
+          {catItem && <button onClick={() => openInfo(catItem, false)} title="ดูข้อมูลจากต้นฉบับ" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-          <NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} />
-          <span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span>
+          {catItem
+            ? <span style={{ fontSize: 11, color: '#8d8a82', marginRight: 'auto' }} title="น้ำหนักจากข้อมูลไอเทม">⚖️ {numData(l.kg)} kg</span>
+            : <><NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} /><span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span></>}
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
           {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
