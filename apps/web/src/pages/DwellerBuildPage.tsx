@@ -39,6 +39,8 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
     queryKey: ['character', id],
     queryFn: () => api.get<{ character: Character }>(`/characters/${id}`),
     enabled: !!user && !!id,
+    // In sheet mode, poll so Librarian broadcasts / edits reach the player live.
+    refetchInterval: mode === 'sheet' ? 5000 : false,
   });
   const { data: coversData } = useQuery({
     queryKey: ['wiwon-covers'],
@@ -702,15 +704,18 @@ function CharacterSheet({
   // Persist derived totals (Natural Defense, Scratch/SAN max) into the sheet so the
   // Librarian roster can display them without re-deriving grades. Guarded to write once per value set.
   const summaryRef = useRef('');
+  const gradesSig = JSON.stringify(byAbbr);
   useEffect(() => {
     const natDef = natureDef + naFromGear;
-    const key = `${natDef}|${scrMax}|${sanMax}`;
+    const key = `${natDef}|${scrMax}|${sanMax}|${gradesSig}`;
     if (summaryRef.current === key) return;
     summaryRef.current = key;
-    const cur = (sheet.summary && typeof sheet.summary === 'object' ? sheet.summary : {}) as Record<string, number>;
-    if (cur.natDef !== natDef || cur.scrMax !== scrMax || cur.sanMax !== sanMax) setSheet({ summary: { natDef, scrMax, sanMax } });
+    const cur = (sheet.summary && typeof sheet.summary === 'object' ? sheet.summary : {}) as Record<string, unknown>;
+    if (cur.natDef !== natDef || cur.scrMax !== scrMax || cur.sanMax !== sanMax || JSON.stringify(cur.grades) !== gradesSig) {
+      setSheet({ summary: { natDef, scrMax, sanMax, grades: byAbbr } });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [natureDef, naFromGear, scrMax, sanMax]);
+  }, [natureDef, naFromGear, scrMax, sanMax, gradesSig]);
   const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
   // Dweller Skill round tick toggle
   const skillChecked = sheet.skillChecked && typeof sheet.skillChecked === 'object' ? (sheet.skillChecked as Record<string, boolean>) : {};
@@ -2669,20 +2674,26 @@ function useEffectiveGrades(character: Character): Record<string, string> {
   const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
   const isAncestryRace = !!raceId && raceHasAncestry(raceName);
 
+  const needRace = !!raceId && !isAncestryRace;
+  const needAncestry = !!ancestryId;
+  const needClass = !!classValue;
   const { data: aData } = useQuery({
-    enabled: !!raceId && !isAncestryRace,
+    enabled: needRace,
     queryKey: ['race-core', raceId],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/race-core/${encodeURIComponent(raceId)}`),
+    staleTime: Infinity,
   });
   const { data: bData } = useQuery({
-    enabled: !!ancestryId,
+    enabled: needAncestry,
     queryKey: ['ancestry-core', ancestryId],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/ancestry-core/${encodeURIComponent(ancestryId)}`),
+    staleTime: Infinity,
   });
   const { data: cData } = useQuery({
-    enabled: !!classValue,
+    enabled: needClass,
     queryKey: ['class-core', classValue],
     queryFn: () => api.get<{ core: { attributes: CoreAttr[] } }>(`/wizard/class-core/${encodeURIComponent(classValue)}`),
+    staleTime: Infinity,
   });
 
   const gradeOf = (attrs: CoreAttr[] | undefined, name: string) => attrs?.find((a) => a.name === name)?.grade ?? '—';
@@ -2695,6 +2706,13 @@ function useEffectiveGrades(character: Character): Record<string, string> {
     const combined = combineGrade(gradeOf(baseAttrs, attr), gradeOf(cData?.core.attributes, attr));
     byAbbr[abbr] = boosts.includes(attr) ? 'A' : gname(Math.max(0, Math.min(4, gval(combined) + (adjust[attr] ?? 0))));
   });
+  // While the source grades are still loading, don't flash a wrong intermediate
+  // value — reuse the last grades persisted on the sheet if we have them.
+  const ready = (!needRace || !!aData) && (!needAncestry || !!bData) && (!needClass || !!cData);
+  if (!ready) {
+    const stored = (character.data.sheet as { summary?: { grades?: Record<string, string> } } | undefined)?.summary?.grades;
+    if (stored && typeof stored === 'object' && Object.keys(stored).length > 0) return stored;
+  }
   return byAbbr;
 }
 
