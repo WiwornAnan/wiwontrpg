@@ -211,7 +211,7 @@ function CharacterSheet({
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
   const { data: magic } = useQuery({ queryKey: ['sheet-magic', wiwonIds.join(',')], queryFn: () => fetchMagicSpells(wiwonIds) });
   // Shared campaign roll/action log (real-time, if this character is in a campaign)
-  interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string }
+  interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; itemId?: string; isFeature?: boolean }
   interface InitEntry { id: string; name: string; value: number; kind: string }
   interface LootItem { id: string; name: string; kg?: number; desc?: string; itemId?: string }
   const { data: campForChar } = useQuery({
@@ -227,7 +227,7 @@ function CharacterSheet({
   const lootRename = useMutation({ mutationFn: (b: { lootId: string; name: string }) => api.post('/campaigns/loot/rename', { characterId: character.id, ...b }), onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }) });
   const campaignInit = (campForChar?.campaign?.initiative ?? []).slice().sort((a, b) => b.value - a.value);
   const postLog = useMutation({
-    mutationFn: (body: { kind: string; text: string }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
+    mutationFn: (body: { kind: string; text: string; itemId?: string; isFeature?: boolean }) => api.post('/campaigns/log', { characterId: character.id, ...body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
   });
   const postInit = useMutation({
@@ -235,8 +235,8 @@ function CharacterSheet({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }),
   });
   const rollLabelRef = useRef('');
-  const logRef = useRef<(kind: string, text: string) => void>(() => {});
-  logRef.current = (kind, text) => { if (campaignId) postLog.mutate({ kind, text }); };
+  const logRef = useRef<(kind: string, text: string, ref?: { itemId?: string; isFeature?: boolean }) => void>(() => {});
+  logRef.current = (kind, text, ref) => { if (campaignId) postLog.mutate({ kind, text, itemId: ref?.itemId, isFeature: ref?.isFeature }); };
   useEffect(() => {
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail as { ego: number; ambient: number; fortuity: number; total?: number; egoFaces: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string };
@@ -944,11 +944,15 @@ function CharacterSheet({
                 <>
                   {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860', marginBottom: 8 }}>ยังไม่มีบันทึก — ทอยเต๋า ใช้ Magic/Feature หรือพิมพ์ข้อความด้านล่างเพื่อบันทึก</div> : (
                     <div style={{ height: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingRight: 4, marginBottom: 8 }}>
-                      {campaignLog.slice().reverse().map((l) => (
-                        <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
-                          <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
-                        </div>
-                      ))}
+                      {campaignLog.slice().reverse().map((l) => {
+                        const refItem = l.itemId ? (l.isFeature ? featItemById.get(l.itemId) : magicItemById.get(l.itemId)) : null;
+                        return (
+                          <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 6 }}>
+                            <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                            {refItem && <button onClick={() => openInfo(refItem, !!l.isFeature)} title="ดูข้อมูลจากต้นฉบับ" style={{ marginTop: 3, display: 'inline-block', border: '1px solid #3a3730', background: '#221f1a', color: '#cbb8f0', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ⓘ ดูข้อมูล{l.isFeature ? ' Feature' : 'เวท'}</button>}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {/* Free-form broadcast → everyone in the campaign sees it in the shared Log */}
@@ -1248,13 +1252,32 @@ function CharacterSheet({
                           <div style={{ fontSize: 11, fontWeight: 700, color: '#8a7a52' }}>Calories ที่ต้องการ</div>
                         </div>
                       </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45', marginBottom: 4, height: 16 }}>ดับกระหาย</div>
-                        <div style={{ flex: 1, display: 'flex', gap: 8 }}>
-                          <div style={{ flex: 1, background: '#9fb6c6', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NumField value={sv('waterCur', 0)} onCommit={(v) => setSheet({ waterCur: v })} width={48} style={{ fontSize: 17, fontWeight: 800, color: '#2c4a5c', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
-                          <div style={{ flex: 1, background: '#9fb6c6', borderRadius: 12, padding: '8px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NumField value={sv('waterGoal', 0)} onCommit={(v) => setSheet({ waterGoal: v })} width={48} style={{ fontSize: 17, fontWeight: 800, color: '#2c4a5c', textAlign: 'center', background: 'transparent', border: 'none', padding: 0 }} /></div>
-                        </div>
-                      </div>
+                      {(() => {
+                        const WATER_SLOTS = 6;
+                        const drunk = Math.max(0, Math.min(WATER_SLOTS, sv('waterCur', 0)));
+                        const thirsty = drunk === 0;
+                        return (
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4, height: 16 }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: '#6b5b45' }}>ดับกระหาย</span>
+                              <span title={thirsty ? 'ยังไม่ได้ดื่มน้ำ — กระหาย' : `ดื่มแล้ว ${drunk} จอก`} style={{ fontSize: 12 }}>{thirsty ? '🫗' : '💧'}</span>
+                            </div>
+                            <div style={{ flex: 1, background: '#9fb6c6', borderRadius: 12, padding: '8px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flexWrap: 'wrap' }}>
+                              {Array.from({ length: WATER_SLOTS }).map((_, i) => {
+                                const on = i < drunk;
+                                return (
+                                  <button
+                                    key={i}
+                                    onClick={() => setSheet({ waterCur: drunk === i + 1 ? i : i + 1 })}
+                                    title={`ติ๊กเมื่อดื่มน้ำ (จอกที่ ${i + 1})`}
+                                    style={{ width: 22, height: 22, borderRadius: 7, border: `1px solid ${on ? '#2c4a5c' : '#c2d0da'}`, background: on ? '#dff0fb' : '#f4f8fb', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0, opacity: on ? 1 : 0.7 }}
+                                  >{on ? '💧' : ''}</button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     </>)}
                   </div>
@@ -1453,7 +1476,7 @@ function CharacterSheet({
                             <div style={{ display: 'flex', gap: 3, flex: 'none' }} title="ย้ายระดับ">
                               {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => { setMagTier(r.key, tt.key); setMagicTab(tt.key); }} title={`ย้ายไประดับ “${tt.label}”`} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>
-                            <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
+                            <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`, r.item ? { itemId: r.item.id, isFeature: false } : undefined)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
                             {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
                             {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
                           </div>
@@ -1488,7 +1511,7 @@ function CharacterSheet({
                             {r.item && <button onClick={() => openInfo(r.item, true)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
                             {active && (
                               <>
-                                <button disabled={atMax} onClick={() => { setFeatTrack(r.key, { used: used + 1 }); logRef.current('feature', `✦ ใช้ Feature: ${r.name}${max != null ? ` (${used + 1}/${max})` : ''}`); }} title="ใช้ Feature นี้ (ลดแต้ม + ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #e0c4ba', background: atMax ? '#f2efe9' : '#faf6f4', color: atMax ? '#bdbab2' : '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: atMax ? 'not-allowed' : 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
+                                <button disabled={atMax} onClick={() => { setFeatTrack(r.key, { used: used + 1 }); logRef.current('feature', `✦ ใช้ Feature: ${r.name}${max != null ? ` (${used + 1}/${max})` : ''}`, r.item ? { itemId: r.item.id, isFeature: true } : undefined); }} title="ใช้ Feature นี้ (ลดแต้ม + ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #e0c4ba', background: atMax ? '#f2efe9' : '#faf6f4', color: atMax ? '#bdbab2' : '#b4513a', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: atMax ? 'not-allowed' : 'pointer' }}>ใช้ {used}{max != null ? `/${max}` : ''}</button>
                                 <span style={{ flex: 'none', display: 'inline-flex', gap: 3 }} title="ปรับด้วยมือ">
                                   <button onClick={() => setFeatTrack(r.key, { used: Math.max(0, used - 1) })} style={{ border: '1px solid #e0c4ba', background: '#fff', color: '#b4513a', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>−</button>
                                   <button disabled={atMax} onClick={() => setFeatTrack(r.key, { used: used + 1 })} style={{ border: '1px solid #e0c4ba', background: '#fff', color: atMax ? '#bdbab2' : '#b4513a', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, cursor: atMax ? 'not-allowed' : 'pointer' }}>＋</button>

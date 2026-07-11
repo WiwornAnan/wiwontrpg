@@ -232,7 +232,7 @@ campaignsRouter.post('/:id/initiative/clear', async (req, res) => {
 });
 
 // Append an entry to the campaign's shared log (roll / magic / feature use).
-const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400) });
+const logInput = z.object({ characterId: z.string(), kind: z.string().default('roll'), text: z.string().max(400), itemId: z.string().optional(), isFeature: z.boolean().optional() });
 campaignsRouter.post('/log', async (req, res) => {
   const me = req.currentUser!.id;
   const parsed = logInput.safeParse(req.body);
@@ -242,7 +242,7 @@ campaignsRouter.post('/log', async (req, res) => {
   if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
   const data = parseData(member.campaign.data);
   const log = Array.isArray(data.log) ? (data.log as unknown[]) : [];
-  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: member.characterId, characterName: member.character.name || 'ตัวละคร', kind: parsed.data.kind, text: parsed.data.text });
+  log.push({ id: `l${Date.now()}${Math.floor(Math.random() * 1000)}`, at: new Date().toISOString(), characterId: member.characterId, characterName: member.character.name || 'ตัวละคร', kind: parsed.data.kind, text: parsed.data.text, ...(parsed.data.itemId ? { itemId: parsed.data.itemId, isFeature: !!parsed.data.isFeature } : {}) });
   data.log = log.slice(-80);
   await prisma.campaign.update({ where: { id: member.campaignId }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
