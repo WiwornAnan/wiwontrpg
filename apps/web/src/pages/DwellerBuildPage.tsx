@@ -202,6 +202,7 @@ function CharacterSheet({
   const [buffModal, setBuffModal] = useState(false);
   const [statusModal, setStatusModal] = useState(false);
   const [effQuery, setEffQuery] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
 
   const qc = useQueryClient();
   const { data: features } = useQuery({ queryKey: ['sheet-features', wiwonIds.join(',')], queryFn: () => fetchFeaturesByTag('', wiwonIds) });
@@ -1170,20 +1171,6 @@ function CharacterSheet({
 
               {tab === 'Dweller Skill' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {campaignId && (
-                    <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82', marginBottom: 8 }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนในแคมเปญเห็นเหมือนกัน</span></div>
-                      {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860' }}>ยังไม่มีบันทึก — ทอยลูกเต๋าหรือใช้ Magic/Feature เพื่อบันทึก</div> : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 180, overflowY: 'auto' }}>
-                          {campaignLog.slice().reverse().map((l) => (
-                            <div key={l.id} style={{ fontSize: 12, color: '#e8e4db', lineHeight: 1.5 }}>
-                              <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#9a978e' }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#faf6ef', border: '1px solid #eaddc7', borderRadius: 10, padding: '9px 14px' }}>
                     <span style={{ fontSize: 13.5, fontWeight: 800, color: '#8d6a4a' }}>Endeavor Points = <span style={{ color: '#c15a3f' }}>{endeavor}</span></span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1430,6 +1417,36 @@ function CharacterSheet({
         </div>
       </div>
       <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} egoDisadvantage={roll?.dis ?? false} onClose={() => setRoll(null)} />
+
+      {/* ── Campaign LOG: floating button + floating window (only when in a campaign) ── */}
+      {campaignId && (
+        <>
+          <button
+            onClick={() => setLogOpen((o) => !o)}
+            title="Log ประวัติการทอยของแคมเปญ"
+            style={{ position: 'fixed', right: 22, bottom: 88, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: '1px solid #3d3a32', background: '#15140f', color: '#f7dca0', fontSize: 24, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            📜{campaignLog.length > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, background: '#e07a5f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{campaignLog.length}</span>}
+          </button>
+          {logOpen && (
+            <div style={{ position: 'fixed', right: 22, bottom: 152, zIndex: 151, width: 340, maxWidth: 'calc(100vw - 44px)', maxHeight: '62vh', background: '#1b1813', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.45)', border: '1px solid #35322b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid #35322b' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#f3ede1' }}>📜 LOG แคมเปญ <span style={{ fontSize: 10.5, fontWeight: 400, color: '#8d8a82' }}>· เรียลไทม์</span></span>
+                <button onClick={() => setLogOpen(false)} style={{ background: 'none', border: 'none', color: '#9a978e', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 15px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {campaignLog.length === 0 ? <div style={{ fontSize: 12, color: '#6b6860', padding: '10px 0' }}>ยังไม่มีบันทึก — ทอยลูกเต๋า หรือใช้ Magic/Feature เพื่อบันทึกลง Log</div> : (
+                  campaignLog.slice().reverse().map((l) => (
+                    <div key={l.id} style={{ fontSize: 12.5, color: '#e8e4db', lineHeight: 1.5, borderBottom: '1px solid #2a2620', paddingBottom: 7 }}>
+                      <span style={{ color: '#f7dca0', fontWeight: 700 }}>{l.characterName}</span> <span style={{ color: '#8d8a82', fontSize: 10.5 }}>· {new Date(l.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span><br />{l.text}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── hover description for Dweller Skill rows ── */}
       {skillTip && (
