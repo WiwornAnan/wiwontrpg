@@ -318,4 +318,14 @@
     padding: 10px 12px;
     gap: 8px;
   }
+  .searchBox {
+    width: 96px;
+  }
+}
+/* On phones, collapse the secondary search so the primary right-side actions
+   (Cr · avatar · Log in) always stay on screen and tappable. */
+@media (max-width: 470px) {
+  .searchWrap {
+    display: none;
+  }
 }
