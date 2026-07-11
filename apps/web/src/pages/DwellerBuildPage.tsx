@@ -3457,6 +3457,24 @@ function Step7Purchase({
     patch.mutate({ data: { ...character.data, step7Purchases: next } });
   };
 
+  // Features the character already received elsewhere (Step 2 Weapon Proficiency
+  // + level-table grant picks) — these show as "เคยรับมาแล้ว", not buyable.
+  const classValue = typeof character.data.class === 'string' ? (character.data.class as string) : '';
+  const { data: cwData } = useQuery({
+    enabled: !!classValue,
+    queryKey: ['class-weapons', classValue],
+    queryFn: () => api.get<{ weapons: { options: WeaponOption[] } }>(`/wizard/class-weapons/${encodeURIComponent(classValue)}`),
+  });
+  const grantedIds = (() => {
+    const s = new Set<string>();
+    const chosenWP = Array.isArray(character.data.weaponProficiencies) ? (character.data.weaponProficiencies as string[]) : [];
+    const opts = cwData?.weapons.options ?? [];
+    chosenWP.forEach((optId) => { const o = opts.find((x) => x.id === optId); if (o?.featureId) s.add(o.featureId); });
+    const gp = character.data.levelGrantPicks && typeof character.data.levelGrantPicks === 'object' ? (character.data.levelGrantPicks as Record<string, string>) : {};
+    Object.values(gp).forEach((id) => id && s.add(id));
+    return s;
+  })();
+
   const pill = (bg: string, color: string, brd: string): React.CSSProperties => ({ fontSize: 12.5, fontWeight: 800, padding: '7px 14px', borderRadius: 20, background: bg, color, border: `1px solid ${brd}` });
 
   return (
@@ -3471,7 +3489,7 @@ function Step7Purchase({
         {qlConverted > 0 && <span style={pill('#faf6ef', '#8d6a4a', '#eaddc7')}>แลกเป็นเงิน: {qlConverted} QL</span>}
       </div>
 
-      <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} />
+      <FeatureBuySearch wiwonIds={wiwonIds} purchases={purchases} availableQL={availableQL} onToggle={toggleBuy} grantedIds={grantedIds} />
     </div>
   );
 }
@@ -3678,11 +3696,13 @@ function FeatureBuySearch({
   purchases,
   availableQL,
   onToggle,
+  grantedIds,
 }: {
   wiwonIds: string[];
   purchases: Record<string, number>;
   availableQL: number;
   onToggle: (f: CatalogItem, cost: number) => void;
+  grantedIds?: Set<string>;
 }) {
   const [info, setInfo] = useState<CatalogItem | null>(null);
   const [query, setQuery] = useState('');
@@ -3707,26 +3727,31 @@ function FeatureBuySearch({
 
   const row = (f: CatalogItem) => {
     const cost = qlCostOf(f);
+    const granted = grantedIds?.has(f.id) ?? false; // already received in Step 2 / level grants
     const isOwned = f.id in purchases;
     const canAfford = isOwned || availableQL >= cost;
     const ptags = f.tags.filter((t) => PURCHASE_TAGS.includes(t));
     return (
-      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${isOwned ? '#2f7d4f' : 'var(--border-soft)'}`, background: isOwned ? '#f2f8f4' : '#fff' }}>
+      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${granted ? '#c9c5bd' : isOwned ? '#2f7d4f' : 'var(--border-soft)'}`, background: granted ? '#f4f2ee' : isOwned ? '#f2f8f4' : '#fff', opacity: granted ? 0.9 : 1 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{f.name}</div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
             {ptags.map((t) => <span key={t} style={{ fontSize: 10.5, color: '#8d8a82', background: '#f2efe9', borderRadius: 6, padding: '1px 7px' }}>{t}</span>)}
           </div>
         </div>
-        <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>
+        {!granted && <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#2a5fbd', background: '#eef4fb', border: '1px solid #d3e2f5', borderRadius: 8, padding: '4px 10px' }}>{cost} QL</span>}
         <button onClick={() => setInfo(f)} style={{ flex: 'none', border: '1px solid var(--border-soft)', background: '#fff', color: '#6b6860', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, cursor: 'pointer' }}>ⓘ</button>
-        <button
-          onClick={() => onToggle(f, cost)}
-          disabled={!canAfford}
-          style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: isOwned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: isOwned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
-        >
-          {isOwned ? 'แลกแล้ว ✓' : 'แลก'}
-        </button>
+        {granted ? (
+          <span style={{ flex: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, background: '#ece9e3', color: '#8d8a82' }}>เคยรับมาแล้ว</span>
+        ) : (
+          <button
+            onClick={() => onToggle(f, cost)}
+            disabled={!canAfford}
+            style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: canAfford ? 'pointer' : 'not-allowed', background: isOwned ? '#e6efe9' : canAfford ? '#e07a5f' : '#eee', color: isOwned ? '#2f7d4f' : canAfford ? '#fff' : '#b0ada4' }}
+          >
+            {isOwned ? 'แลกแล้ว ✓' : 'แลก'}
+          </button>
+        )}
       </div>
     );
   };
