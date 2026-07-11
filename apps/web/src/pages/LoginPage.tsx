@@ -19,6 +19,7 @@ export function LoginPage() {
   const [role, setRole] = useState<Role>('user');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [devCode, setDevCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +115,10 @@ export function LoginPage() {
           </label>
           <label style={fieldLabel}>
             รหัสผ่าน
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={fieldInput} />
+            <div style={{ position: 'relative' }}>
+              <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={{ ...fieldInput, paddingRight: 44, boxSizing: 'border-box', width: '100%' }} />
+              <button type="button" onClick={() => setShowPw((s) => !s)} title={showPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} aria-label={showPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 4, color: '#8d8a82' }}>{showPw ? '🙈' : '👁️'}</button>
+            </div>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             <span style={{ fontSize: 12.5, fontWeight: 500, color: '#46443c' }}>ประเภทบัญชี</span>
