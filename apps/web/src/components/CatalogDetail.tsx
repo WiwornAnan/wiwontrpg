@@ -724,6 +724,16 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 <div style={{ fontSize: 12.5, marginTop: 8 }}>จำนวนการใช้งาน: <b>{String(popupDetail.data.item.fields.uses)} ครั้ง / {String(popupDetail.data.item.fields.usesPer ?? 'วัน')}</b></div>
               ) : null}
               <div className="rt-html" style={{ fontSize: 12.5, lineHeight: 1.8, color: '#46443c', marginTop: 10 }} dangerouslySetInnerHTML={{ __html: popupDetail.data.item.description ? renderBadges(popupDetail.data.item.description) : '<span style="color:#a8a59d">— ไม่มีคำอธิบาย —</span>' }} />
+              {onLogUse && (() => {
+                const it = popupDetail.data.item;
+                const feat = it.tags.includes('Weapon Arts');
+                return (
+                  <button
+                    onClick={() => { onLogUse(feat ? 'feature' : 'magic', `${feat ? '⚔️ ใช้กระบวนท่า' : '✨ ร่ายเวทสลัก'}: ${it.name} — ${item.name}`, { itemId: it.id, isFeature: feat }); setPopup(null); }}
+                    style={{ marginTop: 14, width: '100%', padding: 11, background: '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                  >▶ ใช้ (ส่งเข้า Log แคมเปญ)</button>
+                );
+              })()}
             </div>
           )}
         </Modal>
