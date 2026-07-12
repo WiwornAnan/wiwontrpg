@@ -224,7 +224,7 @@ function CharacterSheet({
   const [dragId, setDragId] = useState<string | null>(null);
   const [bagWarn, setBagWarn] = useState(''); // over-capacity feedback for bags
   // Stack of open floating detail windows — several can be open at once.
-  const [detailWins, setDetailWins] = useState<Array<{ key: string; item: CatalogItem; isFeature: boolean }>>([]);
+  const [detailWins, setDetailWins] = useState<Array<{ key: string; item: CatalogItem | null; isFeature: boolean; lineId?: string; title?: string }>>([]);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
   const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
@@ -453,7 +453,8 @@ function CharacterSheet({
           <span style={{ flex: 1 }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
-          {catItem && <button onClick={() => openInfo(catItem, false)} title="ดูข้อมูลจากต้นฉบับ" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
+          {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
+          {!catItem && (WEAPON_RE.test(l.name) || CLOTHING_RE.test(l.name)) && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -465,33 +466,36 @@ function CharacterSheet({
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
           {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
         </div>
-        {CLOTHING_RE.test(l.name) && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', marginBottom: 3 }}>👕 ลักษณะเสื้อผ้า</div>
-            <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#fff', outline: 'none' }} />
-          </div>
-        )}
-        {WEAPON_RE.test(l.name) && (
-          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d' }}>🛡 ความทนทาน</span>
-              <NumField value={numData(l.dur)} onCommit={(v) => setInv(l.lineId, { dur: v })} width={44} style={{ fontSize: 11, padding: '2px 5px' }} />
-              <span style={{ fontSize: 11, color: '#a8a59d' }}>/</span>
-              <NumField value={numData(l.durMax)} onCommit={(v) => setInv(l.lineId, { durMax: v })} width={44} style={{ fontSize: 11, padding: '2px 5px' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#a8a59d', marginBottom: 3 }}>🌀 กระบวนท่า (เพิ่มเองได้)</div>
-              <textarea key={`a${l.arts}`} defaultValue={l.arts ?? ''} onBlur={(e) => { if (e.target.value !== (l.arts ?? '')) setInv(l.lineId, { arts: e.target.value }); }} placeholder="กระบวนท่าของอาวุธนี้ (บรรทัดละท่า)…" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#fff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#5b3fa0', marginBottom: 3 }}>✨ สลักเวทมนตร์</div>
-              <textarea key={`e${l.engrave}`} defaultValue={l.engrave ?? ''} onBlur={(e) => { if (e.target.value !== (l.engrave ?? '')) setInv(l.lineId, { engrave: e.target.value }); }} placeholder="เวทมนตร์ที่สลักไว้ในอาวุธนี้…" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6c7f0', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, background: '#faf8fd', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
-            </div>
-          </div>
-        )}
       </div>
     );
   };
+  // Per-item-instance editors (durability / Weapon Arts / engrave / clothing desc)
+  // shown inside the item's floating window — kept with that specific item line.
+  const invEditors = (l: BagLine) => (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #efece6', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: '#8d8a82', letterSpacing: '.3px' }}>✎ แก้ไขเฉพาะไอเทมชิ้นนี้ (ในแคมเปญนี้)</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>🛡 ความทนทาน</span>
+        <NumField value={numData(l.dur)} onCommit={(v) => setInv(l.lineId, { dur: v })} width={50} style={{ fontSize: 12, padding: '3px 6px' }} />
+        <span style={{ fontSize: 12, color: '#a8a59d' }}>/</span>
+        <NumField value={numData(l.durMax)} onCommit={(v) => setInv(l.lineId, { durMax: v })} width={50} style={{ fontSize: 12, padding: '3px 6px' }} />
+      </div>
+      {CLOTHING_RE.test(l.name) && (
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>👕 ลักษณะเสื้อผ้า</div>
+          <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none' }} />
+        </div>
+      )}
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>🌀 กระบวนท่า (เพิ่มเองได้)</div>
+        <textarea key={`a${l.arts}`} defaultValue={l.arts ?? ''} onBlur={(e) => { if (e.target.value !== (l.arts ?? '')) setInv(l.lineId, { arts: e.target.value }); }} placeholder="กระบวนท่าของอาวุธนี้ (บรรทัดละท่า)…" rows={3} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5b3fa0', marginBottom: 4 }}>✨ สลักเวทมนตร์</div>
+        <textarea key={`e${l.engrave}`} defaultValue={l.engrave ?? ''} onBlur={(e) => { if (e.target.value !== (l.engrave ?? '')) setInv(l.lineId, { engrave: e.target.value }); }} placeholder="เวทมนตร์ที่สลักไว้ในอาวุธนี้…" rows={3} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6c7f0', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#faf8fd', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }} />
+      </div>
+    </div>
+  );
   // Drop-zone wrapper: drag a row's handle onto it to move the item there
   const dropZone = (zone: 'loot' | 'ready' | 'bag', children: React.ReactNode) => (
     <div
@@ -550,6 +554,13 @@ function CharacterSheet({
   const openInfo = (item: CatalogItem | null, isFeat: boolean) => {
     if (!item) return;
     setDetailWins((prev) => (prev.some((w) => w.key === item.id) ? prev : [...prev, { key: item.id, item, isFeature: isFeat }]));
+  };
+  // Open a floating detail window tied to a specific inventory line (so its
+  // per-instance editors — Arts / engrave / durability — are scoped to that
+  // item instance in this campaign). Deduped per lineId.
+  const openInvInfo = (item: CatalogItem | null, lineId: string, title?: string) => {
+    const winKey = `inv:${lineId}`;
+    setDetailWins((prev) => (prev.some((w) => w.key === winKey) ? prev : [...prev, { key: winKey, item, isFeature: false, lineId, title }]));
   };
   const closeInfo = (key: string) => setDetailWins((prev) => prev.filter((w) => w.key !== key));
   interface Extra { id: string; name: string; itemId?: string }
@@ -1882,11 +1893,15 @@ function CharacterSheet({
       )}
 
       {/* ── Feature / Magic / Item detail — multiple draggable floating windows (same view as the website) ── */}
-      {detailWins.map((w, i) => (
-        <FloatWindow key={w.key} title={w.item.name} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
-          <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} />
-        </FloatWindow>
-      ))}
+      {detailWins.map((w, i) => {
+        const line = w.lineId ? bag.find((l) => l.lineId === w.lineId) : undefined;
+        return (
+          <FloatWindow key={w.key} title={w.item?.name ?? w.title ?? 'ไอเทม'} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
+            {w.item && <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} />}
+            {line && invEditors(line)}
+          </FloatWindow>
+        );
+      })}
 
       {/* ── On-Hand fallback detail (custom item without catalog data) ── */}
       {handInfo && (
