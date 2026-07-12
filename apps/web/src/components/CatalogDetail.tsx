@@ -612,7 +612,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {showDurability && !embedded && (
+      {showDurability && (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 600, margin: '16px 0 8px' }}>Durability (DUR)</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
