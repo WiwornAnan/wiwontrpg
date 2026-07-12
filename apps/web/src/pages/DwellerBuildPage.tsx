@@ -227,7 +227,6 @@ function CharacterSheet({
   const [detailWins, setDetailWins] = useState<Array<{ key: string; item: CatalogItem | null; isFeature: boolean; lineId?: string; title?: string }>>([]);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
-  const [handSlot, setHandSlot] = useState<string | null>(null); // On-Hand: which slot the Use-picker fills
   const [handWarn, setHandWarn] = useState(''); // "มือไม่ว่างพอ" for Two-Handed weapons
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
   const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false, noSleep: false });
@@ -462,6 +461,9 @@ function CharacterSheet({
             ? <span style={{ fontSize: 11, color: '#8d8a82', marginRight: 'auto' }} title="น้ำหนักจากข้อมูลไอเทม">⚖️ {numData(l.kg)} kg</span>
             : <><NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} /><span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span></>}
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
+          {handEligible(l) && z !== 'loot' && (lineEquippedSlot(l)
+            ? <button onClick={() => clearHand(lineEquippedSlot(l)!)} style={moveStyle('#b4513a', '#f0d3cb')} title="เอาออกจากมือ">✓ ถืออยู่ · ปลด</button>
+            : <button onClick={() => useLineToHand(l)} style={moveStyle('#2f6b4f', '#cbe0d2')} title="ถือเข้ามือ (On Hand)">✋ Use เข้ามือ</button>)}
           {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
           {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
@@ -729,6 +731,22 @@ function CharacterSheet({
       return true;
     }
     setSheet({ hands: { ...hands, [slot]: { ...base, ...(twoH ? { twoHand: true } : {}) } } });
+    return true;
+  };
+  // "Use" an inventory line straight into a free hand slot (Weapon/Shield/Artifact),
+  // so equipping happens from the item row in storage instead of a separate picker.
+  const handEligible = (l: BagLine): boolean => {
+    const cat = l.itemId ? equipById.get(l.itemId) : undefined;
+    return cat ? isHandItem(cat) : HAND_RE.test(l.name);
+  };
+  const lineEquippedSlot = (l: BagLine): string | undefined =>
+    Object.keys(hands).find((k) => hands[k] && (l.itemId ? hands[k].itemId === l.itemId : hands[k].name === l.name));
+  const useLineToHand = (l: BagLine): boolean => {
+    const cat = l.itemId ? equipById.get(l.itemId) : undefined;
+    const free = HAND_SLOTS.find((s) => handOn(s.key) && !hands[s.key]);
+    if (!free) { setHandWarn('ไม่มีช่องมือว่าง — เอาของออกจากมือ หรือกด “＋ เพิ่มช่อง” ก่อน'); window.setTimeout(() => setHandWarn(''), 4000); return false; }
+    if (cat) return useHandItem(free.key, cat);
+    setHand(free.key, { name: l.name, kg: numData(l.kg), na: isDefensive(l.name) ? 1 : 0 });
     return true;
   };
   // Persist derived totals (Natural Defense, Scratch/SAN max) into the sheet so the
@@ -1290,7 +1308,7 @@ function CharacterSheet({
                                     </div>
                                   </div>
                                 ) : (
-                                  <button onClick={() => setHandSlot(s.key)} style={{ width: '100%', border: '1px dashed #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 9, padding: '10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>＋ Use ไอเทม</button>
+                                  <div style={{ fontSize: 11, color: '#a8a59d', textAlign: 'center', padding: '10px', border: '1px dashed #d8e2da', borderRadius: 9, lineHeight: 1.5 }}>ว่าง — กด “✋ Use เข้ามือ” ที่ไอเทมในช่องเก็บของ</div>
                                 )}
                               </div>
                             );
@@ -1516,6 +1534,7 @@ function CharacterSheet({
 
                   {/* READY */}
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#2f6b4f', marginBottom: 6 }}>▾ READY SLOTS (พกพร้อมใช้ · นับน้ำหนัก)</div>
+                  {handWarn && <div style={{ fontSize: 11, color: '#c0432a', background: '#fdf1ee', border: '1px solid #f2cabf', borderRadius: 7, padding: '6px 10px', marginBottom: 8 }}>⚠️ {handWarn}</div>}
                   <div style={{ marginBottom: 14 }}>
                     {dropZone('ready', ready.length === 0 ? <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง — {dragId ? '(วางที่นี่)' : ''}</div> : ready.map(invRow))}
                   </div>
@@ -1951,12 +1970,6 @@ function CharacterSheet({
       {/* ── Feature picker (full catalog, dark) ── */}
       <Modal open={featPicker} onClose={() => setFeatPicker(false)} title="เพิ่ม Feature" dark>
         <CatPicker items={allFeatures ?? []} accent="#b4602a" onPick={addFeatItem} />
-      </Modal>
-
-      {/* ── On-Hand "Use" picker (Weapon / Shield / Artifact only) ── */}
-      <Modal open={!!handSlot} onClose={() => setHandSlot(null)} title={`Use ไอเทมเข้า${HAND_SLOTS.find((s) => s.key === handSlot)?.label ?? 'มือ'}`}>
-        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เฉพาะ Weapon / Shield / Artifact — กด “Use” เพื่อถือเข้าช่องนี้ · อาวุธสองมือจะใช้สองช่อง{hasTitansGrip ? ' (ยกเว้น: มี Titan’s Grip)' : ''}</p>
-        <EquipPicker match={isHandItem} actionLabel="Use" onPick={(m) => { if (handSlot && useHandItem(handSlot, m)) setHandSlot(null); }} />
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
