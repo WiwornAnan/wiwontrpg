@@ -65,7 +65,27 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   const patch = useMutation({
     mutationFn: (body: Partial<Pick<Character, 'name' | 'status' | 'step'>> & { data?: Record<string, unknown> }) =>
       api.patch(`/characters/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['character', id] }),
+    // Optimistic: write the change into the cache immediately and cancel any
+    // in-flight poll, so the 5s refetch can't revert to the pre-save state
+    // ("ซ้ำอันเดิม") and rapid edits build on fresh data instead of clobbering.
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: ['character', id] });
+      const prev = qc.getQueryData<{ character: Character }>(['character', id]);
+      if (prev) {
+        qc.setQueryData(['character', id], {
+          character: {
+            ...prev.character,
+            ...(body.name !== undefined ? { name: body.name } : {}),
+            ...(body.status !== undefined ? { status: body.status } : {}),
+            ...(body.step !== undefined ? { step: body.step } : {}),
+            ...(body.data !== undefined ? { data: body.data } : {}),
+          },
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _body, ctx) => { if (ctx?.prev) qc.setQueryData(['character', id], ctx.prev); },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['character', id] }),
   });
 
   const back = (
@@ -227,6 +247,7 @@ function CharacterSheet({
   const [detailWins, setDetailWins] = useState<Array<{ key: string; item: CatalogItem | null; isFeature: boolean; lineId?: string; title?: string }>>([]);
   const [langPick, setLangPick] = useState<string | null>(null); // which tier's picker is open
   const [handInfo, setHandInfo] = useState<BagLine | null>(null); // On-Hand fallback detail
+  const [handPick, setHandPick] = useState<BagLine | null>(null); // "Use เข้ามือ" — choose which hand
   const [handWarn, setHandWarn] = useState(''); // "มือไม่ว่างพอ" for Two-Handed weapons
   const [restMsg, setRestMsg] = useState(''); // Short/Long Rest result message
   const [lr, setLr] = useState({ safe: true, goodFood: false, goodDream: false, badFood: false, badDream: false, noSleep: false });
@@ -463,7 +484,7 @@ function CharacterSheet({
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
           {handEligible(l) && z !== 'loot' && (lineEquippedSlot(l)
             ? <button onClick={() => clearHand(lineEquippedSlot(l)!)} style={moveStyle('#b4513a', '#f0d3cb')} title="เอาออกจากมือ">✓ ถืออยู่ · ปลด</button>
-            : <button onClick={() => useLineToHand(l)} style={moveStyle('#2f6b4f', '#cbe0d2')} title="ถือเข้ามือ (On Hand)">✋ Use เข้ามือ</button>)}
+            : <button onClick={() => setHandPick(l)} style={moveStyle('#2f6b4f', '#cbe0d2')} title="ถือเข้ามือ (เลือกมือ)">✋ Use เข้ามือ</button>)}
           {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
           {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
@@ -741,12 +762,12 @@ function CharacterSheet({
   };
   const lineEquippedSlot = (l: BagLine): string | undefined =>
     Object.keys(hands).find((k) => hands[k] && (l.itemId ? hands[k].itemId === l.itemId : hands[k].name === l.name));
-  const useLineToHand = (l: BagLine): boolean => {
+  const useLineToHand = (l: BagLine, slotKey: string): boolean => {
     const cat = l.itemId ? equipById.get(l.itemId) : undefined;
-    const free = HAND_SLOTS.find((s) => handOn(s.key) && !hands[s.key]);
-    if (!free) { setHandWarn('ไม่มีช่องมือว่าง — เอาของออกจากมือ หรือกด “＋ เพิ่มช่อง” ก่อน'); window.setTimeout(() => setHandWarn(''), 4000); return false; }
-    if (cat) return useHandItem(free.key, cat);
-    setHand(free.key, { name: l.name, kg: numData(l.kg), na: isDefensive(l.name) ? 1 : 0 });
+    if (!handOn(slotKey)) { setHandWarn('ช่องมือนี้ปิดอยู่ — เปิดช่องก่อนถึงจะใช้ได้'); window.setTimeout(() => setHandWarn(''), 4000); return false; }
+    if (hands[slotKey]) { setHandWarn('ช่องมือนี้มีของอยู่แล้ว — เอาออกก่อน หรือเลือกมืออื่น'); window.setTimeout(() => setHandWarn(''), 4000); return false; }
+    if (cat) return useHandItem(slotKey, cat);
+    setHand(slotKey, { name: l.name, kg: numData(l.kg), na: isDefensive(l.name) ? 1 : 0 });
     return true;
   };
   // Persist derived totals (Natural Defense, Scratch/SAN max) into the sheet so the
@@ -1977,6 +1998,29 @@ function CharacterSheet({
       <Modal open={invPicker} onClose={() => setInvPicker(false)} title="Equipment & Items">
         <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เลือกสิ่งของแล้วกด “รับ” เพื่อเก็บเข้ากอง LOOT — จากนั้นลากไปยัง Ready หรือกระเป๋าได้</p>
         <EquipPicker onPick={pickToInv} onAddCustom={addCustomInv} />
+      </Modal>
+
+      {/* ── Use เข้ามือ — choose which hand slot ── */}
+      <Modal open={!!handPick} onClose={() => setHandPick(null)} title={`Use “${handPick?.name ?? ''}” เข้ามือไหน`}>
+        <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เลือกช่องมือที่จะถือ · ช่องที่ปิดอยู่จะเลือกไม่ได้{handPick && isDefensive(handPick.name) ? '' : ' · อาวุธสองมือจะใช้ช่องว่างเพิ่มอีกหนึ่งช่อง'}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {HAND_SLOTS.map((s) => {
+            const on = handOn(s.key);
+            const occupied = !!hands[s.key];
+            const disabled = !on || occupied;
+            return (
+              <button
+                key={s.key}
+                disabled={disabled}
+                onClick={() => { if (handPick && useLineToHand(handPick, s.key)) setHandPick(null); }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, textAlign: 'left', padding: '11px 14px', border: `1px solid ${disabled ? '#eae7e0' : '#cbe0d2'}`, background: disabled ? '#f6f5f2' : '#f7fbf8', color: disabled ? '#a8a59d' : '#2f6b4f', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer' }}
+              >
+                <span>{s.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{!on ? 'ปิดช่องอยู่' : occupied ? `มี: ${hands[s.key].name}` : '→ ถือช่องนี้'}</span>
+              </button>
+            );
+          })}
+        </div>
       </Modal>
 
       {/* ── "ท้าทาย" per-skill challenge popup ── */}
