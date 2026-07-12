@@ -1897,7 +1897,7 @@ function CharacterSheet({
         const line = w.lineId ? bag.find((l) => l.lineId === w.lineId) : undefined;
         return (
           <FloatWindow key={w.key} title={w.item?.name ?? w.title ?? 'ไอเทม'} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
-            {w.item && <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} />}
+            {w.item && <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} embedded />}
             {line && invEditors(line)}
           </FloatWindow>
         );

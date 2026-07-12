@@ -484,7 +484,7 @@ export function CampaignPage() {
       </Modal>
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''}>
-        {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS[detail.category]} category={detail.category} isFeature={!!detail.isFeature} onEdit={() => {}} />}
+        {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS[detail.category]} category={detail.category} isFeature={!!detail.isFeature} onEdit={() => {}} embedded />}
       </Modal>
     </div>
   );

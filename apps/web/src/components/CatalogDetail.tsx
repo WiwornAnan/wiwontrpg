@@ -66,12 +66,17 @@ interface Props {
   isFeature: boolean;
   onEdit: (item: CatalogItem) => void;
   onSubmitOfficial?: (item: CatalogItem) => void;
+  // When shown inside a floating window (which already supplies a frame + its
+  // own scroll), drop the sticky sidebar positioning and the redundant card
+  // chrome — otherwise `position:sticky;top:96` pushes the content down and
+  // leaves a large blank gap at the top.
+  embedded?: boolean;
 }
 
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
 const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
-export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial }: Props) {
+export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded }: Props) {
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -237,7 +242,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const removeArt = (id: string) => patchFields.mutate({ weaponArts: weaponArts.filter((w) => w.id !== id) });
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: 20, position: 'sticky', top: 96 }}>
+    <div style={embedded
+      ? { background: '#fff', position: 'relative' }
+      : { background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: 20, position: 'sticky', top: 96 }}>
       {item.approvedFromHomebrew && (
         <>
           <div title="Official — อนุมัติโดยผู้พัฒนา" style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 5, borderRadius: '14px 0 0 14px', background: 'linear-gradient(#7c5fc0,#5b3fa0)' }} />
