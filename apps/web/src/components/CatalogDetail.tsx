@@ -118,11 +118,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     })
     .map((f) => ({ label: f.label, value: f.key === 'components' ? abbrevComponents(fv(item, f.key)) : fv(item, f.key) }))
     .filter((s) => s.value !== '' && s.label !== 'Cost' && s.label !== 'Rarity' && s.label !== 'School' && s.label !== 'Requirements (Core Attribute)');
-  // #13 weapon "+ Damage" (Material + Prof + Rarity + Wielding), only for Piercing/Slashing/Bludgeoning.
+  // #14 Requirements as a Core Attribute grade (the #13 "+ Damage" feeds the
+  // existing damage badge below, not a separate stat row).
   if (category === 'equipment') {
-    const dmgBonus = weaponDamageBonus(item.fields);
-    if (dmgBonus !== null) stats.push({ label: '+ Damage', value: `${dmgBonus >= 0 ? '+' : ''}${dmgBonus}` });
-    // #14 Requirements as a Core Attribute grade.
     const reqAttr = fv(item, 'reqAttr');
     if (reqAttr && reqAttr !== 'None') stats.push({ label: 'Requirements', value: `${reqAttr} ≥ ${fv(item, 'reqGrade') || '?'}` });
   }
@@ -158,7 +156,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const cost = fv(item, 'cost');
   const isWeapon = category === 'equipment' && /weapon|อาวุธ/i.test(fv(item, 'equipType') + ' ' + fv(item, 'tag'));
   const showDurability = category === 'equipment' && /weapon|armor|shield|อาวุธ|เกราะ|โล่/i.test(fv(item, 'equipType') + ' ' + fv(item, 'tag'));
-  const dmgBase = Number(item.fields.dmgBonus ?? 0);
+  // #13 — derived weapon damage bonus (falls back to a stored dmgBonus for legacy items).
+  const computedDmg = weaponDamageBonus(item.fields);
+  const dmgBase = computedDmg !== null ? computedDmg : Number(item.fields.dmgBonus ?? 0);
   const dmgPenalty = dur.filter(Boolean).length * 2;
   const dmgShown = Math.max(0, dmgBase - dmgPenalty);
 
