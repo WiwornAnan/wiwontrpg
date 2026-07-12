@@ -108,7 +108,7 @@ const EQUIPMENT: CatalogConfig = {
     { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Weapon', 'Armor', 'Shields', 'Clothing', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', any: 'Any Type', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
     { key: 'availability', label: 'Availability', any: 'Any Availability', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
-    { key: 'cost', label: 'Cost', kind: 'range', unit: 'Cr.', numKey: 'costNum' },
+    { key: 'cost', label: 'Cost', kind: 'range', unit: 'IC', numKey: 'costNum' },
     { key: 'material', label: 'Materials', any: 'Any Material', options: ['Wood', 'Metal', 'Bone', 'Glass', 'Crystal', 'Cloth', 'Leather', 'Biomaterials', 'Rare Earth', 'Monster Parts'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Tag', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'professionalLevel', label: 'Professional Level', any: 'Any Professional Level', options: ['Amateur', 'Journeyman', 'Expert', 'Master'] },
