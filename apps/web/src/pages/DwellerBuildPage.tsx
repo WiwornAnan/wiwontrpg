@@ -3724,26 +3724,24 @@ function FloatWindow({ title, onClose, children, width = 430, cascadeIndex = 0 }
   });
   const [z, setZ] = useState(() => ++floatZCounter);
   const raise = () => setZ(++floatZCounter);
-  const drag = useRef<{ dx: number; dy: number } | null>(null);
-  const onDown = (e: React.PointerEvent) => {
-    raise(); // bring to front on any interaction
-    const t = e.target as HTMLElement;
-    // Never hijack real controls (the ✕ close button lives in the title bar).
-    if (t.closest('button, a, input, textarea, select')) return;
-    // Only the title bar drags — otherwise the window captures the pointer and
-    // swallows clicks on body controls (DUR ticks, checkboxes, etc.).
-    if (!t.closest('[data-drag-handle]')) return;
-    drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  // Drag only from the title bar, tracked via window listeners so the release
+  // always clears the drag (pointer-capture could leave it "stuck to the mouse").
+  const startDrag = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, textarea, select')) return; // controls stay clickable
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, ox = pos.x, oy = pos.y;
+    const move = (ev: PointerEvent) => setPos({ x: ox + ev.clientX - sx, y: oy + ev.clientY - sy });
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
   return createPortal(
     <div
-      onPointerDown={onDown}
-      onPointerMove={(e) => { if (drag.current) setPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }); }}
-      onPointerUp={() => { drag.current = null; }}
+      onPointerDown={raise} // bring to front on any interaction
       style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '82vh', zIndex: z, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
-      <div data-drag-handle style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
+      <div data-drag-handle onPointerDown={startDrag} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none', touchAction: 'none' }}>
         <span style={{ fontSize: 13, color: '#c9c5bd' }}>⠿</span>
         <span style={{ flex: 1, fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</span>
         <button onClick={onClose} title="ปิด" style={{ flex: 'none', border: 'none', background: 'none', color: '#a8a59d', cursor: 'pointer', fontSize: 17, lineHeight: 1 }}>✕</button>
