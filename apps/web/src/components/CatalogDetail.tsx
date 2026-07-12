@@ -214,7 +214,11 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const weaponArts: WeaponArtRef[] = instanceMode ? instanceArts ?? [] : masterArts;
   // Arts/engraving selection is editable per-instance by anyone in the campaign;
   // master-config editing (Ehen toggles, slot count, professional level) stays dev/owner-only.
-  const canEditRefs = instanceMode || canEdit;
+  // Master item mutations are allowed ONLY on the admin catalog page (not
+  // embedded). Inside the Dweller Sheet / Campaign (embedded) the database is
+  // read-only; play edits go to the per-instance line instead.
+  const masterEdit = canEdit && !embedded;
+  const canEditRefs = instanceMode || masterEdit;
   const ehenParen = ehenOrgan && ehenCore ? '(Organ + Core)' : ehenCore ? '(Core)' : '(Organ)';
   // Engraving capacity: odd slots grant +1 (1→1, 3→2, 5→3); dev may override.
   const engraveMaxSet = parseInt(fv(item, 'engraveMax'), 10);
@@ -309,7 +313,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         <StarButton catalogItemId={item.id} size={15} />
       </div>
 
-      {canEdit && (
+      {masterEdit && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={() => onEdit(item)} style={{ flex: 1, padding: 7, background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ✎ แก้ไขข้อมูล
@@ -380,7 +384,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {category === 'equipment' && (canEdit || hasCoins) && (
+      {category === 'equipment' && (masterEdit || hasCoins) && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>ราคา (เหรียญ)</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -390,7 +394,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                   <span style={{ width: 13, height: 13, borderRadius: '50%', background: t.color, display: 'inline-block' }} />
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#8d8a82' }}>{t.abbr}</span>
                 </div>
-                {canEdit ? (
+                {masterEdit ? (
                   <input
                     type="number"
                     min={0}
@@ -427,7 +431,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
       {showEhen && (canEdit || hasEhen) && (
         <div style={{ marginTop: 16 }}>
-          {canEdit && !instanceMode && (
+          {masterEdit && (
             <>
               <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>มีส่วนที่เป็น Ehen Organ / Ehen Core</div>
               <div style={{ fontSize: 10.5, color: '#a8a59d', marginBottom: 8 }}>เลือกได้ถึงสองอย่าง</div>
@@ -454,7 +458,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 <span style={{ fontSize: 11, color: '#8d8a82' }}>ใช้ไป {Math.min(manaUsed, slotCount)} / {slotCount}</span>
               </div>
 
-              {canEdit && !instanceMode && (
+              {masterEdit && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#8d8a82' }}>
                     จำนวน Slot:
@@ -510,7 +514,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
               {ehenCore && (
                 <div style={{ marginTop: 8 }}>
-                  {canEdit && !instanceMode ? (
+                  {masterEdit ? (
                     <input defaultValue={fv(item, 'coreRecover')} onBlur={(e) => patchFields.mutate({ coreRecover: e.target.value })} placeholder="เช่น ฟื้นฟู 1 Slot ใน 2 นาที" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 10px', fontSize: 11.5, color: '#5b3fa0', outline: 'none' }} />
                   ) : (
                     fv(item, 'coreRecover') && <div style={{ fontSize: 11.5, color: '#5b3fa0' }}>({fv(item, 'coreRecover')})</div>
@@ -590,7 +594,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       {isMagicFeature && fv(item, 'mode') === 'Active' && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>จำนวนการใช้งาน</div>
-          {canEdit ? (
+          {masterEdit ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f5f1fb', border: '1px solid #e3d9f2', borderRadius: 11, padding: '12px 14px' }}>
               <input type="number" min={0} defaultValue={fv(item, 'uses')} onBlur={(e) => patchFields.mutate({ uses: e.target.value.trim() })} placeholder="0" style={{ width: 60, border: '1px solid #d6c7f0', borderRadius: 8, padding: '7px 8px', fontSize: 18, fontWeight: 800, textAlign: 'center', color: '#5b3fa0', outline: 'none' }} />
               <span style={{ fontSize: 15, fontWeight: 700, color: '#5b3fa0', flex: 'none' }}>ครั้ง /</span>
