@@ -454,7 +454,7 @@ function CharacterSheet({
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
           {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
-          {!catItem && (WEAPON_RE.test(l.name) || CLOTHING_RE.test(l.name)) && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
+          {!catItem && CLOTHING_RE.test(l.name) && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="แก้ไขลักษณะเสื้อผ้า (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -469,33 +469,18 @@ function CharacterSheet({
       </div>
     );
   };
-  // Per-item-instance editors (durability / Weapon Arts / engrave / clothing desc)
-  // shown inside the item's floating window — kept with that specific item line.
-  const invEditors = (l: BagLine) => (
-    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #efece6', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: '#8d8a82', letterSpacing: '.3px' }}>✎ แก้ไขเฉพาะไอเทมชิ้นนี้ (ในแคมเปญนี้)</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#a8a59d' }}>🛡 ความทนทาน</span>
-        <NumField value={numData(l.dur)} onCommit={(v) => setInv(l.lineId, { dur: v })} width={50} style={{ fontSize: 12, padding: '3px 6px' }} />
-        <span style={{ fontSize: 12, color: '#a8a59d' }}>/</span>
-        <NumField value={numData(l.durMax)} onCommit={(v) => setInv(l.lineId, { durMax: v })} width={50} style={{ fontSize: 12, padding: '3px 6px' }} />
+  // Per-item-instance clothing description (scoped to this line in this campaign).
+  // Weapon Arts + Magic Engraving are handled by CatalogDetail's real systems
+  // (instance mode) so they stay consistent with Equipment & Item.
+  const invEditors = (l: BagLine) => {
+    if (!CLOTHING_RE.test(l.name)) return null;
+    return (
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #efece6' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>👕 ลักษณะเสื้อผ้า (เฉพาะชิ้นนี้ ในแคมเปญนี้)</div>
+        <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none' }} />
       </div>
-      {CLOTHING_RE.test(l.name) && (
-        <div>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>👕 ลักษณะเสื้อผ้า</div>
-          <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none' }} />
-        </div>
-      )}
-      <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>🌀 กระบวนท่า (เพิ่มเองได้)</div>
-        <textarea key={`a${l.arts}`} defaultValue={l.arts ?? ''} onBlur={(e) => { if (e.target.value !== (l.arts ?? '')) setInv(l.lineId, { arts: e.target.value }); }} placeholder="กระบวนท่าของอาวุธนี้ (บรรทัดละท่า)…" rows={3} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }} />
-      </div>
-      <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5b3fa0', marginBottom: 4 }}>✨ สลักเวทมนตร์</div>
-        <textarea key={`e${l.engrave}`} defaultValue={l.engrave ?? ''} onBlur={(e) => { if (e.target.value !== (l.engrave ?? '')) setInv(l.lineId, { engrave: e.target.value }); }} placeholder="เวทมนตร์ที่สลักไว้ในอาวุธนี้…" rows={3} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6c7f0', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#faf8fd', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }} />
-      </div>
-    </div>
-  );
+    );
+  };
   // Drop-zone wrapper: drag a row's handle onto it to move the item there
   const dropZone = (zone: 'loot' | 'ready' | 'bag', children: React.ReactNode) => (
     <div
@@ -1895,9 +1880,25 @@ function CharacterSheet({
       {/* ── Feature / Magic / Item detail — multiple draggable floating windows (same view as the website) ── */}
       {detailWins.map((w, i) => {
         const line = w.lineId ? bag.find((l) => l.lineId === w.lineId) : undefined;
+        const artRefs = Array.isArray(line?.artRefs) ? (line!.artRefs as ItemRef[]) : [];
+        const engRefs = Array.isArray(line?.engRefs) ? (line!.engRefs as ItemRef[]) : [];
         return (
           <FloatWindow key={w.key} title={w.item?.name ?? w.title ?? 'ไอเทม'} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
-            {w.item && <CatalogDetail item={w.item} cfg={CATALOG_CONFIGS[w.item.category]} category={w.item.category} isFeature={w.isFeature} onEdit={() => {}} embedded />}
+            {w.item && (
+              <CatalogDetail
+                item={w.item}
+                cfg={CATALOG_CONFIGS[w.item.category]}
+                category={w.item.category}
+                isFeature={w.isFeature}
+                onEdit={() => {}}
+                embedded
+                instanceMode={!!line}
+                instanceArts={artRefs}
+                instanceEngraved={engRefs}
+                onInstanceArts={(next) => line && setInv(line.lineId, { artRefs: next })}
+                onInstanceEngraved={(next) => line && setInv(line.lineId, { engRefs: next })}
+              />
+            )}
             {line && invEditors(line)}
           </FloatWindow>
         );
@@ -3716,7 +3717,9 @@ function FloatWindow({ title, onClose, children, width = 430, cascadeIndex = 0 }
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const onDown = (e: React.PointerEvent) => {
     raise(); // bring to front on any interaction
-    if ((e.target as HTMLElement).closest('button, a, input, textarea, select')) return; // keep controls usable
+    // Only the title bar drags — otherwise the window captures the pointer and
+    // swallows clicks on body controls (DUR ticks, checkboxes, etc.).
+    if (!(e.target as HTMLElement).closest('[data-drag-handle]')) return;
     drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   };
@@ -3727,7 +3730,7 @@ function FloatWindow({ title, onClose, children, width = 430, cascadeIndex = 0 }
       onPointerUp={() => { drag.current = null; }}
       style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '82vh', zIndex: z, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
+      <div data-drag-handle style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
         <span style={{ fontSize: 13, color: '#c9c5bd' }}>⠿</span>
         <span style={{ flex: 1, fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</span>
         <button onClick={onClose} title="ปิด" style={{ flex: 'none', border: 'none', background: 'none', color: '#a8a59d', cursor: 'pointer', fontSize: 17, lineHeight: 1 }}>✕</button>
@@ -4135,9 +4138,9 @@ const coinStr = (ic: number) => {
 // costNum is stored directly as the Iron-coin (IC) total of the item's coin cost.
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; worn?: boolean; cap?: number; inBag?: string; glass?: boolean }
+interface ItemRef { id: string; name: string }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean }
 const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;
-const WEAPON_RE = /weapon|อาวุธ|sword|blade|ดาบ|axe|ขวาน|bow|ธนู|spear|หอก|dagger|มีด|gun|ปืน|hammer|ค้อน|shield|โล่/i;
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });

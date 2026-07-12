@@ -71,12 +71,22 @@ interface Props {
   // chrome — otherwise `position:sticky;top:96` pushes the content down and
   // leaves a large blank gap at the top.
   embedded?: boolean;
+  // Per-instance (in-campaign) editing of Weapon Arts + Magic Engraving. When
+  // set, the arts/engraved selection reads from these props (a specific
+  // inventory line) and writes via the callbacks instead of mutating the shared
+  // master catalog item. Everything else still reads from the master (Ehen,
+  // Mana Slot count, Professional Level caps) so it matches Equipment & Item.
+  instanceMode?: boolean;
+  instanceArts?: WeaponArtRef[];
+  instanceEngraved?: EngravedRef[];
+  onInstanceArts?: (next: WeaponArtRef[]) => void;
+  onInstanceEngraved?: (next: EngravedRef[]) => void;
 }
 
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
 const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
-export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded }: Props) {
+export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved }: Props) {
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -191,8 +201,15 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const hasEhen = ehenOrgan || ehenCore;
   const showEhen = category === 'equipment' || category === 'monster';
   const slotCount = Math.max(0, parseInt(fv(item, 'manaSlot'), 10) || 0);
-  const engraved: EngravedRef[] = Array.isArray(item.fields.engravedSpells) ? (item.fields.engravedSpells as EngravedRef[]) : [];
-  const weaponArts: WeaponArtRef[] = Array.isArray(item.fields.weaponArts) ? (item.fields.weaponArts as WeaponArtRef[]) : [];
+  // In instance mode the selection lives on the inventory line (scoped to this
+  // character/campaign); otherwise it's the shared master item's fields.
+  const masterEngraved: EngravedRef[] = Array.isArray(item.fields.engravedSpells) ? (item.fields.engravedSpells as EngravedRef[]) : [];
+  const masterArts: WeaponArtRef[] = Array.isArray(item.fields.weaponArts) ? (item.fields.weaponArts as WeaponArtRef[]) : [];
+  const engraved: EngravedRef[] = instanceMode ? instanceEngraved ?? [] : masterEngraved;
+  const weaponArts: WeaponArtRef[] = instanceMode ? instanceArts ?? [] : masterArts;
+  // Arts/engraving selection is editable per-instance by anyone in the campaign;
+  // master-config editing (Ehen toggles, slot count, professional level) stays dev/owner-only.
+  const canEditRefs = instanceMode || canEdit;
   const ehenParen = ehenOrgan && ehenCore ? '(Organ + Core)' : ehenCore ? '(Core)' : '(Organ)';
   // Engraving capacity: odd slots grant +1 (1→1, 3→2, 5→3); dev may override.
   const engraveMaxSet = parseInt(fv(item, 'engraveMax'), 10);
@@ -230,16 +247,18 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
     enabled: !!popup,
   });
 
+  const commitEngraved = (next: EngravedRef[]) => (instanceMode ? onInstanceEngraved?.(next) : patchFields.mutate({ engravedSpells: next }));
+  const commitArts = (next: WeaponArtRef[]) => (instanceMode ? onInstanceArts?.(next) : patchFields.mutate({ weaponArts: next }));
   const addEngraved = (it: CatalogItem) => {
     if (engraved.some((e) => e.id === it.id) || engraved.length >= engraveMax) return;
-    patchFields.mutate({ engravedSpells: [...engraved, { id: it.id, name: it.name }] });
+    commitEngraved([...engraved, { id: it.id, name: it.name }]);
   };
-  const removeEngraved = (id: string) => patchFields.mutate({ engravedSpells: engraved.filter((e) => e.id !== id) });
+  const removeEngraved = (id: string) => commitEngraved(engraved.filter((e) => e.id !== id));
   const addArt = (it: CatalogItem) => {
     if (weaponArts.some((w) => w.id === it.id) || weaponArts.length >= weaponArtsMax) return;
-    patchFields.mutate({ weaponArts: [...weaponArts, { id: it.id, name: it.name }] });
+    commitArts([...weaponArts, { id: it.id, name: it.name }]);
   };
-  const removeArt = (id: string) => patchFields.mutate({ weaponArts: weaponArts.filter((w) => w.id !== id) });
+  const removeArt = (id: string) => commitArts(weaponArts.filter((w) => w.id !== id));
 
   return (
     <div style={embedded
@@ -403,7 +422,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
 
       {showEhen && (canEdit || hasEhen) && (
         <div style={{ marginTop: 16 }}>
-          {canEdit && (
+          {canEdit && !instanceMode && (
             <>
               <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>มีส่วนที่เป็น Ehen Organ / Ehen Core</div>
               <div style={{ fontSize: 10.5, color: '#a8a59d', marginBottom: 8 }}>เลือกได้ถึงสองอย่าง</div>
@@ -430,7 +449,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 <span style={{ fontSize: 11, color: '#8d8a82' }}>สลักไว้ {engraved.length} / {engraveMax} บท</span>
               </div>
 
-              {canEdit && (
+              {canEdit && !instanceMode && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#8d8a82' }}>
                     จำนวน Slot:
@@ -458,7 +477,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                   {engraved.map((e) => (
                     <span key={e.id} style={{ fontSize: 11.5, background: '#f3eefb', border: '1px solid #d6c7f0', color: '#5b3fa0', borderRadius: 7, padding: '3px 6px 3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                       <button onClick={() => setPopup(e.id)} title="ดูรายละเอียด" style={{ border: 'none', background: 'none', color: '#5b3fa0', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: 0 }}>✦ {e.name}</button>
-                      {canEdit && (
+                      {canEditRefs && (
                         <button onClick={() => removeEngraved(e.id)} style={{ border: 'none', background: 'none', color: '#9b86c8', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
                       )}
                     </span>
@@ -466,13 +485,13 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 </div>
               )}
 
-              {canEdit && (
+              {canEditRefs && (
                 <button onClick={() => { setPickQ(''); setDrawer('engrave'); }} disabled={engraveMax === 0} style={{ width: '100%', padding: 9, background: engraveMax === 0 ? '#cbc8c0' : '#15140f', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 600, cursor: engraveMax === 0 ? 'not-allowed' : 'pointer' }}>✦ สลักเวทมนตร์ (Magic Engraving)</button>
               )}
 
               {ehenCore && (
                 <div style={{ marginTop: 8 }}>
-                  {canEdit ? (
+                  {canEdit && !instanceMode ? (
                     <input defaultValue={fv(item, 'coreRecover')} onBlur={(e) => patchFields.mutate({ coreRecover: e.target.value })} placeholder="เช่น ฟื้นฟู 1 Slot ใน 2 นาที" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 10px', fontSize: 11.5, color: '#5b3fa0', outline: 'none' }} />
                   ) : (
                     fv(item, 'coreRecover') && <div style={{ fontSize: 11.5, color: '#5b3fa0' }}>({fv(item, 'coreRecover')})</div>
@@ -485,7 +504,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {category === 'equipment' && isWeapon && (canEdit || weaponArts.length > 0) && (
+      {category === 'equipment' && isWeapon && (canEditRefs || weaponArts.length > 0) && (
         <div style={{ marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>กระบวนท่าประจำอาวุธ (Weapon Arts)</span>
@@ -496,14 +515,14 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               {weaponArts.map((w) => (
                 <span key={w.id} style={{ fontSize: 11.5, background: '#fbf1e8', border: '1px solid #ecd6bf', color: '#b4602a', borderRadius: 7, padding: '3px 6px 3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                   <button onClick={() => setPopup(w.id)} title="ดูรายละเอียด" style={{ border: 'none', background: 'none', color: '#b4602a', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: 0 }}>⚔ {w.name}</button>
-                  {canEdit && (
+                  {canEditRefs && (
                     <button onClick={() => removeArt(w.id)} style={{ border: 'none', background: 'none', color: '#c79a6a', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
                   )}
                 </span>
               ))}
             </div>
           )}
-          {canEdit &&
+          {canEditRefs &&
             (weaponArtsMax === 0 ? (
               <div style={{ fontSize: 11, color: '#a8a59d' }}>ตั้ง Professional Level (Journeyman ขึ้นไป) เพื่อเพิ่มกระบวนท่า</div>
             ) : (
