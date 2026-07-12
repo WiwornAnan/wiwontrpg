@@ -42,7 +42,25 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
   const [submitItem, setSubmitItem] = useState<CatalogItem | null>(null);
   const [manageField, setManageField] = useState<FilterField | null>(null);
   const [popEditOpen, setPopEditOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const qc = useQueryClient();
+
+  const bulkImport = useMutation({
+    mutationFn: async () => {
+      let items: unknown;
+      try { items = JSON.parse(bulkText); } catch { throw new Error('JSON ไม่ถูกต้อง — ตรวจวงเล็บ/เครื่องหมายจุลภาคอีกครั้ง'); }
+      if (!Array.isArray(items)) throw new Error('ต้องเป็น JSON แบบ array ของไอเทม (ขึ้นต้นด้วย [ )');
+      return api.post<{ created: number; names: string[] }>(`/catalog/${category}/bulk-import`, { items });
+    },
+    onSuccess: (res) => {
+      setBulkMsg({ ok: true, text: `เพิ่มสำเร็จ ${res.created} ชิ้น` });
+      setBulkText('');
+      qc.invalidateQueries({ queryKey: ['catalog', category] });
+    },
+    onError: (e) => setBulkMsg({ ok: false, text: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }),
+  });
 
   const isFeature = query.isFeature && !!cfg.hasFeature; // never applies to non-feature categories
   const source = isFeature && cfg.feature ? cfg.feature : cfg;
@@ -167,6 +185,15 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
         >
           + เพิ่มข้อมูล
         </button>
+        {isDev && (
+          <button
+            onClick={() => { setBulkMsg(null); setBulkOpen(true); }}
+            title="นำเข้าหลายชิ้นพร้อมกันด้วย JSON"
+            style={{ padding: '0 16px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 11, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            ⇪ Bulk Import
+          </button>
+        )}
       </div>
 
       {showFilters && (
@@ -320,6 +347,38 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
       {addOpen && (
         <CatalogAddModal open={addOpen} onClose={() => { setAddOpen(false); setEditItem(null); }} category={category} cfg={cfg} isFeature={isFeature} editItem={editItem} />
       )}
+
+      <Modal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title={`⇪ Bulk Import — ${category}`}
+        width={620}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setBulkOpen(false)}>ปิด</Button>
+            <Button variant="coral" onClick={() => bulkImport.mutate()} disabled={bulkImport.isPending || !bulkText.trim()}>
+              {bulkImport.isPending ? 'กำลังนำเข้า…' : 'นำเข้าเข้าฐานข้อมูล'}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 10px', lineHeight: 1.7 }}>
+          วาง JSON แบบ array ของไอเทม (แต่ละชิ้นมี <code>name</code>, <code>fields</code>, <code>tags</code>, <code>description</code>) แล้วกดนำเข้า —
+          ทุกชิ้นจะถูกสร้างเป็น Official ลงฐานข้อมูลจริงทันที
+        </p>
+        <textarea
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+          placeholder={'[\n  { "name": "…", "fields": { "tag": "Weapon", … }, "tags": ["Weapon"], "description": "…" }\n]'}
+          spellCheck={false}
+          style={{ width: '100%', boxSizing: 'border-box', minHeight: 260, border: '1px solid #e0ded7', borderRadius: 10, padding: '11px 13px', fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace', lineHeight: 1.5, outline: 'none', resize: 'vertical' }}
+        />
+        {bulkMsg && (
+          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, padding: '9px 13px', borderRadius: 9, background: bulkMsg.ok ? '#eef6f0' : '#fbeae6', color: bulkMsg.ok ? '#2f7d4f' : '#b4513a', border: `1px solid ${bulkMsg.ok ? '#cfe6d6' : '#f3cabf'}` }}>
+            {bulkMsg.ok ? '✓ ' : '⚠️ '}{bulkMsg.text}
+          </div>
+        )}
+      </Modal>
 
       {manageField && (
         <ManageTagsModal

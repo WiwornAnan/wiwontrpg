@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireDev } from '../middleware/auth.js';
 import { toCatalogItem } from '../serialize.js';
 import { sanitizeDescription } from '../lib/sanitize.js';
 import {
@@ -228,6 +228,44 @@ catalogRouter.post('/:category', requireAuth, async (req, res) => {
     include: { owner: true },
   });
   res.status(201).json({ item: toCatalogItem(row) });
+});
+
+// POST /:category/bulk-import — dev creates many Official items in one call.
+// Used to seed batches of content (e.g. Equipment) from a pasted JSON array.
+catalogRouter.post('/:category/bulk-import', requireDev, async (req, res) => {
+  const category = req.params.category;
+  if (!isCategory(category)) {
+    res.status(404).json({ error: 'ไม่พบหมวดหมู่' });
+    return;
+  }
+  const parsed = z.object({ items: z.array(itemInput).min(1).max(500) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' });
+    return;
+  }
+  const names: string[] = [];
+  for (const d of parsed.data.items) {
+    const isFeature = !!d.isFeature;
+    await prisma.catalogItem.create({
+      data: {
+        category,
+        isFeature,
+        name: d.name,
+        subtitle: d.subtitle ?? null,
+        relatedWiwonId: d.relatedWiwonId ?? null,
+        fields: JSON.stringify(cleanFields(category, isFeature, d.fields)),
+        description: sanitizeDescription(d.description),
+        tags: JSON.stringify(d.tags),
+        source: d.source || 'Official',
+        isHomebrew: false,
+        ownerUserId: null,
+        isOfficialAdded: true,
+        iconUrl: d.iconUrl ?? null,
+      },
+    });
+    names.push(d.name);
+  }
+  res.status(201).json({ created: names.length, names });
 });
 
 // Owner (homebrew) or dev may edit.
