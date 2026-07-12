@@ -1913,6 +1913,7 @@ function CharacterSheet({
                 instanceEngraved={engRefs}
                 onInstanceArts={(next) => line && setInv(line.lineId, { artRefs: next })}
                 onInstanceEngraved={(next) => line && setInv(line.lineId, { engRefs: next })}
+                onLogUse={campaignId ? (kind, text, ref) => logRef.current(kind, text, ref) : undefined}
               />
             )}
             {line && invEditors(line)}

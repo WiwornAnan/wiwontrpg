@@ -82,12 +82,15 @@ interface Props {
   instanceEngraved?: EngravedRef[];
   onInstanceArts?: (next: WeaponArtRef[]) => void;
   onInstanceEngraved?: (next: EngravedRef[]) => void;
+  // Broadcast a "use" of a weapon art / engraved spell to the campaign Log
+  // (only provided when the item is opened inside a campaign).
+  onLogUse?: (kind: string, text: string, ref?: { itemId?: string; isFeature?: boolean }) => void;
 }
 
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
 const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
-export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved }: Props) {
+export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved, onLogUse }: Props) {
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -490,6 +493,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                   {engraved.map((e) => (
                     <span key={e.id} style={{ fontSize: 11.5, background: '#f3eefb', border: '1px solid #d6c7f0', color: '#5b3fa0', borderRadius: 7, padding: '3px 6px 3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                       <button onClick={() => setPopup(e.id)} title="ดูรายละเอียด" style={{ border: 'none', background: 'none', color: '#5b3fa0', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: 0 }}>✦ {e.name}</button>
+                      {onLogUse && (
+                        <button onClick={() => onLogUse('magic', `✨ ร่ายเวทสลัก: ${e.name} — ${item.name}`, { itemId: e.id, isFeature: false })} title="ใช้ (ส่งเข้า Log แคมเปญ)" style={{ border: '1px solid #cbb8ec', background: '#fff', color: '#5b3fa0', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, borderRadius: 5, padding: '1px 7px', lineHeight: 1.5 }}>ใช้</button>
+                      )}
                       {canEditRefs && (
                         <button onClick={() => removeEngraved(e.id)} style={{ border: 'none', background: 'none', color: '#9b86c8', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
                       )}
@@ -528,6 +534,9 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               {weaponArts.map((w) => (
                 <span key={w.id} style={{ fontSize: 11.5, background: '#fbf1e8', border: '1px solid #ecd6bf', color: '#b4602a', borderRadius: 7, padding: '3px 6px 3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                   <button onClick={() => setPopup(w.id)} title="ดูรายละเอียด" style={{ border: 'none', background: 'none', color: '#b4602a', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, padding: 0 }}>⚔ {w.name}</button>
+                  {onLogUse && (
+                    <button onClick={() => onLogUse('feature', `⚔️ ใช้กระบวนท่า: ${w.name} — ${item.name}`, { itemId: w.id, isFeature: true })} title="ใช้ (ส่งเข้า Log แคมเปญ)" style={{ border: '1px solid #e3c39c', background: '#fff', color: '#b4602a', cursor: 'pointer', fontSize: 10.5, fontWeight: 700, borderRadius: 5, padding: '1px 7px', lineHeight: 1.5 }}>ใช้</button>
+                  )}
                   {canEditRefs && (
                     <button onClick={() => removeArt(w.id)} style={{ border: 'none', background: 'none', color: '#c79a6a', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
                   )}
