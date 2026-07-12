@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { CatalogCategory, CatalogConfig, CatalogItem, WiwonCover } from '@wiwonanant/shared';
-import { computeFeatureTN, computeMagicTN } from '@wiwonanant/shared';
+import { computeFeatureTN, computeMagicTN, weaponDamageBonus } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import type { CatalogListResult } from '../lib/catalogHooks';
@@ -117,7 +117,15 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       return true;
     })
     .map((f) => ({ label: f.label, value: f.key === 'components' ? abbrevComponents(fv(item, f.key)) : fv(item, f.key) }))
-    .filter((s) => s.value !== '' && s.label !== 'Cost' && s.label !== 'Rarity' && s.label !== 'School');
+    .filter((s) => s.value !== '' && s.label !== 'Cost' && s.label !== 'Rarity' && s.label !== 'School' && s.label !== 'Requirements (Core Attribute)');
+  // #13 weapon "+ Damage" (Material + Prof + Rarity + Wielding), only for Piercing/Slashing/Bludgeoning.
+  if (category === 'equipment') {
+    const dmgBonus = weaponDamageBonus(item.fields);
+    if (dmgBonus !== null) stats.push({ label: '+ Damage', value: `${dmgBonus >= 0 ? '+' : ''}${dmgBonus}` });
+    // #14 Requirements as a Core Attribute grade.
+    const reqAttr = fv(item, 'reqAttr');
+    if (reqAttr && reqAttr !== 'None') stats.push({ label: 'Requirements', value: `${reqAttr} ≥ ${fv(item, 'reqGrade') || '?'}` });
+  }
   // Monster Core Attributes → their own grid (STR/DEX/END/PER/INT/AUT/CVN).
   const coreAttrs = CORE_ATTR_KEYS.map((k) => ({ abbr: k.replace('core', ''), grade: fv(item, k) })).filter((c) => c.grade);
 
