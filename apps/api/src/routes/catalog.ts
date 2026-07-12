@@ -130,8 +130,11 @@ catalogRouter.get('/:category', async (req, res) => {
   }
 
   const total = items.length;
+  // `all=1` returns the whole scope set unpaginated (used by the random shop
+  // generator, which needs the full pool to draw from).
+  const returnAll = req.query.all === '1';
   const start = (page - 1) * CATALOG_PAGE_SIZE;
-  const paged = items.slice(start, start + CATALOG_PAGE_SIZE);
+  const paged = returnAll ? items : items.slice(start, start + CATALOG_PAGE_SIZE);
 
   // Live stat boxes (top-right of the catalog), computed over the full scope set.
   const all = rows.map(toCatalogItem);

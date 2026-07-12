@@ -107,7 +107,7 @@ const EQUIPMENT: CatalogConfig = {
   filterFields: [
     { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Weapon', 'Armor', 'Shields', 'Clothing', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', any: 'Any Type', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
-    { key: 'availability', label: 'Availability', any: 'Any Availability', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
+    { key: 'availability', label: 'Availability', any: 'Any Availability', options: ['Kiosk', 'Boutique', 'Expert shop', 'Mart', 'Trade center', 'Vault', 'Quest'] },
     { key: 'cost', label: 'Cost', kind: 'range', unit: 'IC', numKey: 'costNum' },
     { key: 'material', label: 'Materials', any: 'Any Material', options: ['Wood', 'Metal', 'Bone', 'Glass', 'Crystal', 'Cloth', 'Leather', 'Biomaterials', 'Rare Earth', 'Monster Parts'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Tag', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
@@ -122,7 +122,7 @@ const EQUIPMENT: CatalogConfig = {
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
     { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Shields', 'Clothing', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', kind: 'select', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
-    { key: 'availability', label: 'Availability', kind: 'select', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
+    { key: 'availability', label: 'Availability', kind: 'select', options: ['Kiosk', 'Boutique', 'Expert shop', 'Mart', 'Trade center', 'Vault', 'Quest'] },
     // Cost in real coins (Platinum/Gold/Silver/Copper/Iron); costNum (IC total) is derived on save.
     { key: 'costPC', label: 'ราคา Platinum', kind: 'text', placeholder: '0' },
     { key: 'costGC', label: 'ราคา Gold', kind: 'text', placeholder: '0' },

@@ -12,6 +12,7 @@ import { DwellerSheetPage } from './pages/DwellerSheetPage';
 import { DwellerBuildPage } from './pages/DwellerBuildPage';
 import { CampaignPage } from './pages/CampaignPage';
 import { CatalogPage } from './pages/CatalogPage';
+import { ShopPage } from './pages/ShopPage';
 import { PrayPage } from './pages/PrayPage';
 import { ArticleDetailPage } from './pages/ArticleDetailPage';
 import { ContentEditorPage } from './pages/ContentEditorPage';
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/magic" element={<CatalogPage key="magic" category="magic" />} />
           <Route path="/equipment" element={<CatalogPage key="equipment" category="equipment" />} />
           <Route path="/monster" element={<CatalogPage key="monster" category="monster" />} />
+          <Route path="/shop" element={<ShopPage />} />
           <Route path="/pray" element={<PrayPage />} />
           <Route path="/editor" element={<ContentEditorPage />} />
           <Route path="/login" element={<LoginPage />} />
