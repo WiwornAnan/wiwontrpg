@@ -454,7 +454,7 @@ function CharacterSheet({
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
           {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
-          {!catItem && CLOTHING_RE.test(l.name) && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="แก้ไขลักษณะเสื้อผ้า (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
+          {!catItem && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="ข้อมูลเสริม (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -469,18 +469,15 @@ function CharacterSheet({
       </div>
     );
   };
-  // Per-item-instance clothing description (scoped to this line in this campaign).
+  // Per-item-instance free-text note (scoped to this line in this campaign).
   // Weapon Arts + Magic Engraving are handled by CatalogDetail's real systems
   // (instance mode) so they stay consistent with Equipment & Item.
-  const invEditors = (l: BagLine) => {
-    if (!CLOTHING_RE.test(l.name)) return null;
-    return (
-      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #efece6' }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>👕 ลักษณะเสื้อผ้า (เฉพาะชิ้นนี้ ในแคมเปญนี้)</div>
-        <input key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="อธิบายลักษณะ สี ทรง เนื้อผ้า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none' }} />
-      </div>
-    );
-  };
+  const invEditors = (l: BagLine) => (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #efece6' }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a8a59d', marginBottom: 4 }}>📝 ข้อมูลเสริม (เฉพาะชิ้นนี้ ในแคมเปญนี้)</div>
+      <textarea key={l.desc} defaultValue={l.desc ?? ''} onBlur={(e) => { if (e.target.value !== (l.desc ?? '')) setInv(l.lineId, { desc: e.target.value }); }} placeholder="รายละเอียด สภาพ ลักษณะ หรือบันทึกเพิ่มเติมของไอเทมชิ้นนี้…" rows={3} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, background: '#fff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.55 }} />
+    </div>
+  );
   // Drop-zone wrapper: drag a row's handle onto it to move the item there
   const dropZone = (zone: 'loot' | 'ready' | 'bag', children: React.ReactNode) => (
     <div
@@ -3717,9 +3714,12 @@ function FloatWindow({ title, onClose, children, width = 430, cascadeIndex = 0 }
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const onDown = (e: React.PointerEvent) => {
     raise(); // bring to front on any interaction
+    const t = e.target as HTMLElement;
+    // Never hijack real controls (the ✕ close button lives in the title bar).
+    if (t.closest('button, a, input, textarea, select')) return;
     // Only the title bar drags — otherwise the window captures the pointer and
     // swallows clicks on body controls (DUR ticks, checkboxes, etc.).
-    if (!(e.target as HTMLElement).closest('[data-drag-handle]')) return;
+    if (!t.closest('[data-drag-handle]')) return;
     drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   };
@@ -4140,7 +4140,6 @@ const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').repl
 
 interface ItemRef { id: string; name: string }
 interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean }
-const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { CatalogCategory, CatalogConfig, CatalogItem, WiwonCover } from '@wiwonanant/shared';
@@ -599,7 +600,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {showDurability && (
+      {showDurability && !embedded && (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 600, margin: '16px 0 8px' }}>Durability (DUR)</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -630,20 +631,21 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       )}
 
       {drawer === 'engrave' && (
-        <Modal open onClose={() => setDrawer(null)} width={440} title="✦ สลักเวทมนตร์ — เลือกเวท">
+        <SidePanel title="✦ สลักเวทมนตร์ — เลือกเวท" onClose={() => setDrawer(null)}>
           <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="ค้นหาเวท (ชื่อ / สำนัก / คีย์เวิร์ด)…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none', marginBottom: 8 }} />
           <div style={{ fontSize: 11, color: '#8d8a82', marginBottom: 8 }}>สลักได้ {engraved.length} / {engraveMax} บท</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '58vh', overflowY: 'auto' }}>
             {spellPick.isLoading && <div style={{ fontSize: 12, color: '#a8a59d' }}>กำลังโหลด…</div>}
             {(spellPick.data?.items ?? []).map((sp) => {
               const on = engraved.some((e) => e.id === sp.id);
               const full = engraved.length >= engraveMax && !on;
               return (
-                <div key={sp.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, opacity: full ? 0.5 : 1 }}>
+                <div key={sp.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, opacity: full ? 0.5 : 1 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{sp.name}</div>
                     <div style={{ fontSize: 11, color: '#8d8a82' }}>{[String(sp.fields.school ?? ''), String(sp.fields.tag ?? '')].filter(Boolean).join(' · ')}</div>
                   </div>
+                  <button onClick={() => setPopup(sp.id)} title="ดูข้อมูล" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>
                   {on ? (
                     <button onClick={() => removeEngraved(sp.id)} style={{ padding: '5px 12px', background: '#f3eefb', color: '#5b3fa0', border: '1px solid #d6c7f0', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>เอาออก</button>
                   ) : (
@@ -654,24 +656,25 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
             })}
             {spellPick.data && spellPick.data.items.length === 0 && <div style={{ fontSize: 12, color: '#a8a59d' }}>ไม่พบเวทที่ค้นหา</div>}
           </div>
-        </Modal>
+        </SidePanel>
       )}
 
       {drawer === 'weaponArts' && (
-        <Modal open onClose={() => setDrawer(null)} width={440} title="⚔ กระบวนท่าประจำอาวุธ — เลือก Feature">
+        <SidePanel title="⚔ กระบวนท่าประจำอาวุธ — เลือก Feature" onClose={() => setDrawer(null)}>
           <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="ค้นหากระบวนท่า…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none', marginBottom: 8 }} />
           <div style={{ fontSize: 11, color: '#8d8a82', marginBottom: 8 }}>แสดงเฉพาะ Feature ที่มีแท็ก “Weapon Arts” · เพิ่มได้ {weaponArts.length} / {weaponArtsMax}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '58vh', overflowY: 'auto' }}>
             {artPick.isLoading && <div style={{ fontSize: 12, color: '#a8a59d' }}>กำลังโหลด…</div>}
             {(artPick.data?.items ?? []).map((ft) => {
               const on = weaponArts.some((w) => w.id === ft.id);
               const full = !on && weaponArts.length >= weaponArtsMax;
               return (
-                <div key={ft.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, opacity: full ? 0.5 : 1 }}>
+                <div key={ft.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', border: '1px solid #ece9e3', borderRadius: 9, opacity: full ? 0.5 : 1 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{ft.name}</div>
                     <div style={{ fontSize: 11, color: '#8d8a82' }}>{[String(ft.fields.class ?? ''), String(ft.fields.mode ?? '')].filter(Boolean).join(' · ')}</div>
                   </div>
+                  <button onClick={() => setPopup(ft.id)} title="ดูข้อมูล" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>
                   {on ? (
                     <button onClick={() => removeArt(ft.id)} style={{ padding: '5px 12px', background: '#fbf1e8', color: '#b4602a', border: '1px solid #ecd6bf', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>เอาออก</button>
                   ) : (
@@ -682,7 +685,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
             })}
             {artPick.data && artPick.data.items.length === 0 && <div style={{ fontSize: 12, color: '#a8a59d' }}>ยังไม่มี Feature ที่แท็ก “Weapon Arts”</div>}
           </div>
-        </Modal>
+        </SidePanel>
       )}
 
       {popup && (
@@ -705,6 +708,40 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </Modal>
       )}
     </div>
+  );
+}
+
+// Right-docked floating panel (used for the engrave / weapon-arts pickers) so
+// they open beside the item window instead of as a centered modal over it.
+function SidePanel({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const width = 370;
+  const [pos, setPos] = useState(() => ({
+    x: Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) - width - 24),
+    y: 96,
+  }));
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('button, a, input, textarea, select')) return;
+    if (!t.closest('[data-drag-handle]')) return;
+    drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  };
+  return createPortal(
+    <div
+      onPointerDown={onDown}
+      onPointerMove={(e) => { if (drag.current) setPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }); }}
+      onPointerUp={() => { drag.current = null; }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, width, maxWidth: '92vw', maxHeight: '80vh', zIndex: 6000, background: '#fff', border: '1px solid #d8d5cd', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+    >
+      <div data-drag-handle style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderBottom: '1px solid #efece6', background: '#faf9f7', cursor: 'grab', userSelect: 'none' }}>
+        <span style={{ fontSize: 13, color: '#c9c5bd' }}>⠿</span>
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 14.5, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</span>
+        <button onClick={onClose} title="ปิด" style={{ flex: 'none', border: 'none', background: 'none', color: '#a8a59d', cursor: 'pointer', fontSize: 17, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ padding: '14px 16px', overflowY: 'auto' }}>{children}</div>
+    </div>,
+    document.body,
   );
 }
 
