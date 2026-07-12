@@ -104,6 +104,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   const [descOpen, setDescOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [dur, setDur] = useState<boolean[]>([false, false, false]); // session durability ticks
+  const [manaUsed, setManaUsed] = useState(0); // Mana Slots spent (manual tracker, independent of engraving)
 
   const del = useMutation({
     mutationFn: () => api.delete(`/catalog/${category}/item/${item.id}`),
@@ -447,7 +448,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
                 <span style={{ fontSize: 12.5, fontWeight: 600 }}>
                   Mana Slot <span style={{ color: '#5b3fa0' }}>{ehenParen}</span>
                 </span>
-                <span style={{ fontSize: 11, color: '#8d8a82' }}>สลักไว้ {engraved.length} / {engraveMax} บท</span>
+                <span style={{ fontSize: 11, color: '#8d8a82' }}>ใช้ไป {Math.min(manaUsed, slotCount)} / {slotCount}</span>
               </div>
 
               {canEdit && !instanceMode && (
@@ -464,11 +465,22 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
               )}
 
               {slotCount > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                  {Array.from({ length: slotCount }).map((_, i) => (
-                    <div key={i} style={{ width: 26, height: 26, borderRadius: 6, border: '2px solid #d6c7f0', background: i < engraved.length ? '#7c5fc0' : '#fff' }} />
-                  ))}
-                </div>
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    {Array.from({ length: slotCount }).map((_, i) => {
+                      const used = i < Math.min(manaUsed, slotCount);
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => setManaUsed((u) => (i + 1 === u ? i : i + 1))}
+                          title="กดเพื่อใช้ / คืน Mana Slot"
+                          style={{ width: 26, height: 26, borderRadius: 6, cursor: 'pointer', border: '2px solid #d6c7f0', background: used ? '#7c5fc0' : '#fff' }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#a8a59d', marginBottom: 8 }}>กดช่องเพื่อใช้/คืน Mana เอง (แยกจากการสลักเวทมนตร์)</div>
+                </>
               ) : (
                 <div style={{ fontSize: 11, color: '#a8a59d', marginBottom: 8 }}>ยังไม่ได้กำหนดจำนวน Slot — แก้ไขจำนวนได้ด้านบน</div>
               )}
