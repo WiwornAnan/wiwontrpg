@@ -384,6 +384,7 @@ function CharacterSheet({
   // The "สะพาย" zone only unlocks once the character owns a bag-type item.
   const BAG_RE = /bag|backpack|sack|pouch|pack|กระเป๋า|เป้|ย่าม|ถุง/i;
   const isBagItem = (l: BagLine) => l.isBag ?? BAG_RE.test(l.name);
+  const isPotion = (l: BagLine, cat?: CatalogItem) => (cat ? String(cat.fields.tag ?? '') === 'Potion' || cat.tags.includes('Potion') : false) || /potion|โพชั่น|ยา|ขวดยา/i.test(l.name);
   const invZone = (l: BagLine) => l.zone ?? 'loot';
   const bagItems = bag.filter(isBagItem);
   const wornBags = bagItems.filter((b) => b.worn);
@@ -447,8 +448,11 @@ function CharacterSheet({
             title="กดค้างเพื่อลากย้ายโซน"
             style={{ flex: 'none', cursor: 'grab', color: '#c9c5bd', fontSize: 14, lineHeight: 1, userSelect: 'none' }}
           >⠿</span>
-          <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
+          <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 'none', minWidth: 0, maxWidth: 150, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
+          {l.glass && <span style={{ flex: 'none', fontSize: 10.5, fontWeight: 700, color: '#3a7ca8' }}>(Glass)</span>}
+          <span style={{ flex: 1 }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
+          {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
           {catItem && <button onClick={() => openInfo(catItem, false)} title="ดูข้อมูลจากต้นฉบับ" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
@@ -719,7 +723,8 @@ function CharacterSheet({
   // (unless Titan's Grip); if none is free, warn "มือไม่ว่างพอ" and place nothing.
   const useHandItem = (slot: string, m: CatalogItem): boolean => {
     const twoH = /two|สองมือ/i.test(String(m.fields.wielding ?? ''));
-    const base: HandItem = { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum), na: isDefensive(m.name) ? 1 : 0 };
+    const defensive = isDefensive(m.name) || /armor|shield|เกราะ|โล่/i.test(`${m.fields.tag ?? ''} ${m.fields.equipType ?? ''}`);
+    const base: HandItem = { name: m.name, itemId: m.id, kg: numData(m.fields.weightNum), na: defensive ? (numData(m.fields.natDefBonus) || 1) : 0 };
     if (twoH && !hasTitansGrip) {
       const second = HAND_SLOTS.find((s) => s.key !== slot && handOn(s.key) && !hands[s.key]);
       if (!second) {
@@ -4115,7 +4120,7 @@ const coinStr = (ic: number) => {
 // costNum is stored directly as the Iron-coin (IC) total of the item's coin cost.
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; worn?: boolean; cap?: number; inBag?: string }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; worn?: boolean; cap?: number; inBag?: string; glass?: boolean }
 const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;
 const WEAPON_RE = /weapon|อาวุธ|sword|blade|ดาบ|axe|ขวาน|bow|ธนู|spear|หอก|dagger|มีด|gun|ปืน|hammer|ค้อน|shield|โล่/i;
 
