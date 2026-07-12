@@ -93,40 +93,56 @@ const EQUIPMENT: CatalogConfig = {
     ['Cost', 'cost'],
     ['Type', 'equipType'],
     ['Weight', 'weight'],
+    ['+ Natural Defense', 'natDefBonus'],
+    ['Ehen / ครั้ง', 'ehenPerUse'],
+    ['ความทนทาน (DUR)', 'durability'],
     ['Bag Capacity (kg)', 'bagCapacity'],
+    ['ปริมาณที่ขนได้ (kg)', 'vehicleCapacity'],
+    ['Specialization', 'toolSpec'],
     ['Wielding', 'wielding'],
     ['Material', 'material'],
     ['Availability', 'availability'],
-    ['Sources', 'source'],
   ],
   subtitleKey: 'type',
   filterFields: [
-    { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket'] },
+    { key: 'tag', label: 'Tags', any: 'Any Tag', options: ['Weapon', 'Armor', 'Shields', 'Clothing', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', any: 'Any Type', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
     { key: 'availability', label: 'Availability', any: 'Any Availability', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
     { key: 'cost', label: 'Cost', kind: 'range', unit: 'Cr.', numKey: 'costNum' },
-    { key: 'material', label: 'Materials', any: 'Any Material', options: ['Wood', 'Metal', 'Cloth', 'Leather', 'Crystal', 'Bone'] },
+    { key: 'material', label: 'Materials', any: 'Any Material', options: ['Wood', 'Metal', 'Bone', 'Glass', 'Crystal', 'Cloth', 'Leather', 'Biomaterials', 'Rare Earth', 'Monster Parts'] },
     { key: 'rarity', label: 'Rarity', any: 'Any Tag', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'professionalLevel', label: 'Professional Level', any: 'Any Professional Level', options: ['Amateur', 'Journeyman', 'Expert', 'Master'] },
     { key: 'damage', label: 'Damage', any: 'Any Damage', options: ['Piercing', 'Slashing', 'Bludgeoning', 'None'] },
     { key: 'weight', label: 'Weight', kind: 'range', unit: 'Kg', numKey: 'weightNum' },
-    { key: 'requirements', label: 'Requirements', any: 'Any Requirement', options: ['None', 'Strength', 'Dexterity', 'Proficiency'] },
+    { key: 'reqAttr', label: 'Requirements (Core Attribute)', any: 'Any Requirement', options: ['None', 'STR', 'DEX', 'END', 'PER', 'INT', 'AUT', 'CVN'] },
     { key: 'wielding', label: 'Wielding', any: 'Any Wielding', options: ['One-Handed', 'Two-Handed', 'Worn', 'None'] },
     { key: 'source', label: 'Sources', any: 'Any Tag', options: ["Player's Handbook", 'Arcane Compendium', 'GM Guide', 'Homebrew'] },
   ],
   addFields: [
     { key: 'name', label: 'ชื่อ', kind: 'text', placeholder: 'ตั้งชื่อ…' },
-    { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
+    { key: 'tag', label: 'Tags', kind: 'select', options: ['Weapon', 'Armor', 'Shields', 'Clothing', 'Potion', 'Tool', 'Adventuring Gear', 'Artifact', 'Vehicle', 'Trinket', 'Bag Category'] },
     { key: 'equipType', label: 'Usage Type', kind: 'select', options: ['อาวุธ (Weapon)', 'โล่ (Shield)', 'เกราะ (Armor)'] },
     { key: 'availability', label: 'Availability', kind: 'select', options: ['Kiosk', 'Smithy', 'Vault', 'Quest', 'Common'] },
-    { key: 'cost', label: 'Cost', kind: 'text', placeholder: 'เช่น 2 Cr.' },
-    { key: 'material', label: 'Materials', kind: 'select', options: ['Wood', 'Metal', 'Cloth', 'Leather', 'Crystal', 'Bone'] },
+    // Cost in real coins (Platinum/Gold/Silver/Copper/Iron); costNum (IC total) is derived on save.
+    { key: 'costPC', label: 'ราคา Platinum', kind: 'text', placeholder: '0' },
+    { key: 'costGC', label: 'ราคา Gold', kind: 'text', placeholder: '0' },
+    { key: 'costSC', label: 'ราคา Silver', kind: 'text', placeholder: '0' },
+    { key: 'costCC', label: 'ราคา Copper', kind: 'text', placeholder: '0' },
+    { key: 'costIC', label: 'ราคา Iron', kind: 'text', placeholder: '0' },
+    { key: 'material', label: 'Materials', kind: 'select', options: ['Wood', 'Metal', 'Bone', 'Glass', 'Crystal', 'Cloth', 'Leather', 'Biomaterials', 'Rare Earth', 'Monster Parts'] },
+    { key: 'materialDmgBonus', label: 'ค่า + ดาเมจของวัสดุ (ระบุเอง)', kind: 'text', placeholder: 'เช่น 2', showWhen: { key: 'material', in: ['Rare Earth', 'Monster Parts'] } },
     { key: 'rarity', label: 'Rarity', kind: 'select', options: ['Poor', 'Common', 'Uncommon', 'Rare', 'Legendary'] },
     { key: 'professionalLevel', label: 'Professional Level', kind: 'select', options: ['Amateur', 'Journeyman', 'Expert', 'Master'] },
     { key: 'damage', label: 'Damage', kind: 'select', options: ['Piercing', 'Slashing', 'Bludgeoning', 'None'] },
     { key: 'weight', label: 'Weight', kind: 'text', placeholder: 'เช่น 2 Kg' },
+    { key: 'natDefBonus', label: '+ Natural Defense', kind: 'text', placeholder: 'เช่น 2', showWhen: { key: 'tag', in: ['Armor', 'Shields'] } },
+    { key: 'ehenPerUse', label: 'ปริมาณเอเฮนที่ใช้ / ครั้ง', kind: 'text', placeholder: 'เช่น 1', showWhen: { key: 'tag', in: ['Artifact'] } },
+    { key: 'durability', label: 'ความทนทาน (DUR)', kind: 'text', placeholder: 'เช่น 10', showWhen: { key: 'tag', in: ['Adventuring Gear'] } },
     { key: 'bagCapacity', label: 'ความจุกระเป๋า (kg)', kind: 'text', placeholder: 'เช่น 15', showWhen: { key: 'tag', in: ['Bag Category'] } },
-    { key: 'requirements', label: 'Requirements', kind: 'select', options: ['None', 'Strength', 'Dexterity', 'Proficiency'] },
+    { key: 'vehicleCapacity', label: 'ปริมาณที่ขนได้ (kg)', kind: 'text', placeholder: 'เช่น 100', showWhen: { key: 'tag', in: ['Vehicle'] } },
+    { key: 'toolSpec', label: 'Specialization ที่ต้องใช้', kind: 'text', placeholder: 'ชื่อ Feature: Specialization', showWhen: { key: 'tag', in: ['Tool'] } },
+    { key: 'reqAttr', label: 'Requirements (Core Attribute)', kind: 'select', options: ['None', 'STR', 'DEX', 'END', 'PER', 'INT', 'AUT', 'CVN'] },
+    { key: 'reqGrade', label: 'เกรดขั้นต่ำ', kind: 'select', options: ['A', 'B', 'C', 'D', 'X'], showWhen: { key: 'reqAttr', in: ['STR', 'DEX', 'END', 'PER', 'INT', 'AUT', 'CVN'] } },
     { key: 'wielding', label: 'Wielding', kind: 'select', options: ['One-Handed', 'Two-Handed', 'Worn', 'None'] },
   ],
 };
@@ -350,6 +366,48 @@ export function allowedFieldKeys(category: CatalogCategory, isFeature = false): 
   // Common extra keys used by seed data / rendering.
   ['type', 'castLevel', 'range', 'duration', 'components', 'curiosity', 'ahenCore', 'resistances', 'behavior', 'friendliness', 'harvest', 'dmgBonus', 'manaSlot', 'scratch', 'wounds', 'wp', 'tn', 'size', 'costCoins', 'availability', 'professionalLevel', 'damage', 'requirements', 'wielding', 'ehenOrgan', 'ehenCore', 'coreRecover', 'engravedSpells', 'weaponArts', 'uses', 'usesPer', 'engraveMax'].forEach((k) => keys.add(k));
   return [...keys];
+}
+
+// ---- Equipment: coin cost + weapon damage bonus + requirements ------------
+// Real-coin denominations → Iron (IC) value. Item cost is entered per coin and
+// stored as costNum (total IC); the detail view decomposes it back into coins.
+export const COIN_IC: Record<string, number> = { costPC: 10000, costGC: 1000, costSC: 100, costCC: 10, costIC: 1 };
+export function costFieldsToIC(fields: Record<string, unknown>): number {
+  return Object.entries(COIN_IC).reduce((s, [k, ic]) => s + (Number(fields[k]) || 0) * ic, 0);
+}
+
+// #13 — weapon "+ Damage" is derived: Material + Professional Level + Rarity +
+// Wielding, shown only when the Damage type is Piercing/Slashing/Bludgeoning.
+export const MATERIAL_DMG: Record<string, number> = {
+  Wood: 1, Metal: 1, Bone: 1, Glass: 1, Crystal: 1,
+  Cloth: 0, Leather: 0, Biomaterials: 0,
+  // 'Rare Earth' / 'Monster Parts' use the dev-entered materialDmgBonus.
+};
+export const PROF_DMG: Record<string, number> = { Amateur: 0, Journeyman: 1, Expert: 2, Master: 3 };
+export const RARITY_DMG: Record<string, number> = { Poor: -2, Common: -1, Uncommon: 0, Rare: 1, Legendary: 2 };
+const DMG_TYPES = ['Piercing', 'Slashing', 'Bludgeoning'];
+export function weaponDamageBonus(fields: Record<string, unknown>): number | null {
+  if (!DMG_TYPES.includes(String(fields.damage ?? ''))) return null;
+  const mat = String(fields.material ?? '');
+  const matBonus = mat in MATERIAL_DMG ? MATERIAL_DMG[mat] : (['Rare Earth', 'Monster Parts'].includes(mat) ? (Number(fields.materialDmgBonus) || 0) : 0);
+  const prof = PROF_DMG[String(fields.professionalLevel ?? '')] ?? 0;
+  const rar = RARITY_DMG[String(fields.rarity ?? '')] ?? 0;
+  const wield = /two/i.test(String(fields.wielding ?? '')) ? 2 : 0;
+  return matBonus + prof + rar + wield;
+}
+
+// #14 — Requirements are a Core Attribute grade. A = highest … X = lowest.
+export const GRADE_RANK: Record<string, number> = { X: 0, D: 1, C: 2, B: 3, A: 4 };
+// Returns how a character's grade compares to the requirement:
+//  'ok' (meets/exceeds), 'disadvantage' (1 tier below), 'blocked' (2+ below), null (no requirement).
+export function requirementCheck(reqAttr: string, reqGrade: string, charGrade: string): 'ok' | 'disadvantage' | 'blocked' | null {
+  if (!reqAttr || reqAttr === 'None' || !(reqGrade in GRADE_RANK)) return null;
+  const need = GRADE_RANK[reqGrade];
+  const have = GRADE_RANK[charGrade] ?? 0;
+  const gap = need - have;
+  if (gap <= 0) return 'ok';
+  if (gap === 1) return 'disadvantage';
+  return 'blocked';
 }
 
 // ---- Magic spell Target Number (TN) ---------------------------------------

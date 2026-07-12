@@ -4105,7 +4105,6 @@ function MagicBuySearch({
 }
 
 // ── Step 9: starting money + wallet + Equipment shop/bag ──
-const CR_TO_IC = 100; // equipment price: 1 Cr = 1 SC = 100 IC
 const START_GOLD_IC = 10000; // เงินเริ่มต้น 10 Gold
 const SELL_RATE = 0.4; // ราคาขาย = 40% ของเต็ม (ลดลง 60%)
 const coinStr = (ic: number) => {
@@ -4113,7 +4112,8 @@ const coinStr = (ic: number) => {
   const parts = COIN_DEFS.filter((c) => d[c.key] > 0).map((c) => `${d[c.key]} ${c.key}`);
   return parts.length ? parts.join(' ') : '0';
 };
-const priceOf = (m: CatalogItem) => (parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0) * CR_TO_IC;
+// costNum is stored directly as the Iron-coin (IC) total of the item's coin cost.
+const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; worn?: boolean; cap?: number; inBag?: string }
 const CLOTHING_RE = /clothing|เสื้อผ้า|apparel|garment|robe|เสื้อ|กางเกง|ชุด|เครื่องแต่งกาย|cloak|cape/i;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AddField, CatalogCategory, CatalogConfig, CatalogItem, WiwonCover } from '@wiwonanant/shared';
+import { costFieldsToIC } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api, uploadImage } from '../lib/api';
 import { mergeFieldOptions, useCatalogFieldTags } from '../lib/catalogHooks';
@@ -17,7 +18,15 @@ interface Props {
 }
 
 // numeric mirror keys the list/filters sort on (e.g. cost -> costNum)
-const NUM_MIRROR: Record<string, string> = { cost: 'costNum', weight: 'weightNum', dr: 'drNum' };
+const NUM_MIRROR: Record<string, string> = { weight: 'weightNum', dr: 'drNum' };
+// Iron-coin total → a "n PC · n GC …" display string.
+const COIN_TIERS_STR: [string, number][] = [['PC', 10000], ['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
+function coinStr(ic: number): string {
+  let rest = Math.max(0, Math.round(ic));
+  const parts: string[] = [];
+  for (const [lab, v] of COIN_TIERS_STR) { const n = Math.floor(rest / v); if (n > 0) { parts.push(`${n} ${lab}`); rest -= n * v; } }
+  return parts.join(' · ') || '0 IC';
+}
 
 export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editItem }: Props) {
   const { isDev } = useAuth();
@@ -72,6 +81,12 @@ export function CatalogAddModal({ open, onClose, category, cfg, isFeature, editI
           const n = parseFloat(String(rest[k]).replace(/[^\d.]/g, ''));
           if (!Number.isNaN(n)) outFields[numKey] = n;
         }
+      }
+      // Equipment cost is entered per coin → derive costNum (IC) + a coin display string.
+      if (category === 'equipment') {
+        const ic = costFieldsToIC(rest);
+        outFields.costNum = ic;
+        outFields.cost = coinStr(ic);
       }
       const body = { isFeature, name, fields: outFields, description, tags: Array.from(new Set([...autoTags, ...tags])), iconUrl, relatedWiwonId: relatedWiwonId || null };
       if (editItem) return api.patch(`/catalog/${category}/item/${editItem.id}`, body);
