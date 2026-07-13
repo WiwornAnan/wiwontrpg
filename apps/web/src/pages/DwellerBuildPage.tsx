@@ -615,9 +615,9 @@ function CharacterSheet({
   // Turn a known spell into a physical Book carried in the inventory (old-design
   // behaviour): a bag item, ~0.5kg, that keeps a link back to the spell's detail.
   const bookExists = (name: string, magicId?: string) => bag.some((l) => l.book && (magicId ? l.magicId === magicId : l.name === name));
-  const makeBook = (name: string, magicId?: string) => {
+  const makeBook = (name: string, magicId?: string, zone: 'loot' | 'ready' | 'bag' = 'ready') => {
     if (bookExists(name, magicId)) return;
-    setBag([...bag, { lineId: `bk${Date.now()}`, itemId: '', name, priceIC: 0, kg: 0.5, zone: 'ready', book: true, ...(magicId ? { magicId } : {}) }]);
+    setBag([...bag, { lineId: `bk${Date.now()}`, itemId: '', name, priceIC: 0, kg: 0.5, zone, book: true, ...(magicId ? { magicId } : {}) }]);
   };
 
   // Styles
@@ -2009,7 +2009,7 @@ function CharacterSheet({
       {/* ── Equipment & Items picker → receive into LOOT ── */}
       <Modal open={invPicker} onClose={() => setInvPicker(false)} title="Equipment & Items">
         <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 12px' }}>เลือกสิ่งของแล้วกด “รับ” เพื่อเก็บเข้ากอง LOOT — จากนั้นลากไปยัง Ready หรือกระเป๋าได้</p>
-        <EquipPicker onPick={pickToInv} onAddCustom={addCustomInv} />
+        <EquipPicker onPick={pickToInv} onAddCustom={addCustomInv} allowBooks onPickBook={(m) => makeBook(m.name, m.id, 'loot')} />
       </Modal>
 
       {/* ── Use เข้ามือ — choose which hand slot ── */}
@@ -4221,23 +4221,41 @@ async function fetchEquipment(): Promise<CatalogItem[]> {
   return out;
 }
 
+// Spells (not features) — used to receive them as physical books into inventory.
+async function fetchAllSpellsForBooks(): Promise<CatalogItem[]> {
+  const d = await api.get<{ items: CatalogItem[] }>(`/catalog/magic?scope=all&isFeature=false&all=1`);
+  return d.items;
+}
+
 // Equipment & Items picker used on the sheet's inventory tab. Picking an item
 // "receives" it (no payment) into LOOT with its real weight from item data.
-function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string; onAddCustom?: (name: string, desc: string) => void }) {
+function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom, allowBooks, onPickBook }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string; onAddCustom?: (name: string, desc: string) => void; allowBooks?: boolean; onPickBook?: (m: CatalogItem) => void }) {
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [cName, setCName] = useState('');
   const [cDesc, setCDesc] = useState('');
   const [added, setAdded] = useState<Record<string, number>>({});
-  const { data: all, isLoading } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
-  const pool = (all ?? []).filter((m) => !match || match(m));
+  const [mode, setMode] = useState<'equip' | 'book'>('equip');
+  const bookMode = allowBooks && mode === 'book';
+  const { data: all, isLoading: loadingEq } = useQuery({ queryKey: ['sheet-equipment'], queryFn: fetchEquipment });
+  const { data: spells, isLoading: loadingMg } = useQuery({ queryKey: ['sheet-magic-books'], queryFn: fetchAllSpellsForBooks, enabled: !!allowBooks });
+  const isLoading = bookMode ? loadingMg : loadingEq;
+  const source = bookMode ? (spells ?? []) : (all ?? []);
+  const pool = source.filter((m) => bookMode || !match || match(m));
   const allTags = Array.from(new Set(pool.flatMap((m) => m.tags))).sort();
   const q = query.trim().toLowerCase();
   const hay = (m: CatalogItem) => `${m.name} ${m.subtitle ?? ''} ${m.tags.join(' ')} ${m.description.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
   const matches = pool.filter((m) => (!tagFilter || m.tags.includes(tagFilter)) && (!q || hay(m).includes(q)));
   return (
     <div>
-      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 ค้นหาอุปกรณ์…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#fff' }} />
+      {allowBooks && (
+        <div style={{ display: 'flex', gap: 6, background: '#f0eee9', borderRadius: 10, padding: 3, marginBottom: 10 }}>
+          {([['equip', '🎒 อุปกรณ์'], ['book', '📖 หนังสือเวท']] as const).map(([m, label]) => (
+            <button key={m} onClick={() => { setMode(m); setTagFilter(null); }} style={{ flex: 1, border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: mode === m ? '#fff' : 'transparent', color: mode === m ? '#15140f' : '#8d8a82' }}>{label}</button>
+          ))}
+        </div>
+      )}
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={bookMode ? '🔍 ค้นหาเวทมนตร์…' : '🔍 ค้นหาอุปกรณ์…'} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#fff' }} />
       {allTags.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
           {allTags.slice(0, 12).map((t) => {
@@ -4246,7 +4264,7 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom }: 
           })}
         </div>
       )}
-      {onAddCustom && (
+      {onAddCustom && !bookMode && (
         <div style={{ marginTop: 12, padding: '11px 12px', border: '1px dashed #d8d5cd', borderRadius: 12, background: '#faf9f6' }}>
           <div style={{ fontSize: 11.5, fontWeight: 800, color: '#8d8a82', letterSpacing: .3, marginBottom: 8 }}>＋ เพิ่มไอเทมเอง</div>
           <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="ชื่อไอเทม" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 13, background: '#fff', marginBottom: 7 }} />
@@ -4259,19 +4277,22 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom }: 
         </div>
       )}
       {isLoading && <div style={{ color: '#a8a59d', fontSize: 12.5, padding: '14px 0', textAlign: 'center' }}>กำลังโหลด…</div>}
-      {!isLoading && matches.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>ไม่พบอุปกรณ์</div>}
+      {!isLoading && matches.length === 0 && <div style={{ color: '#bdbab2', fontSize: 12.5, textAlign: 'center', padding: '14px 0' }}>{bookMode ? 'ไม่พบเวทมนตร์' : 'ไม่พบอุปกรณ์'}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, maxHeight: 360, overflowY: 'auto' }}>
         {matches.map((m) => {
           const kg = numData(m.fields.weightNum);
           const n = added[m.id] ?? 0;
+          const meta = bookMode
+            ? `📖 หนังสือเวท · 0.5 kg${[String(m.fields.school ?? ''), String(m.fields.tag ?? '')].filter(Boolean).length ? ' · ' + [String(m.fields.school ?? ''), String(m.fields.tag ?? '')].filter(Boolean).join(', ') : ''}`
+            : `${kg > 0 ? `${kg} kg` : 'ไม่ระบุน้ำหนัก'}${m.tags.length ? ` · ${m.tags.slice(0, 3).join(', ')}` : ''}`;
           return (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border-soft)', background: '#fff' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#2f2c25' }}>{m.name}</div>
-                <div style={{ fontSize: 11, color: '#9a978e' }}>{kg > 0 ? `${kg} kg` : 'ไม่ระบุน้ำหนัก'}{m.tags.length ? ` · ${m.tags.slice(0, 3).join(', ')}` : ''}</div>
+                <div style={{ fontSize: 11, color: '#9a978e' }}>{meta}</div>
               </div>
               {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#2f7d4f' }}>รับแล้ว ×{n}</span>}
-              <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>{actionLabel}</button>
+              <button onClick={() => { (bookMode ? onPickBook : onPick)?.(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: bookMode ? '#5b3fa0' : '#e07a5f', color: '#fff' }}>{bookMode ? '📖 รับ' : actionLabel}</button>
             </div>
           );
         })}
