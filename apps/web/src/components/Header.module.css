@@ -44,13 +44,21 @@
   white-space: nowrap;
 }
 .nav {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 3px;
   flex-wrap: nowrap;
   min-width: 0;
+  /* Always clip + scroll internally so the nav can never overflow onto the
+     brand or the right-side actions, at any width. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.nav::-webkit-scrollbar {
+  display: none;
 }
 .navBtn {
   position: relative;
@@ -284,17 +292,10 @@
   font-size: 13px;
 }
 
-/* ── Responsive: keep the nav from overlapping the brand on tablets/phones ── */
+/* ── Responsive: left-align the (now scrollable) nav on tablets/phones ── */
 @media (max-width: 1180px) {
-  /* Let the nav scroll horizontally instead of overflowing onto the brand. */
   .nav {
     justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .nav::-webkit-scrollbar {
-    display: none;
   }
 }
 @media (max-width: 900px) {
