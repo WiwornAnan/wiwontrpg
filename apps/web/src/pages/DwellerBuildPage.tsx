@@ -462,12 +462,12 @@ function CharacterSheet({
   };
   const takeFromBag = (lineId: string) => setInv(lineId, { zone: 'ready', inBag: undefined });
   const receiveItem = (m: CatalogItem) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: m.id, name: m.name, priceIC: 0, zone: 'loot', kg: numData(m.fields.weightNum), isBag: BAG_RE.test(m.name) || m.tags.some((t) => /bag|กระเป๋า|เป้|ย่าม|ถุง/i.test(t)), cap: numData(m.fields.bagCapacity) }]);
-  const receiveCustom = (name: string, desc: string) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name, priceIC: 0, zone: 'loot', kg: 0, desc }]);
+  const receiveCustom = (name: string, desc: string, kg = 0) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name, priceIC: 0, zone: 'loot', kg, desc }]);
   // Shared-loot (in a campaign) vs personal-loot (solo) helpers
   const takeLoot = (it: LootItem) => { setBag([...bag, { lineId: `x${Date.now()}`, itemId: it.itemId ?? '', name: it.name, priceIC: 0, zone: 'ready', kg: numData(it.kg), desc: it.desc }]); lootRemove.mutate(it.id); };
   const dropToLoot = (l: BagLine) => { if (campaignId) { lootAdd.mutate({ name: l.name, kg: numData(l.kg), desc: l.desc, itemId: l.itemId }); delInv(l.lineId); } else { setInv(l.lineId, { zone: 'loot', inBag: undefined, worn: false }); } };
   const pickToInv = (m: CatalogItem) => { if (campaignId) lootAdd.mutate({ name: m.name, kg: numData(m.fields.weightNum), itemId: m.id }); else receiveItem(m); };
-  const addCustomInv = (name: string, desc: string) => { if (campaignId) lootAdd.mutate({ name, desc }); else receiveCustom(name, desc); };
+  const addCustomInv = (name: string, desc: string, kg = 0) => { if (campaignId) lootAdd.mutate({ name, desc, kg }); else receiveCustom(name, desc, kg); };
   const zoneBd: Record<string, string> = { loot: '#ece9e3', ready: '#cbe0d2', bag: '#d6c7f0' };
   const zoneBg: Record<string, string> = { loot: '#fff', ready: '#f7fbf8', bag: '#faf8fd' };
   const moveStyle = (c: string, bd: string): React.CSSProperties => ({ padding: '3px 9px', border: `1px solid ${bd}`, background: '#fff', color: c, borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: 'pointer' });
@@ -4342,11 +4342,12 @@ function monsterMeta(m: CatalogItem): string {
 
 // Equipment & Items picker used on the sheet's inventory tab. Picking an item
 // "receives" it (no payment) into LOOT with its real weight from item data.
-function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom, allowBooks, onPickBook }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string; onAddCustom?: (name: string, desc: string) => void; allowBooks?: boolean; onPickBook?: (m: CatalogItem) => void }) {
+function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom, allowBooks, onPickBook }: { onPick: (m: CatalogItem) => void; match?: (m: CatalogItem) => boolean; actionLabel?: string; onAddCustom?: (name: string, desc: string, kg?: number) => void; allowBooks?: boolean; onPickBook?: (m: CatalogItem) => void }) {
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [cName, setCName] = useState('');
   const [cDesc, setCDesc] = useState('');
+  const [cKg, setCKg] = useState('');
   const [added, setAdded] = useState<Record<string, number>>({});
   const [mode, setMode] = useState<'equip' | 'book'>('equip');
   const bookMode = allowBooks && mode === 'book';
@@ -4382,9 +4383,14 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom, al
           <div style={{ fontSize: 11.5, fontWeight: 800, color: '#8d8a82', letterSpacing: .3, marginBottom: 8 }}>＋ เพิ่มไอเทมเอง</div>
           <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="ชื่อไอเทม" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 13, background: '#fff', marginBottom: 7 }} />
           <textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)} placeholder="คำอธิบาย (ไม่บังคับ)" rows={2} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 12.5, background: '#fff', resize: 'vertical', fontFamily: 'inherit' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+            <span style={{ fontSize: 11.5, color: '#8d8a82', fontWeight: 600 }}>น้ำหนัก</span>
+            <input value={cKg} onChange={(e) => setCKg(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="0" style={{ width: 80, boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '7px 10px', fontSize: 13, background: '#fff', textAlign: 'right' }} />
+            <span style={{ fontSize: 11.5, color: '#a8a59d' }}>kg</span>
+          </div>
           <button
             disabled={!cName.trim()}
-            onClick={() => { onAddCustom(cName.trim(), cDesc.trim()); setCName(''); setCDesc(''); }}
+            onClick={() => { onAddCustom(cName.trim(), cDesc.trim(), parseFloat(cKg) || 0); setCName(''); setCDesc(''); setCKg(''); }}
             style={{ marginTop: 8, width: '100%', border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 12.5, fontWeight: 700, cursor: cName.trim() ? 'pointer' : 'not-allowed', background: cName.trim() ? '#2f2c25' : '#d8d5cd', color: '#fff' }}
           >เพิ่มลง Loot</button>
         </div>
