@@ -336,17 +336,32 @@ export function CampaignPage() {
             <div style={box}>
               <div style={secLabel}>🎲 Dweller Skill <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เลือกลูกเต๋าแล้วทอยเอง</span></div>
               <input value={skillQuery} onChange={(e) => setSkillQuery(e.target.value)} placeholder="🔍 ค้นหาสกิล…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 12.5, marginBottom: 8, background: '#fff' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
-                {DWELLER_SKILLS.flatMap((cat) => cat.skills).filter((sk) => { const q = skillQuery.trim().toLowerCase(); return !q || sk.name.toLowerCase().includes(q) || sk.en.toLowerCase().includes(q) || sk.attr.toLowerCase().includes(q); }).map((sk) => {
-                  const faces = skillDie[sk.en] ?? 6;
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 320, overflowY: 'auto' }}>
+                {DWELLER_SKILLS.map((cat) => {
+                  const q = skillQuery.trim().toLowerCase();
+                  const skills = cat.skills.filter((sk) => !q || sk.name.toLowerCase().includes(q) || sk.en.toLowerCase().includes(q) || sk.attr.toLowerCase().includes(q));
+                  if (skills.length === 0) return null;
                   return (
-                    <div key={sk.en} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, border: '1px solid #efece6', background: '#faf9f7' }}>
-                      <span style={{ flex: 'none', fontSize: 9.5, fontWeight: 800, color: '#fff', background: SKILL_ATTR_COLOR[sk.attr], borderRadius: 5, padding: '2px 6px' }}>{sk.attr}</span>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sk.desc}>{sk.name}</span>
-                      <select value={faces} onChange={(e) => setSkillDie((m) => ({ ...m, [sk.en]: Number(e.target.value) }))} style={{ flex: 'none', border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 6px', fontSize: 11.5, background: '#fff' }}>
-                        {SKILL_DICE.map((f) => <option key={f} value={f}>d{f}</option>)}
-                      </select>
-                      <button onClick={() => { const val = rollD(faces); postGMRoll.mutate({ kind: 'roll', text: `🎲 ${sk.name} (${sk.attr})`, roll: { total: val, parts: [{ label: sk.attr, value: val, faces, color: SKILL_ATTR_COLOR[sk.attr] }] } }); }} style={{ flex: 'none', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>ทอย</button>
+                    <div key={cat.en}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 5, position: 'sticky', top: 0, background: '#fff', paddingBottom: 3 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#2f2c25' }}>{cat.name}</span>
+                        <span style={{ fontSize: 10.5, color: '#b0ada4', fontStyle: 'italic' }}>{cat.en}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {skills.map((sk) => {
+                          const faces = skillDie[sk.en] ?? 6;
+                          return (
+                            <div key={sk.en} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, border: '1px solid #efece6', background: '#faf9f7' }}>
+                              <span style={{ flex: 'none', fontSize: 9.5, fontWeight: 800, color: '#fff', background: SKILL_ATTR_COLOR[sk.attr], borderRadius: 5, padding: '2px 6px' }}>{sk.attr}</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sk.desc}>{sk.name}</span>
+                              <select value={faces} onChange={(e) => setSkillDie((m) => ({ ...m, [sk.en]: Number(e.target.value) }))} style={{ flex: 'none', border: '1px solid #e0ded7', borderRadius: 7, padding: '4px 6px', fontSize: 11.5, background: '#fff' }}>
+                                {SKILL_DICE.map((f) => <option key={f} value={f}>d{f}</option>)}
+                              </select>
+                              <button onClick={() => { const val = rollD(faces); postGMRoll.mutate({ kind: 'roll', text: `🎲 ${sk.name} (${sk.attr})`, roll: { total: val, parts: [{ label: sk.attr, value: val, faces, color: SKILL_ATTR_COLOR[sk.attr] }] } }); }} style={{ flex: 'none', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: '#e07a5f', color: '#fff' }}>ทอย</button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
