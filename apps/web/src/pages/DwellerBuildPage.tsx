@@ -884,6 +884,9 @@ function CharacterSheet({
     { key: 'dense', label: 'หนาแน่น', faces: 10 },
     { key: 'veil', label: 'ม่านเอเฮน', faces: 20 },
   ];
+  const ehenParticles = sv('ehenParticles', 0);
+  const setEhenParticles = (v: number) => setSheet({ ehenParticles: Math.max(0, Math.round(v)) });
+  const ehenStepBtn = (accent: boolean): React.CSSProperties => ({ width: 30, height: 34, flex: 'none', border: `1.5px solid ${accent ? '#7c5fc0' : '#d9cef0'}`, background: accent ? '#5b3fa0' : '#fff', color: accent ? '#fff' : '#5b3fa0', borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: 'pointer', lineHeight: 1 });
   const cbx = (label: string, val: boolean, onToggle: () => void) => (
     <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', border: `1px solid ${val ? '#cbe0d2' : '#e0ded7'}`, background: val ? '#eef6f0' : '#fff', borderRadius: 9, padding: '8px 11px', cursor: 'pointer', fontSize: 12.5, color: '#3c3a33', width: '100%' }}>
       <span style={{ flex: 'none', width: 16, height: 16, borderRadius: 4, border: `1px solid ${val ? '#2f7d4f' : '#cfccc4'}`, background: val ? '#2f7d4f' : '#fff', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{val ? '✓' : ''}</span>
@@ -1387,6 +1390,20 @@ function CharacterSheet({
                             {ehenDie && <button onClick={() => setRoll({ faces: parseInt(ehenDie.replace(/[^0-9]/g, ''), 10) || 6, adv: false })} title="ทอยลูกเต๋าผลิตอีเฮน" style={{ marginLeft: 'auto', fontSize: 11.5, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc', cursor: 'pointer', fontWeight: 700 }}>ผลิต {ehenDie} 🎲</button>}
                           </div>
                         )}
+                        {/* Accumulated "A particle of Ehen" — manual tally, typeable + ± buttons. */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, padding: '11px 13px', background: '#fff', border: '1.5px solid #e6ddf0', borderRadius: 12 }}>
+                          <div style={{ flex: 1, minWidth: 140 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 800, color: '#5b3fa0', display: 'inline-flex', alignItems: 'center', gap: 6 }}>◆ สะสม A particle of Ehen</div>
+                            <div style={{ fontSize: 10.5, color: '#a8a59d', marginTop: 2 }}>ปริมาณอีเฮนที่สะสมไว้ · พิมพ์หรือกด +/− ได้</div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <button onClick={() => setEhenParticles(ehenParticles - 5)} style={ehenStepBtn(false)} title="−5">−5</button>
+                            <button onClick={() => setEhenParticles(ehenParticles - 1)} style={ehenStepBtn(false)} title="−1">−</button>
+                            <input key={ehenParticles} defaultValue={ehenParticles} inputMode="numeric" onBlur={(e) => { const v = Math.max(0, Math.round(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)); if (v !== ehenParticles) setEhenParticles(v); }} style={{ width: 62, textAlign: 'center', border: '1.5px solid #d9cef0', borderRadius: 9, padding: '7px 4px', fontSize: 17, fontWeight: 800, color: '#5b3fa0', outline: 'none', boxSizing: 'border-box' }} />
+                            <button onClick={() => setEhenParticles(ehenParticles + 1)} style={ehenStepBtn(true)} title="+1">＋</button>
+                            <button onClick={() => setEhenParticles(ehenParticles + 5)} style={ehenStepBtn(true)} title="+5">+5</button>
+                          </div>
+                        </div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>Ehen <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· ความหนาแน่นของอีเฮนรอบตัว — เลือกแล้วกดทอย</span></div>
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                           {EHEN_DENSITY.map((e) => {
