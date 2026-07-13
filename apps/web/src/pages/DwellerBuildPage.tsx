@@ -241,6 +241,7 @@ function CharacterSheet({
   const [coinAdj, setCoinAdj] = useState<Record<string, string>>({});
   const [bgTopic, setBgTopic] = useState<string | null>(null);
   const [invPicker, setInvPicker] = useState(false);
+  const [monPicker, setMonPicker] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [bagWarn, setBagWarn] = useState(''); // over-capacity feedback for bags
   // Stack of open floating detail windows — several can be open at once.
@@ -411,10 +412,15 @@ function CharacterSheet({
   const hasBag = bagItems.length > 0;
   const contentsOf = (id: string) => bag.filter((l) => l.inBag === id);
   const bagUsedKg = (id: string) => Math.round(contentsOf(id).reduce((s, l) => s + numData(l.kg), 0) * 10) / 10;
-  // A free-zone line is one not stored inside a bag and not a worn bag (worn bags render as containers).
-  const inFreeZone = (l: BagLine) => !l.inBag && !(isBagItem(l) && l.worn);
+  // A free-zone line is one not stored inside a bag, not a worn bag (worn bags
+  // render as containers), and not moved to the "พิเศษ" Extra zone.
+  const inFreeZone = (l: BagLine) => !l.inBag && !l.extra && !(isBagItem(l) && l.worn);
   const loot = bag.filter((l) => invZone(l) === 'loot' && inFreeZone(l));
   const ready = bag.filter((l) => invZone(l) === 'ready' && inFreeZone(l));
+  // Worn Clothing / Trinket kept in the "พิเศษ" tab.
+  const extraItems = bag.filter((l) => l.extra);
+  const EXTRA_RE = /clothing|เสื้อผ้า|trinket|เครื่องประดับ|เครื่องราง|apparel|เสื้อ|กางเกง|ชุด|แหวน|สร้อย|กำไล|cloak|robe|ต่างหู|เข็มกลัด/i;
+  const isExtraItem = (l: BagLine) => { const cat = l.itemId ? equipById.get(l.itemId) : undefined; const tag = String(cat?.fields.tag ?? ''); return tag === 'Clothing' || tag === 'Trinket' || EXTRA_RE.test(l.name); };
   // Weight counts: non-bag Ready items always; a bag (and its contents) only when worn. Loot never counts.
   const readyKg = ready.filter((l) => !isBagItem(l)).reduce((s, l) => s + numData(l.kg), 0);
   const wornKg = wornBags.reduce((s, b) => s + numData(b.kg) + bagUsedKg(b.lineId), 0);
@@ -489,6 +495,7 @@ function CharacterSheet({
             : <button onClick={() => setHandPick(l)} style={moveStyle('#2f6b4f', '#cbe0d2')} title="ถือเข้ามือ (เลือกมือ)">✋ Use เข้ามือ</button>)}
           {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
+          {isExtraItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { extra: true })} style={moveStyle('#b06a2a', '#e9d6bf')} title="สวมใส่ → ไปที่แท็บ “พิเศษ”">🧣 สวมใส่ (พิเศษ)</button>}
           {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
         </div>
       </div>
@@ -619,6 +626,18 @@ function CharacterSheet({
     if (bookExists(name, magicId)) return;
     setBag([...bag, { lineId: `bk${Date.now()}`, itemId: '', name, priceIC: 0, kg: 0.5, zone, book: true, ...(magicId ? { magicId } : {}) }]);
   };
+
+  // ── Monster & Organism tracker (in the "พิเศษ" tab) ──
+  interface MonRow { id: string; name: string; itemId?: string; num: number; meta: string }
+  const monsters: MonRow[] = Array.isArray(sheet.monsters) ? (sheet.monsters as MonRow[]) : [];
+  const setMonsters = (next: MonRow[]) => setSheet({ monsters: next });
+  const { data: monPool } = useQuery({ queryKey: ['sheet-monsters'], queryFn: fetchAllMonsters, enabled: monPicker });
+  const addMonster = (m: CatalogItem) => {
+    const init = parseInt(String(m.fields.scratch ?? '').replace(/[^\d]/g, ''), 10) || 0;
+    setMonsters([...monsters, { id: `mo${Date.now()}`, name: m.name, itemId: m.id, num: init, meta: monsterMeta(m) }]);
+  };
+  const setMonNum = (id: string, num: number) => setMonsters(monsters.map((x) => (x.id === id ? { ...x, num: Math.max(0, num) } : x)));
+  const delMon = (id: string) => setMonsters(monsters.filter((x) => x.id !== id));
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -1878,7 +1897,61 @@ function CharacterSheet({
               )}
 
               {tab === 'พิเศษ' && (
-                <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '18px 0', textAlign: 'center' }}>ส่วน “พิเศษ” กำลังพัฒนา</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                  {/* ── Clothing & Trinket (worn extras) ── */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d', marginBottom: 9 }}>👕 เครื่องแต่งกาย &amp; เครื่องประดับ (สวมใส่)</div>
+                    {extraItems.length === 0 ? (
+                      <div style={{ fontSize: 11.5, color: '#bdbab2', padding: '10px 12px', border: '1px dashed #e0ded7', borderRadius: 9, lineHeight: 1.6 }}>ยังไม่มีของสวมใส่ — กด “🧣 สวมใส่ (พิเศษ)” ที่ Clothing หรือ Trinket ในแท็บช่องเก็บของ</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {extraItems.map((l) => {
+                          const cat = l.itemId ? equipById.get(l.itemId) : undefined;
+                          return (
+                            <div key={l.lineId} style={{ border: '1px solid #ecd9c4', borderRadius: 9, padding: '9px 11px', background: '#fdf8f1' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3c3a33' }}>{l.name}</span>
+                                {cat?.fields.tag ? <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#f3e6d4', color: '#b06a2a' }}>{String(cat.fields.tag)}</span> : null}
+                                <span style={{ flex: 1 }} />
+                                {cat && <button onClick={() => openInvInfo(cat, l.lineId)} title="ดูข้อมูล & แก้ไข" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
+                                <button onClick={() => setInv(l.lineId, { extra: false, zone: 'ready' })} title="ถอด → กลับช่องเก็บของ" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ถอด</button>
+                                <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>
+                              </div>
+                              {(l.desc || cat?.description) && <div className="rt-html" style={{ fontSize: 11.5, color: '#7a756c', marginTop: 5, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: l.desc ? l.desc : (cat?.description ?? '') }} />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Monster & Organism tracker ── */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>🐾 MONSTER &amp; ORGANISM</span>
+                      <button onClick={() => setMonPicker(true)} style={{ padding: '5px 12px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม</button>
+                    </div>
+                    {monsters.length === 0 ? (
+                      <div style={{ fontSize: 11.5, color: '#bdbab2', padding: '10px 12px', border: '1px dashed #e0ded7', borderRadius: 9 }}>ยังไม่มี — กด “＋ เพิ่ม” เพื่อค้นหาและเพิ่ม Monster</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {monsters.map((mo) => (
+                          <div key={mo.id} style={{ border: '1px solid #e3d7ec', borderRadius: 9, padding: '9px 11px', background: '#faf7fd', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: 130 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#3c3a33' }}>{mo.name}</div>
+                              {mo.meta && <div style={{ fontSize: 10.5, color: '#9a978e', marginTop: 2 }}>{mo.meta}</div>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 'none' }}>
+                              <NumField value={mo.num} onCommit={(v) => setMonNum(mo.id, v)} width={58} style={{ fontSize: 15, fontWeight: 800, textAlign: 'center', color: '#5b3fa0' }} />
+                              <button onClick={() => setMonNum(mo.id, mo.num - 5)} title="ลด 5" style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 7, padding: '6px 11px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>−5</button>
+                              <button onClick={() => delMon(mo.id)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15 }}>×</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -2004,6 +2077,11 @@ function CharacterSheet({
       {/* ── Feature picker (full catalog, dark) ── */}
       <Modal open={featPicker} onClose={() => setFeatPicker(false)} title="เพิ่ม Feature" dark>
         <CatPicker items={allFeatures ?? []} accent="#b4602a" onPick={addFeatItem} />
+      </Modal>
+
+      {/* ── Monster & Organism picker (dark) ── */}
+      <Modal open={monPicker} onClose={() => setMonPicker(false)} title="เพิ่ม Monster & Organism" dark>
+        <CatPicker items={monPool ?? []} accent="#2f6b4f" onPick={addMonster} />
       </Modal>
 
       {/* ── Equipment & Items picker → receive into LOOT ── */}
@@ -4207,7 +4285,7 @@ const coinStr = (ic: number) => {
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface ItemRef { id: string; name: string }
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
@@ -4225,6 +4303,15 @@ async function fetchEquipment(): Promise<CatalogItem[]> {
 async function fetchAllSpellsForBooks(): Promise<CatalogItem[]> {
   const d = await api.get<{ items: CatalogItem[] }>(`/catalog/magic?scope=all&isFeature=false&all=1`);
   return d.items;
+}
+async function fetchAllMonsters(): Promise<CatalogItem[]> {
+  const d = await api.get<{ items: CatalogItem[] }>(`/catalog/monster?scope=all&all=1`);
+  return d.items;
+}
+// Short stat line for a tracked monster (DR · type · Scratch · WP · TN).
+function monsterMeta(m: CatalogItem): string {
+  const f = m.fields;
+  return [f.type, f.dr, f.scratch && `Scratch ${f.scratch}`, f.wp, f.tn].filter(Boolean).map(String).join(' · ');
 }
 
 // Equipment & Items picker used on the sheet's inventory tab. Picking an item
