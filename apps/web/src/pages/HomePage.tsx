@@ -100,8 +100,23 @@ export function HomePage() {
         </div>
       )}
 
+      {/* Featured tool — the shop generator (lives here to keep the header lean) */}
+      <button
+        onClick={() => navigate('/shop')}
+        style={{ marginTop: 22, width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 20, background: 'var(--ink)', border: 'none', borderRadius: 16, padding: '20px 26px', position: 'relative', overflow: 'hidden' }}
+      >
+        <div style={{ position: 'absolute', right: -30, top: -50, width: 220, height: 220, background: 'radial-gradient(circle,rgba(224,122,95,.4),transparent 62%)' }} />
+        <span style={{ fontSize: 34, flex: 'none', position: 'relative' }}>🏪</span>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+          <div style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#8d8a82', fontWeight: 700 }}>GENERATOR</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 21, color: '#fff', marginTop: 2 }}>ร้านค้าในวิวรณ์</div>
+          <div style={{ fontSize: 12.5, color: '#b6b3aa', marginTop: 3 }}>สุ่มสินค้า Equipment และหนังสือเวท ตามระดับร้าน · ปรับราคาขึ้น-ลงได้</div>
+        </div>
+        <span style={{ flex: 'none', position: 'relative', color: '#fff', background: 'var(--coral)', borderRadius: 10, padding: '10px 18px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>เปิดร้าน →</span>
+      </button>
+
       {/* suggested + trending */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 22, marginTop: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 22, marginTop: 22 }}>
         <div className={styles.card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
             <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 9, fontSize: 17, fontWeight: 600 }}>

@@ -27,7 +27,6 @@ export const NAV_ITEMS = [
   { id: 'magic', label: 'Magic & Feature', href: '/magic' },
   { id: 'equipment', label: 'Equipment & Items', href: '/equipment' },
   { id: 'monster', label: 'Monster & Organism', href: '/monster' },
-  { id: 'shop', label: 'ร้านค้าในวิวรณ์', href: '/shop' },
   { id: 'pray', label: 'Pray to the Creator', href: '/pray' },
 ] as const;
 
