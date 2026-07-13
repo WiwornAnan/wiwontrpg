@@ -377,6 +377,11 @@ function CharacterSheet({
   const walletIC = coinsToIC(coins);
   const bag: BagLine[] = Array.isArray(d.bag) ? (d.bag as BagLine[]) : [];
   const setBag = (next: BagLine[]) => patch.mutate({ data: { ...d, bag: next } });
+  // Trash bin: deleting an inventory / Extra item drops it here so it can be
+  // restored (undo). Kept newest-first, capped so it can't grow forever.
+  const trash: BagLine[] = Array.isArray(d.trash) ? (d.trash as BagLine[]) : [];
+  const TRASH_CAP = 40;
+  const setBagTrash = (nextBag: BagLine[], nextTrash: BagLine[]) => patch.mutate({ data: { ...d, bag: nextBag, trash: nextTrash.slice(0, TRASH_CAP) } });
 
   // Language (old-design model): free list of { id, name, tier } across 3 tiers
   interface LangItem { id: string; name: string; tier: string }
@@ -445,7 +450,26 @@ function CharacterSheet({
   const bmi = heightCm > 0 && bodyKg > 0 ? bodyKg / Math.pow(heightCm / 100, 2) : 0;
   const bmiWarn = bmi <= 0 ? '' : bmi < 18.5 ? 'ผอมเกินไป' : bmi < 23 ? '' : bmi < 25 ? 'ท้วม' : bmi < 30 ? 'น้ำหนักเกิน' : 'อ้วน';
   const setInv = (lineId: string, p: Partial<BagLine>) => setBag(bag.map((l) => (l.lineId === lineId ? { ...l, ...p } : l)));
-  const delInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId && l.inBag !== lineId));
+  // Hard-remove without keeping a copy (used for intentional moves, e.g. dropping to shared loot).
+  const dropInv = (lineId: string) => setBag(bag.filter((l) => l.lineId !== lineId && l.inBag !== lineId));
+  // Delete → move the line (and anything inside it, if it's a bag) into the trash bin.
+  const delInv = (lineId: string) => {
+    const removed = bag.filter((l) => l.lineId === lineId || l.inBag === lineId).map((l) => ({ ...l, trashedAt: Date.now() }));
+    if (removed.length === 0) return;
+    const kept = bag.filter((l) => l.lineId !== lineId && l.inBag !== lineId);
+    setBagTrash(kept, [...removed, ...trash]);
+  };
+  // Restore a trashed line back into ช่องเก็บของ (loot zone), clearing any equipped/worn/in-bag state.
+  const restoreTrash = (lineId: string) => {
+    const item = trash.find((l) => l.lineId === lineId);
+    if (!item) return;
+    const rest: BagLine = { ...item };
+    delete rest.trashedAt;
+    setBagTrash([...bag, { ...rest, zone: 'loot', worn: false, inBag: undefined }], trash.filter((l) => l.lineId !== lineId));
+  };
+  // Permanently drop a single trashed line, or empty the whole bin.
+  const purgeTrash = (lineId: string) => patch.mutate({ data: { ...d, trash: trash.filter((l) => l.lineId !== lineId) } });
+  const emptyTrash = () => patch.mutate({ data: { ...d, trash: [] } });
   // Move a free item into a specific worn bag — reject if it would exceed the bag's dev-set capacity.
   const moveToBag = (lineId: string, bagId: string) => {
     if (lineId === bagId) return;
@@ -465,7 +489,7 @@ function CharacterSheet({
   const receiveCustom = (name: string, desc: string, kg = 0) => setBag([...bag, { lineId: `x${Date.now()}`, itemId: '', name, priceIC: 0, zone: 'loot', kg, desc }]);
   // Shared-loot (in a campaign) vs personal-loot (solo) helpers
   const takeLoot = (it: LootItem) => { setBag([...bag, { lineId: `x${Date.now()}`, itemId: it.itemId ?? '', name: it.name, priceIC: 0, zone: 'ready', kg: numData(it.kg), desc: it.desc }]); lootRemove.mutate(it.id); };
-  const dropToLoot = (l: BagLine) => { if (campaignId) { lootAdd.mutate({ name: l.name, kg: numData(l.kg), desc: l.desc, itemId: l.itemId }); delInv(l.lineId); } else { setInv(l.lineId, { zone: 'loot', inBag: undefined, worn: false }); } };
+  const dropToLoot = (l: BagLine) => { if (campaignId) { lootAdd.mutate({ name: l.name, kg: numData(l.kg), desc: l.desc, itemId: l.itemId }); dropInv(l.lineId); } else { setInv(l.lineId, { zone: 'loot', inBag: undefined, worn: false }); } };
   const pickToInv = (m: CatalogItem) => { if (campaignId) lootAdd.mutate({ name: m.name, kg: numData(m.fields.weightNum), itemId: m.id }); else receiveItem(m); };
   const addCustomInv = (name: string, desc: string, kg = 0) => { if (campaignId) lootAdd.mutate({ name, desc, kg }); else receiveCustom(name, desc, kg); };
   const zoneBd: Record<string, string> = { loot: '#ece9e3', ready: '#cbe0d2', bag: '#d6c7f0' };
@@ -1674,6 +1698,29 @@ function CharacterSheet({
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* TRASH BIN — deleted items land here; restore back into ช่องเก็บของ or purge for good */}
+                  <div style={{ marginTop: 18, borderTop: '1px dashed #e4e1d9', paddingTop: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#9a978e' }}>🗑 ถังขยะ ({trash.length})</span>
+                      <span style={{ fontSize: 10.5, color: '#bdbab2' }}>ของที่ลบจะมาพักที่นี่ · กดกู้คืนเพื่อดึงกลับช่องเก็บของ</span>
+                      {trash.length > 0 && <button onClick={emptyTrash} title="ลบทั้งหมดอย่างถาวร" style={{ marginLeft: 'auto', flex: 'none', border: '1px solid #f0d0c4', background: '#fdf1ee', color: '#b0432a', borderRadius: 7, padding: '4px 10px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ล้างถังขยะ</button>}
+                    </div>
+                    {trash.length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#cbc8c0', padding: '6px 0' }}>— ว่าง —</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {trash.map((l) => (
+                          <div key={l.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #ece9e3', borderRadius: 8, padding: '7px 10px', background: '#faf9f7' }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#8d8a82', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.book ? '📖 ' : ''}{l.name}</span>
+                            <span style={{ fontSize: 10.5, color: '#bdbab2', flex: 'none' }}>{numData(l.kg)} kg</span>
+                            <button onClick={() => restoreTrash(l.lineId)} title="กู้คืน → ช่องเก็บของ" style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#f3f9f5', color: '#2f6b4f', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>↩ กู้คืน</button>
+                            <button onClick={() => purgeTrash(l.lineId)} title="ลบถาวร" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -4336,7 +4383,7 @@ const coinStr = (ic: number) => {
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface ItemRef { id: string; name: string }
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean; water?: boolean }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean; water?: boolean; trashedAt?: number }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
