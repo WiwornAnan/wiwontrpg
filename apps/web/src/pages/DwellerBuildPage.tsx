@@ -470,9 +470,11 @@ function CharacterSheet({
           >⠿</span>
           <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 'none', minWidth: 0, maxWidth: 150, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
           {l.glass && <span style={{ flex: 'none', fontSize: 10.5, fontWeight: 700, color: '#3a7ca8' }}>(Glass)</span>}
+          {l.book && <span style={{ flex: 'none', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0' }}>📖 Book</span>}
           <span style={{ flex: 1 }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
+          {l.book && l.magicId && magicItemById.get(l.magicId) && <button onClick={() => openInfo(magicItemById.get(l.magicId!) ?? null, false)} title="รายละเอียดเวท" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ เวท</button>}
           {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
           {!catItem && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="ข้อมูลเสริม (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
@@ -610,6 +612,13 @@ function CharacterSheet({
   const addMagicItem = (m: CatalogItem, tier: string) => { const id = `m${Date.now()}`; setSheet({ magicExtra: [...magicExtra, { id, name: m.name, itemId: m.id }], magicTier: { ...magicTier, [id]: tier } }); };
   const renameMagic = (id: string, name: string) => setSheet({ magicExtra: magicExtra.map((x) => (x.id === id ? { ...x, name } : x)) });
   const removeMagic = (id: string) => setSheet({ magicExtra: magicExtra.filter((x) => x.id !== id) });
+  // Turn a known spell into a physical Book carried in the inventory (old-design
+  // behaviour): a bag item, ~0.5kg, that keeps a link back to the spell's detail.
+  const bookExists = (name: string, magicId?: string) => bag.some((l) => l.book && (magicId ? l.magicId === magicId : l.name === name));
+  const makeBook = (name: string, magicId?: string) => {
+    if (bookExists(name, magicId)) return;
+    setBag([...bag, { lineId: `bk${Date.now()}`, itemId: '', name, priceIC: 0, kg: 0.5, zone: 'ready', book: true, ...(magicId ? { magicId } : {}) }]);
+  };
 
   // Styles
   const box: React.CSSProperties = { border: '1px solid #eae7e0', borderRadius: 12, padding: 14, background: '#fff' };
@@ -1697,6 +1706,9 @@ function CharacterSheet({
                               {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => { setMagTier(r.key, tt.key); setMagicTab(tt.key); }} title={`ย้ายไประดับ “${tt.label}”`} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>
                             <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`, r.item ? { itemId: r.item.id, isFeature: false } : undefined)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
+                            {(() => { const has = bookExists(r.name, r.item?.id); return (
+                              <button onClick={() => makeBook(r.name, r.item?.id)} disabled={has} title={has ? 'มีหนังสือเวทนี้ในกระเป๋าแล้ว' : 'ทำเป็นหนังสือเวท เก็บในกระเป๋า (0.5 kg)'} style={{ flex: 'none', border: `1px solid ${has ? '#d8d5cd' : '#cbb8ec'}`, background: has ? '#f3f1ec' : '#fff', color: has ? '#a8a59d' : '#5b3fa0', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: has ? 'default' : 'pointer' }}>{has ? '📖 แล้ว' : '📖 Book'}</button>
+                            ); })()}
                             {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
                             {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
                           </div>
@@ -4195,7 +4207,7 @@ const coinStr = (ic: number) => {
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface ItemRef { id: string; name: string }
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });
