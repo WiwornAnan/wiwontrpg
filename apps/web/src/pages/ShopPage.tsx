@@ -68,6 +68,37 @@ function sampleN<T>(arr: T[], n: number): T[] {
   return a.slice(0, Math.max(0, n));
 }
 
+// Format a total Iron-Coin value back into coin denominations for display.
+const COIN_ABBR: [string, number][] = [['PC', 10000], ['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
+function coinStr(ic: number): string {
+  const v = Math.max(0, Math.round(ic));
+  if (v === 0) return '0';
+  const parts: string[] = [];
+  let r = v;
+  for (const [ab, unit] of COIN_ABBR) { const n = Math.floor(r / unit); r -= n * unit; if (n > 0) parts.push(`${n} ${ab}`); }
+  return parts.join(' · ');
+}
+const COST_PRICE_RATE = 0.65; // "ราคาต้นทุน" = 35% below the base price
+const PRICE_STEPS = [-50, -30, -20, -10, -5, 5, 10, 20, 30, 50];
+const baseCostOf = (it: CatalogItem) => Math.max(0, Math.round(Number(it.fields.costNum ?? 0)) || 0);
+
+// Compact list of the meaningful fields to show inline per row.
+function metaOf(it: CatalogItem): string[] {
+  const f = it.fields;
+  const out: string[] = [];
+  const tag = String(f.tag ?? it.tags[0] ?? '');
+  if (tag) out.push(tag);
+  if (f.equipType) out.push(String(f.equipType));
+  if (f.material) out.push(String(f.material));
+  if (f.damage && f.damage !== 'None') out.push(String(f.damage));
+  if (f.wielding && f.wielding !== 'None') out.push(String(f.wielding));
+  if (f.natDefBonus) out.push(`เกราะ +${f.natDefBonus}`);
+  if (f.durability) out.push(`DUR ${f.durability}`);
+  if (f.bagCapacity) out.push(`จุ ${f.bagCapacity} kg`);
+  if (f.weightNum) out.push(`${f.weightNum} kg`);
+  return out;
+}
+
 interface ShopResult { storefront: CatalogItem[]; back: CatalogItem[]; best: CatalogItem[] }
 
 export function ShopPage() {
@@ -82,6 +113,7 @@ export function ShopPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [shop, setShop] = useState<ShopResult | null>(null);
   const [detail, setDetail] = useState<CatalogItem | null>(null);
+  const [priceMod, setPriceMod] = useState(0); // shop-wide markup/discount, %
 
   const toggleTag = (t: string) => setTags((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
 
@@ -120,24 +152,35 @@ export function ShopPage() {
 
   const shown = questMode ? questShop : shop;
 
-  const card = (it: CatalogItem) => {
+  // One readable list row: name + rarity + inline field summary on the left,
+  // and the three prices (ต้นทุน / กลาง / ขาย) on the right.
+  const row = (it: CatalogItem) => {
     const rar = rarOf(it);
     const [bg, col] = RARITY_COLOR[rar] ?? ['#efece6', '#8d8a82'];
-    const cost = String(it.fields.cost ?? '');
+    const base = baseCostOf(it);
+    const sell = Math.round(base * (1 + priceMod / 100));
+    const costP = Math.round(base * COST_PRICE_RATE);
     return (
       <button
         key={it.id}
         onClick={() => setDetail(it)}
-        style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', background: '#fff', border: '1px solid #e7e4de', borderRadius: 12, cursor: 'pointer', transition: 'border-color .1s' }}
+        style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, padding: '11px 14px', background: '#fff', border: 'none', borderBottom: '1px solid #f0eee9', cursor: 'pointer', width: '100%' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#2f2c25' }}>{it.name}</span>
-          {rar && <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 7px', background: bg, color: col }}>{rar}</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: '#2f2c25' }}>{it.name}</span>
+            {rar && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.04em', borderRadius: 5, padding: '2px 7px', background: bg, color: col }}>{rar}</span>}
+          </div>
+          <div style={{ fontSize: 11, color: '#9a978e', marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {metaOf(it).map((m, i) => (
+              <span key={i}>{i > 0 && <span style={{ color: '#d8d5cd', marginRight: 6 }}>·</span>}{m}</span>
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#8d8a82', flexWrap: 'wrap' }}>
-          <span>{String(it.fields.tag ?? it.tags[0] ?? '—')}</span>
-          <span style={{ color: '#d8d5cd' }}>·</span>
-          <span>💰 {cost || '—'}</span>
+        <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: priceMod > 0 ? '#b4602a' : priceMod < 0 ? '#2f7d4f' : '#2f2c25' }}>{coinStr(sell)}</span>
+          {priceMod !== 0 && <span style={{ fontSize: 10, color: '#bdbab2', textDecoration: 'line-through' }}>{coinStr(base)}</span>}
+          <span style={{ fontSize: 10, color: '#a8a59d' }}>ต้นทุน {coinStr(costP)}</span>
         </div>
       </button>
     );
@@ -145,17 +188,18 @@ export function ShopPage() {
 
   const section = (title: string, note: string, accent: string, list: CatalogItem[]) => (
     <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '13px 18px', borderBottom: '1px solid #efece6', borderLeft: `4px solid ${accent}` }}>
-        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</div>
-        <div style={{ fontSize: 11.5, color: '#a8a59d', marginTop: 2 }}>{note}</div>
+      <div style={{ padding: '13px 18px', borderBottom: '1px solid #efece6', borderLeft: `4px solid ${accent}`, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-serif)', color: '#2f2c25' }}>{title}</div>
+          <div style={{ fontSize: 11.5, color: '#a8a59d', marginTop: 2 }}>{note}</div>
+        </div>
+        <span style={{ fontSize: 11.5, color: '#a8a59d', flex: 'none' }}>{list.length} รายการ</span>
       </div>
-      <div style={{ padding: 14 }}>
-        {list.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: '#bdbab2', textAlign: 'center', padding: '18px 0' }}>— ไม่มีของในหมวดนี้ —</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>{list.map(card)}</div>
-        )}
-      </div>
+      {list.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: '#bdbab2', textAlign: 'center', padding: '18px 0' }}>— ไม่มีของในหมวดนี้ —</div>
+      ) : (
+        <div>{list.map(row)}</div>
+      )}
     </div>
   );
 
@@ -215,6 +259,21 @@ export function ShopPage() {
           </div>
         )}
         {questMode && <div style={{ fontSize: 11.5, color: '#8a6a2a', background: '#fff8ef', border: '1px solid #efe0cd', borderRadius: 9, padding: '8px 12px' }}>โหมด Quest — แสดงของ Availability = Quest ทั้งหมด (ตามประเภทที่เลือก) สำหรับ Librarian เลือกแจกตามเนื้อเรื่อง</div>}
+
+        <div style={{ borderTop: '1px solid #f0eee9', paddingTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#6b6860', marginBottom: 8 }}>
+            ปรับราคาร้าน <span style={{ fontWeight: 400, color: '#a8a59d' }}>· ราคากลางคงเดิม · “ราคาต้นทุน” = ลด 35% จากราคากลาง</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {PRICE_STEPS.filter((s) => s < 0).map((s) => (
+              <button key={s} onClick={() => setPriceMod((m) => (m === s ? 0 : s))} style={{ ...chip(priceMod === s), borderColor: priceMod === s ? '#2f7d4f' : '#e0ded7', background: priceMod === s ? '#2f7d4f' : '#fff', color: priceMod === s ? '#fff' : '#2f7d4f' }}>{s}%</button>
+            ))}
+            <button onClick={() => setPriceMod(0)} style={{ ...chip(priceMod === 0), padding: '7px 15px' }}>ราคากลาง</button>
+            {PRICE_STEPS.filter((s) => s > 0).map((s) => (
+              <button key={s} onClick={() => setPriceMod((m) => (m === s ? 0 : s))} style={{ ...chip(priceMod === s), borderColor: priceMod === s ? '#b4602a' : '#e0ded7', background: priceMod === s ? '#b4602a' : '#fff', color: priceMod === s ? '#fff' : '#b4602a' }}>+{s}%</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Results */}
