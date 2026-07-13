@@ -43,6 +43,22 @@ catalogRouter.get('/:category', async (req, res) => {
   const where: Record<string, unknown> = { category, isFeature };
   if (scope === 'official') where.isHomebrew = false;
   else if (scope === 'homebrew') where.isHomebrew = true;
+
+  // Campaign-level Homebrew gate: if the viewer plays in any campaign whose
+  // Librarian turned Homebrew off, hide homebrew content everywhere (pickers,
+  // shop, catalog) — unless they explicitly open the Homebrew scope tab.
+  const meId = req.currentUser?.id;
+  if (meId && scope !== 'homebrew') {
+    const memberships = await prisma.campaignMember.findMany({
+      where: { character: { ownerUserId: meId } },
+      include: { campaign: { select: { data: true } } },
+    });
+    const banned = memberships.some((m) => {
+      try { return (JSON.parse(m.campaign.data) as { allowHomebrew?: boolean }).allowHomebrew === false; }
+      catch { return false; }
+    });
+    if (banned) where.isHomebrew = false;
+  }
   // ?relatedWiwon=id  or  ?relatedWiwon=id1,id2  — matches any of the given Wiwon
   // (the character wizard filters by the several Wiwon the player picked).
   const relatedWiwon = (req.query.relatedWiwon as string) || '';

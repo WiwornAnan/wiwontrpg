@@ -130,7 +130,7 @@ campaignsRouter.get('/for-character/:characterId', async (req, res) => {
   if (!member) { res.json({ campaign: null }); return; }
   if (member.character.ownerUserId !== me && member.campaign.librarianUserId !== me) { res.json({ campaign: null }); return; }
   const data = parseData(member.campaign.data);
-  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, log: Array.isArray(data.log) ? data.log : [], initiative: Array.isArray(data.initiative) ? data.initiative : [], loot: Array.isArray(data.loot) ? data.loot : [] } });
+  res.json({ campaign: { id: member.campaign.id, name: member.campaign.name, isLibrarian: member.campaign.librarianUserId === me, allowHomebrew: data.allowHomebrew !== false, log: Array.isArray(data.log) ? data.log : [], initiative: Array.isArray(data.initiative) ? data.initiative : [], loot: Array.isArray(data.loot) ? data.loot : [] } });
 });
 
 // Shared LOOT pool — every member of the campaign sees the same items.

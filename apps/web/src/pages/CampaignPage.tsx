@@ -123,7 +123,8 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean };
+  const allowHomebrew = cdata.allowHomebrew !== false; // default: allowed
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
   const lootTrash: LootTrashItem[] = Array.isArray(cdata.lootTrash) ? cdata.lootTrash : [];
   const initiative: InitEntry[] = (Array.isArray(cdata.initiative) ? cdata.initiative : []).slice().sort((a, b) => b.value - a.value);
@@ -161,6 +162,32 @@ export function CampaignPage() {
           <div style={{ fontSize: 12.5, color: '#9a978e', marginTop: 4 }}>{c.isLibrarian ? 'บรรณารักษ์ (Librarian)' : 'ผู้เล่น'} · {c.members.length} ตัวละคร · รหัสเข้าร่วม <b style={{ color: '#5c4a2e', letterSpacing: 1 }}>{c.joinCode}</b></div>
         </div>
         {c.isLibrarian && <button onClick={() => setDelOpen(true)} style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบแคมเปญ</button>}
+      </div>
+
+      {/* Homebrew gate — Librarian decides whether player-made Homebrew appears
+          for members of this campaign (everywhere: catalog, pickers, shop). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16, background: allowHomebrew ? '#f6f2ea' : '#faf9f7', border: `1px solid ${allowHomebrew ? '#e8e0d0' : '#e4e2dc'}`, borderRadius: 12, padding: '11px 14px' }}>
+        <span style={{ fontSize: 18, flex: 'none' }}>🧪</span>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#46443c' }}>เนื้อหา Homebrew ของผู้เล่น</div>
+          <div style={{ fontSize: 11.5, color: '#8d8a82', marginTop: 2, lineHeight: 1.5 }}>
+            {allowHomebrew
+              ? 'เปิดอยู่ — สมาชิกในแคมเปญเห็น Homebrew ในคลังข้อมูล ตัวเลือก และร้านค้า'
+              : 'ปิดอยู่ — สมาชิกในแคมเปญจะเห็นเฉพาะเนื้อหา Official (Homebrew ถูกซ่อนทุกที่)'}
+          </div>
+        </div>
+        {c.isLibrarian ? (
+          <button
+            onClick={() => setData({ allowHomebrew: !allowHomebrew })}
+            style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 20, padding: '8px 15px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', background: allowHomebrew ? '#2f6b4f' : '#b4513a', color: '#fff' }}
+          >
+            {allowHomebrew ? '✓ เปิด Homebrew' : '✕ ปิด Homebrew'}
+          </button>
+        ) : (
+          <span style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: allowHomebrew ? '#2f6b4f' : '#b4513a', border: `1px solid ${allowHomebrew ? '#cbe0d2' : '#f0d3cb'}`, borderRadius: 20, padding: '6px 13px' }}>
+            {allowHomebrew ? 'Homebrew: เปิด' : 'Homebrew: ปิด'}
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(260px,1fr)', gap: 16, alignItems: 'start' }}>
