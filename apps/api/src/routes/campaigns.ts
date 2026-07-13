@@ -155,8 +155,14 @@ campaignsRouter.post('/loot/remove', async (req, res) => {
   if (!m) { res.status(404).json({ error: 'ตัวละครไม่ได้อยู่ในแคมเปญ' }); return; }
   const lootId = String(req.body?.lootId ?? '');
   const data = parseData(m.campaign.data);
-  const loot = (Array.isArray(data.loot) ? data.loot : []) as { id: string }[];
+  const loot = (Array.isArray(data.loot) ? data.loot : []) as Record<string, unknown>[];
+  const removed = loot.find((x) => x.id === lootId);
   data.loot = loot.filter((x) => x.id !== lootId);
+  // Deleted shared loot goes to the campaign trash bin (undo), newest first, capped.
+  if (removed) {
+    const trash = (Array.isArray(data.lootTrash) ? data.lootTrash : []) as unknown[];
+    data.lootTrash = [{ ...removed, trashedAt: new Date().toISOString() }, ...trash].slice(0, 40);
+  }
   await prisma.campaign.update({ where: { id: m.campaignId }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
 });
@@ -169,6 +175,43 @@ campaignsRouter.post('/loot/rename', async (req, res) => {
   const loot = (Array.isArray(data.loot) ? data.loot : []) as { id: string; name: string }[];
   data.loot = loot.map((x) => (x.id === lootId ? { ...x, name } : x));
   await prisma.campaign.update({ where: { id: m.campaignId }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+// Campaign loot trash bin — Librarian restores a deleted item back to the shared
+// loot pool, permanently removes one, or empties the whole bin.
+campaignsRouter.post('/:id/loot/restore', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const lootId = String(req.body?.lootId ?? '');
+  const data = parseData(c.data);
+  const trash = (Array.isArray(data.lootTrash) ? data.lootTrash : []) as Record<string, unknown>[];
+  const item = trash.find((x) => x.id === lootId);
+  if (item) {
+    const rest = { ...item };
+    delete rest.trashedAt;
+    const loot = (Array.isArray(data.loot) ? data.loot : []) as unknown[];
+    data.loot = [...loot, rest];
+    data.lootTrash = trash.filter((x) => x.id !== lootId);
+    await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  }
+  res.json({ ok: true });
+});
+campaignsRouter.post('/:id/loot/purge', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const lootId = String(req.body?.lootId ?? '');
+  const data = parseData(c.data);
+  const trash = (Array.isArray(data.lootTrash) ? data.lootTrash : []) as { id: string }[];
+  data.lootTrash = trash.filter((x) => x.id !== lootId);
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true });
+});
+campaignsRouter.post('/:id/loot/trash-clear', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  data.lootTrash = [];
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
 });
 

@@ -44,6 +44,7 @@ interface RollPart { label: string; value: number; faces?: number; mode?: string
 interface RollData { total: number; parts?: RollPart[]; ego?: number; ambient?: number; fortuity?: number; egoFaces?: number; egoMode?: string; ambientMode?: string; fortuityMode?: string; special?: string }
 interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData; itemId?: string; isFeature?: boolean }
 interface InitEntry { id: string; name: string; value: number; kind: string }
+interface LootTrashItem { id: string; name: string; kg?: number; desc?: string; itemId?: string; trashedAt?: string }
 const rollD = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
 const rollSym = (m?: string) => (m === 'adv' ? '▲' : m === 'dis' ? '▼' : '');
 const rollParts = (r: RollData): RollPart[] => {
@@ -72,6 +73,7 @@ export function CampaignPage() {
   const [pickBuffs, setPickBuffs] = useState<Record<string, boolean>>({});
   const [pickStatus, setPickStatus] = useState<Record<string, boolean>>({});
   const [targets, setTargets] = useState<string[] | null>(null); // null = all
+  const [tab, setTab] = useState('players'); // category tab of the Librarian Sheet
 
   const { data } = useQuery({
     queryKey: ['campaign', id],
@@ -115,12 +117,23 @@ export function CampaignPage() {
   const { data: magicAll } = useQuery({ queryKey: ['campaign-magic'], queryFn: () => fetchCatalogAll('magic'), enabled: !!user });
   const magicById = new Map((magicAll ?? []).map((m) => [m.id, m]));
   const postGMRoll = useMutation({ mutationFn: (b: { kind: string; text: string; roll?: RollData }) => api.post(`/campaigns/${id}/log`, b), onSuccess: invalidate });
+  const restoreLoot = useMutation({ mutationFn: (lootId: string) => api.post(`/campaigns/${id}/loot/restore`, { lootId }), onSuccess: invalidate });
+  const purgeLoot = useMutation({ mutationFn: (lootId: string) => api.post(`/campaigns/${id}/loot/purge`, { lootId }), onSuccess: invalidate });
+  const clearLootTrash = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/loot/trash-clear`, {}), onSuccess: invalidate });
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[] };
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
+  const lootTrash: LootTrashItem[] = Array.isArray(cdata.lootTrash) ? cdata.lootTrash : [];
+  const TABS: { key: string; label: string }[] = [
+    { key: 'players', label: '👥 ผู้เล่น' },
+    { key: 'combat', label: '⚔️ การต่อสู้' },
+    { key: 'log', label: '📜 บันทึก' },
+    { key: 'time', label: '🕐 เวลา · ปฏิทิน' },
+    { key: 'trash', label: '🗑 ถังขยะ' },
+  ];
   const initiative: InitEntry[] = (Array.isArray(cdata.initiative) ? cdata.initiative : []).slice().sort((a, b) => b.value - a.value);
   const clock = { ...DEFAULT_CLOCK, ...(cdata.clock ?? {}) };
   const notes: Note[] = Array.isArray(cdata.notes) ? cdata.notes : [];
@@ -158,9 +171,17 @@ export function CampaignPage() {
         {c.isLibrarian && <button onClick={() => setDelOpen(true)} style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบแคมเปญ</button>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(260px,1fr)', gap: 16, alignItems: 'start' }}>
-        {/* LEFT: members + broadcast */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* category tabs — split the crowded sheet into หมวด */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, borderBottom: '1px solid #e4e2dc', paddingBottom: 12 }}>
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{ border: `1px solid ${tab === t.key ? '#15140f' : '#e4e2dc'}`, background: tab === t.key ? '#15140f' : '#fff', color: tab === t.key ? '#fff' : '#5f5c54', borderRadius: 20, padding: '7px 15px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            {t.label}{t.key === 'trash' && lootTrash.length > 0 ? ` (${lootTrash.length})` : ''}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+          {tab === 'players' && (
           <div style={box}>
             <div style={secLabel}>ตัวละครในแคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· อัปเดตเรียลไทม์</span></div>
             {c.members.length === 0 ? <div style={{ fontSize: 13, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีผู้เล่นเข้าร่วม — แชร์รหัส {c.joinCode}</div> : (
@@ -224,8 +245,10 @@ export function CampaignPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* initiative tracker — shared across the campaign */}
+          {tab === 'combat' && (
           <div style={box}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={secLabel}>⚔️ INITIATIVE <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· ลำดับการเล่น</span></span>
@@ -259,9 +282,10 @@ export function CampaignPage() {
               </>
             )}
           </div>
+          )}
 
           {/* broadcast buff/debuff — librarian only */}
-          {c.isLibrarian && c.members.length > 0 && (
+          {tab === 'players' && c.isLibrarian && c.members.length > 0 && (
             <div style={box}>
               <div style={secLabel}>มอบสถานะให้ผู้เล่น (Buff / Debuff)</div>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a8a59d', marginBottom: 6 }}>เป้าหมาย</div>
@@ -291,6 +315,7 @@ export function CampaignPage() {
           )}
 
           {/* shared roll/action log */}
+          {tab === 'log' && (
           <div style={box}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <div style={secLabel}>📜 LOG แคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เรียลไทม์</span></div>
@@ -325,9 +350,10 @@ export function CampaignPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Dweller Skill roller — Librarian picks the die and rolls (for NPCs / GM checks) */}
-          {c.isLibrarian && (
+          {tab === 'combat' && c.isLibrarian && (
             <div style={box}>
               <div style={secLabel}>🎲 Dweller Skill <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· เลือกลูกเต๋าแล้วทอยเอง</span></div>
               <input value={skillQuery} onChange={(e) => setSkillQuery(e.target.value)} placeholder="🔍 ค้นหาสกิล…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '8px 11px', fontSize: 12.5, marginBottom: 8, background: '#fff' }} />
@@ -348,10 +374,9 @@ export function CampaignPage() {
               </div>
             </div>
           )}
-        </div>
 
-        {/* RIGHT: clock/calendar + notes */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* clock */}
+          {tab === 'time' && (
           <div style={box}>
             <div style={secLabel}>นาฬิกา</div>
             <AnalogClock hour={clock.hour} minute={clock.minute} editable={c.isLibrarian} onCommit={(hh, mm) => commitClock({ ...clock, hour: hh, minute: mm })} />
@@ -360,7 +385,10 @@ export function CampaignPage() {
               {c.isLibrarian && <button onClick={() => commitClock({ ...clock, hour: (clock.hour + 12) % 24 })} title="สลับกลางวัน/กลางคืน" style={{ marginLeft: 8, border: '1px solid #e0ded7', background: '#faf9f7', borderRadius: 7, padding: '2px 9px', fontSize: 11, cursor: 'pointer' }}>{clock.hour < 12 ? '☀ กลางวัน' : '☾ กลางคืน'}</button>}
             </div>
           </div>
+          )}
 
+          {/* calendar */}
+          {tab === 'time' && (
           <div style={box}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={secLabel}>ปฏิทิน</span>
@@ -420,8 +448,10 @@ export function CampaignPage() {
               );
             })()}
           </div>
+          )}
 
-          {c.isLibrarian && (
+          {/* librarian notes */}
+          {tab === 'log' && c.isLibrarian && (
             <div style={box}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <span style={secLabel}>บันทึกของบรรณารักษ์</span>
@@ -443,7 +473,7 @@ export function CampaignPage() {
             </div>
           )}
 
-          {!c.isLibrarian && (
+          {tab === 'players' && !c.isLibrarian && (
             <div style={box}>
               <div style={secLabel}>ตัวละครของฉันในแคมเปญนี้</div>
               {c.members.filter((m) => m.character.ownerUserId === user.id).map(({ character: ch }) => (
@@ -454,7 +484,31 @@ export function CampaignPage() {
               ))}
             </div>
           )}
-        </div>
+
+          {/* campaign loot trash bin — deleted shared loot lands here */}
+          {tab === 'trash' && (
+          <div style={box}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={secLabel}>🗑 ถังขยะของแคมเปญ</span>
+              {c.isLibrarian && lootTrash.length > 0 && <button onClick={() => { if (window.confirm('ล้างถังขยะของแคมเปญอย่างถาวร?')) clearLootTrash.mutate(); }} style={{ marginLeft: 'auto', border: '1px solid #f0d3cb', background: '#fdf1ee', color: '#b0432a', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ล้างถังขยะ</button>}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#a8a59d', marginBottom: 10, lineHeight: 1.55 }}>ของที่ถูกลบจาก LOOT รวมของแคมเปญจะมาพักที่นี่{c.isLibrarian ? ' · บรรณารักษ์กดกู้คืนเพื่อดึงกลับเข้า LOOT ได้' : ' (เฉพาะบรรณารักษ์ที่กู้คืนได้)'}</div>
+            {lootTrash.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2' }}>— ว่าง —</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {lootTrash.map((it) => (
+                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #ece9e3', borderRadius: 8, padding: '8px 10px', background: '#faf9f7' }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#8d8a82', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
+                    <span style={{ fontSize: 10.5, color: '#bdbab2', flex: 'none' }}>{num(it.kg)} kg</span>
+                    {c.isLibrarian && <>
+                      <button onClick={() => restoreLoot.mutate(it.id)} title="กู้คืน → LOOT รวม" style={{ flex: 'none', border: '1px solid #cbe0d2', background: '#f3f9f5', color: '#2f6b4f', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>↩ กู้คืน</button>
+                      <button onClick={() => purgeLoot.mutate(it.id)} title="ลบถาวร" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>
+                    </>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
       </div>
 
       <Modal open={monPicker} onClose={() => setMonPicker(false)} title="เพิ่มมอนสเตอร์เข้า Initiative" dark>
