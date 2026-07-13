@@ -631,7 +631,8 @@ function CharacterSheet({
   interface MonRow { id: string; name: string; itemId?: string; num: number; meta: string }
   const monsters: MonRow[] = Array.isArray(sheet.monsters) ? (sheet.monsters as MonRow[]) : [];
   const setMonsters = (next: MonRow[]) => setSheet({ monsters: next });
-  const { data: monPool } = useQuery({ queryKey: ['sheet-monsters'], queryFn: fetchAllMonsters, enabled: monPicker });
+  const { data: monPool } = useQuery({ queryKey: ['sheet-monsters'], queryFn: fetchAllMonsters, enabled: monPicker || monsters.length > 0 });
+  const monItemById = new Map((monPool ?? []).map((m) => [m.id, m] as const));
   const addMonster = (m: CatalogItem) => {
     const init = parseInt(String(m.fields.scratch ?? '').replace(/[^\d]/g, ''), 10) || 0;
     setMonsters([...monsters, { id: `mo${Date.now()}`, name: m.name, itemId: m.id, num: init, meta: monsterMeta(m) }]);
@@ -1942,6 +1943,7 @@ function CharacterSheet({
                               {mo.meta && <div style={{ fontSize: 10.5, color: '#9a978e', marginTop: 2 }}>{mo.meta}</div>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 'none' }}>
+                              {mo.itemId && monItemById.get(mo.itemId) && <button onClick={() => openInfo(monItemById.get(mo.itemId!) ?? null, false)} title="ดูข้อมูล" style={{ border: '1px solid #cbe0d2', background: '#fff', color: '#2f6b4f', borderRadius: 7, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ⓘ</button>}
                               <NumField value={mo.num} onCommit={(v) => setMonNum(mo.id, v)} width={58} style={{ fontSize: 15, fontWeight: 800, textAlign: 'center', color: '#5b3fa0' }} />
                               <button onClick={() => setMonNum(mo.id, mo.num - 5)} title="ลด 5" style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 7, padding: '6px 11px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>−5</button>
                               <button onClick={() => delMon(mo.id)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15 }}>×</button>
