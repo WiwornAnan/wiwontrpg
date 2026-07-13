@@ -81,7 +81,8 @@ function coinStr(ic: number): string {
 const COST_PRICE_RATE = 0.65; // "ราคาต้นทุน" = 35% below the base price
 const PRICE_STEPS = [-50, -30, -20, -10, -5, 5, 10, 20, 30, 50];
 // Spell books have no coin cost of their own — price them by rarity (in IC).
-const BOOK_PRICE: Record<string, number> = { Poor: 200, Common: 500, Uncommon: 2000, Rare: 6000, Legendary: 20000 };
+// Knowledge is precious, so books run premium: even a Poor one outprices gear.
+const BOOK_PRICE: Record<string, number> = { Poor: 2000, Common: 5000, Uncommon: 15000, Rare: 45000, Legendary: 150000 };
 const isBook = (it: CatalogItem) => it.category === 'magic';
 const baseCostOf = (it: CatalogItem) =>
   isBook(it) ? (BOOK_PRICE[String(it.fields.rarity ?? '')] ?? 500) : Math.max(0, Math.round(Number(it.fields.costNum ?? 0)) || 0);
