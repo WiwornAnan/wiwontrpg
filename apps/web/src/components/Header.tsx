@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NAV_ITEMS, type SearchHit, type Announcement } from '@wiwonanant/shared';
@@ -22,7 +23,10 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [announceDraft, setAnnounceDraft] = useState('');
+  const [catOpen, setCatOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const catRef = useRef<HTMLDivElement>(null);
+  const catMenuRef = useRef<HTMLDivElement>(null);
 
   const { data: announcement } = useQuery({
     queryKey: ['announcement'],
@@ -66,13 +70,20 @@ export function Header() {
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
+      if (catRef.current && !catRef.current.contains(e.target as Node) && !catMenuRef.current?.contains(e.target as Node)) setCatOpen(false);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
+  // Close the catalog dropdown whenever the route changes.
+  useEffect(() => setCatOpen(false), [location.pathname]);
 
   const hits = search?.hits ?? [];
   const showResults = searchOpen && query.trim().length > 0;
+  // Group the three long reference catalogs under one dropdown to keep the bar short.
+  const CATALOG_IDS = ['magic', 'equipment', 'monster'];
+  const catalogItems = NAV_ITEMS.filter((n) => CATALOG_IDS.includes(n.id));
+  const catalogActive = catalogItems.some((n) => isNavActive(n.href, location.pathname));
 
   return (
     <header className={styles.header}>
@@ -85,7 +96,48 @@ export function Header() {
         </div>
 
         <nav className={styles.nav}>
-          {NAV_ITEMS.map((n) => (
+          {NAV_ITEMS.filter((n) => ['home', 'core-rules', 'wiwon', 'characters'].includes(n.id)).map((n) => (
+            <Link
+              key={n.id}
+              to={n.href}
+              className={`${styles.navBtn} ${isNavActive(n.href, location.pathname) ? styles.navBtnActive : ''}`}
+            >
+              {n.label}
+            </Link>
+          ))}
+
+          <div ref={catRef} style={{ position: 'relative', flex: 'none' }}>
+            <button
+              onClick={() => setCatOpen((o) => !o)}
+              className={`${styles.navBtn} ${catalogActive ? styles.navBtnActive : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              คลังข้อมูล
+              <span style={{ fontSize: 9, opacity: 0.7, transform: catOpen ? 'rotate(180deg)' : 'none', transition: 'transform .12s' }}>▼</span>
+            </button>
+            {catOpen && catRef.current && createPortal(
+              (() => {
+                const r = catRef.current!.getBoundingClientRect();
+                return (
+                  <div ref={catMenuRef} style={{ position: 'fixed', top: r.bottom + 6, left: r.left, minWidth: 200, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 16px 40px rgba(0,0,0,.16)', padding: 6, zIndex: 200 }}>
+                    {catalogItems.map((n) => (
+                      <Link
+                        key={n.id}
+                        to={n.href}
+                        onClick={() => setCatOpen(false)}
+                        style={{ display: 'block', padding: '9px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: isNavActive(n.href, location.pathname) ? '#15140f' : '#5f5c54', background: isNavActive(n.href, location.pathname) ? '#f0eee9' : 'transparent' }}
+                      >
+                        {n.label}
+                      </Link>
+                    ))}
+                  </div>
+                );
+              })(),
+              document.body,
+            )}
+          </div>
+
+          {NAV_ITEMS.filter((n) => n.id === 'pray').map((n) => (
             <Link
               key={n.id}
               to={n.href}
