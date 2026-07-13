@@ -1726,9 +1726,6 @@ function CharacterSheet({
                               {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => { setMagTier(r.key, tt.key); setMagicTab(tt.key); }} title={`ย้ายไประดับ “${tt.label}”`} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>
                             <button onClick={() => logRef.current('magic', `✨ ร่ายเวท: ${r.name}`, r.item ? { itemId: r.item.id, isFeature: false } : undefined)} title="ร่ายเวท (ส่งเข้า Log)" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 7, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ใช้</button>
-                            {(() => { const has = bookExists(r.name, r.item?.id); return (
-                              <button onClick={() => makeBook(r.name, r.item?.id)} disabled={has} title={has ? 'มีหนังสือเวทนี้ในกระเป๋าแล้ว' : 'ทำเป็นหนังสือเวท เก็บในกระเป๋า (0.5 kg)'} style={{ flex: 'none', border: `1px solid ${has ? '#d8d5cd' : '#cbb8ec'}`, background: has ? '#f3f1ec' : '#fff', color: has ? '#a8a59d' : '#5b3fa0', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: has ? 'default' : 'pointer' }}>{has ? '📖 แล้ว' : '📖 Book'}</button>
-                            ); })()}
                             {r.item && <button onClick={() => openInfo(r.item, false)} title="รายละเอียด" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>ⓘ</button>}
                             {r.custom && <button onClick={() => removeMagic(r.key)} title="ลบ" style={{ flex: 'none', background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14 }}>×</button>}
                           </div>
@@ -2073,7 +2070,7 @@ function CharacterSheet({
 
       {/* ── Magic picker (full catalog, dark) ── */}
       <Modal open={magicPicker} onClose={() => setMagicPicker(false)} title={`เพิ่ม Magic → ระดับ “${MAGIC_TIERS.find((t) => t.key === magicTab)?.label}”`} dark>
-        <CatPicker items={allMagic ?? []} accent="#5b3fa0" onPick={(m) => addMagicItem(m, magicTab)} />
+        <CatPicker items={allMagic ?? []} accent="#5b3fa0" onPick={(m) => addMagicItem(m, magicTab)} onBook={(m) => makeBook(m.name, m.id)} />
       </Modal>
 
       {/* ── Feature picker (full catalog, dark) ── */}
@@ -4391,7 +4388,7 @@ function EquipPicker({ onPick, match, actionLabel = 'รับ', onAddCustom, al
 }
 
 // Generic Magic/Feature catalog picker with search + tag filter (dark theme).
-function CatPicker({ items, onPick, accent = '#5b3fa0' }: { items: CatalogItem[]; onPick: (m: CatalogItem) => void; accent?: string }) {
+function CatPicker({ items, onPick, accent = '#5b3fa0', onBook }: { items: CatalogItem[]; onPick: (m: CatalogItem) => void; accent?: string; onBook?: (m: CatalogItem) => void }) {
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [added, setAdded] = useState<Record<string, number>>({});
@@ -4419,6 +4416,7 @@ function CatPicker({ items, onPick, accent = '#5b3fa0' }: { items: CatalogItem[]
                 <div style={{ fontSize: 11, color: '#9a978e' }}>{tagOf(m).slice(0, 4).join(' · ') || '—'}</div>
               </div>
               {n > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#7bc48a' }}>เพิ่มแล้ว ×{n}</span>}
+              {onBook && <button onClick={() => onBook(m)} title="ทำเป็นหนังสือเวท เก็บในกระเป๋า (0.5 kg)" style={{ flex: 'none', border: '1px solid #4a3f5e', borderRadius: 8, padding: '6px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: '#2a2433', color: '#cbb8f0' }}>📖 Book</button>}
               <button onClick={() => { onPick(m); setAdded((a) => ({ ...a, [m.id]: (a[m.id] ?? 0) + 1 })); }} style={{ flex: 'none', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: accent, color: '#fff' }}>เพิ่ม</button>
             </div>
           );
