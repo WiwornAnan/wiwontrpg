@@ -80,12 +80,23 @@ function coinStr(ic: number): string {
 }
 const COST_PRICE_RATE = 0.65; // "ราคาต้นทุน" = 35% below the base price
 const PRICE_STEPS = [-50, -30, -20, -10, -5, 5, 10, 20, 30, 50];
-const baseCostOf = (it: CatalogItem) => Math.max(0, Math.round(Number(it.fields.costNum ?? 0)) || 0);
+// Spell books have no coin cost of their own — price them by rarity (in IC).
+const BOOK_PRICE: Record<string, number> = { Poor: 200, Common: 500, Uncommon: 2000, Rare: 6000, Legendary: 20000 };
+const isBook = (it: CatalogItem) => it.category === 'magic';
+const baseCostOf = (it: CatalogItem) =>
+  isBook(it) ? (BOOK_PRICE[String(it.fields.rarity ?? '')] ?? 500) : Math.max(0, Math.round(Number(it.fields.costNum ?? 0)) || 0);
 
 // Compact list of the meaningful fields to show inline per row.
 function metaOf(it: CatalogItem): string[] {
   const f = it.fields;
   const out: string[] = [];
+  if (isBook(it)) {
+    out.push('📖 หนังสือเวท');
+    if (f.school) out.push(String(f.school));
+    if (f.castLevel) out.push(`ระดับ ${f.castLevel}`);
+    if (f.tag) out.push(String(f.tag));
+    return out;
+  }
   const tag = String(f.tag ?? it.tags[0] ?? '');
   if (tag) out.push(tag);
   if (f.equipType) out.push(String(f.equipType));
@@ -108,6 +119,14 @@ export function ShopPage() {
   });
   const items = useMemo(() => data?.items ?? [], [data]);
 
+  const [showBooks, setShowBooks] = useState(false);
+  const { data: magicData } = useQuery({
+    queryKey: ['catalog', 'magic', 'shop-all'],
+    queryFn: () => api.get<CatalogListResult>('/catalog/magic?scope=all&isFeature=false&all=1'),
+    enabled: showBooks,
+  });
+  const books = useMemo(() => (showBooks ? magicData?.items ?? [] : []), [showBooks, magicData]);
+
   const [tier, setTier] = useState<Tier>('Kiosk');
   const [questMode, setQuestMode] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -124,9 +143,14 @@ export function ShopPage() {
   };
   const rarOf = (it: CatalogItem) => String(it.fields.rarity ?? '');
 
-  // Normal shop pool: cumulative availability (rank ≤ tier), tag-filtered, no Quest items.
+  // Normal shop pool: cumulative availability (rank ≤ tier), tag-filtered, no Quest
+  // items. Spell books (from Magic) join the pool when enabled — they have no
+  // shop availability so they're always in stock, slotted by their rarity.
   const generate = () => {
-    const pool = items.filter((it) => tagMatch(it) && rankOf(String(it.fields.availability ?? '')) <= AVAIL_TIERS.indexOf(tier));
+    const pool = [
+      ...items.filter((it) => tagMatch(it) && rankOf(String(it.fields.availability ?? '')) <= AVAIL_TIERS.indexOf(tier)),
+      ...books,
+    ];
     const counts: Record<Rarity, number> = { Common: 0, Uncommon: 0, Rare: 0, Legendary: 0 };
     for (let i = 0; i < SHOP_ROLLS[tier]; i++) counts[rollRarity(tier)]++;
     const byRar = (r: Rarity) => pool.filter((it) => rarOf(it) === r);
@@ -245,6 +269,7 @@ export function ShopPage() {
               <button key={t} onClick={() => toggleTag(t)} style={chip(tags.includes(t))}>{tags.includes(t) ? '✓ ' : ''}{t}</button>
             ))}
             {tags.length > 0 && <button onClick={() => setTags([])} style={{ ...chip(false), color: '#b4513a', borderColor: '#f0d3cb' }}>ล้าง</button>}
+            <button onClick={() => setShowBooks((b) => !b)} title="รวมหนังสือเวท (Magic) เข้าไปในร้าน" style={{ ...chip(showBooks), borderColor: showBooks ? '#5b3fa0' : '#e0ded7', background: showBooks ? '#5b3fa0' : '#fff', color: showBooks ? '#fff' : '#5b3fa0' }}>{showBooks ? '✓ ' : ''}📖 หนังสือเวท</button>
           </div>
         </div>
 
@@ -290,7 +315,7 @@ export function ShopPage() {
       )}
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''}>
-        {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS.equipment} category="equipment" isFeature={false} onEdit={() => {}} embedded />}
+        {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS[detail.category]} category={detail.category} isFeature={false} onEdit={() => {}} embedded />}
       </Modal>
     </section>
   );
