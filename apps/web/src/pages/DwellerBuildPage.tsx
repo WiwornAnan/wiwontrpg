@@ -346,7 +346,7 @@ function CharacterSheet({
   const faces = (abbr: string) => facesOf(byAbbr, abbr);
   const scratchMax = n('baseScratch') + n('scratchRollEND') + a('scratch') + sumLvScratch(character);
   const sanityMax = n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity');
-  const natureDef = n('natureBase') + faces('DEX') + faces('PER') + a('natureDef');
+  const natureDef = n('natureBase') + natDefOf(byAbbr, 'DEX') + natDefOf(byAbbr, 'PER') + a('natureDef');
   const movement = n('movement') + a('movement');
 
   // Ehen
@@ -2383,6 +2383,14 @@ function StepShell({
           </Button>
         )}
       </div>
+
+      <button
+        onClick={() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })}
+        title="เลื่อนลงล่างสุด"
+        style={{ position: 'fixed', right: 20, bottom: 22, zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 6, height: 42, padding: '0 15px', borderRadius: 22, border: '1px solid #e0ded7', background: '#fff', color: '#5f5c54', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,.14)' }}
+      >
+        เลื่อนลงล่างสุด <span style={{ fontSize: 15 }}>↓</span>
+      </button>
     </>
   );
 }
@@ -4688,6 +4696,9 @@ function ShopList({ walletIC, onBuy, onInfo }: { walletIC: number; onBuy: (m: Ca
 // Step 10 uses its own grade→die scale: A d10 · B d8 · C d6 · D d4 · X d2.
 const STEP10_FACES: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, X: 2 };
 const facesOf = (byAbbr: Record<string, string>, abbr: string) => STEP10_FACES[byAbbr[abbr] ?? ''] ?? 0;
+// Nature Defense adds a flat value per DEX / PER grade (A 4 · B 3 · C 2 · D 1 · X 0).
+const NATDEF_GRADE: Record<string, number> = { A: 4, B: 3, C: 2, D: 1, X: 0 };
+const natDefOf = (byAbbr: Record<string, string>, abbr: string) => NATDEF_GRADE[byAbbr[abbr] ?? ''] ?? 0;
 const rollDie = (faces: number) => (faces > 0 ? 1 + Math.floor(Math.random() * faces) : 0);
 // Blood (Scratch) rolled per level-up (level 2..15), keyed by level. Reverting a
 // level drops the entries above the new level; re-leveling rolls fresh (same system).
@@ -4718,7 +4729,7 @@ function StatCard({ title, total, isAncestry, adjVal, onAdj, children }: { title
         <span style={{ fontSize: 14.5, fontWeight: 800, color: '#2f2c25' }}>{title}</span>
         <span style={{ fontSize: 22, fontWeight: 800, color: '#e07a5f' }}>{total}</span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>{children}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 9 }}>{children}</div>
       {isAncestry && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #eae7e0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: '#8d6a4a', fontWeight: 700 }}>ปรับ (Ancestry)</span>
@@ -4759,35 +4770,52 @@ function Step10Details({
   const n = (k: string) => numData(s10[k]);
   const a = (k: string) => (isAncestry ? numData(adj[k]) : 0);
   // die-face bonuses
-  const faceDEX = facesOf(byAbbr, 'DEX');
-  const facePER = facesOf(byAbbr, 'PER');
   const faceCVN = facesOf(byAbbr, 'CVN');
+  // Nature Defense grade values (A 4 · B 3 · C 2 · D 1 · X 0) + the grade letters.
+  const gradeDEX = byAbbr['DEX'] ?? '—';
+  const gradePER = byAbbr['PER'] ?? '—';
+  const natDEX = natDefOf(byAbbr, 'DEX');
+  const natPER = natDefOf(byAbbr, 'PER');
 
   // totals
   const scratchTotal = n('baseScratch') + n('scratchRollEND') + a('scratch') + sumLvScratch(character);
   const woundTotal = n('wound') + a('wound');
-  const natureTotal = n('natureBase') + faceDEX + facePER + a('natureDef');
+  const natureTotal = n('natureBase') + natDEX + natPER + a('natureDef');
   const sanityTotal = n('sanityBase') + faceCVN + n('sanityRollINT') + a('sanity');
   const moveTotal = n('movement') + a('movement');
   const wpTotal = n('willpower') + a('willpower');
 
-  const rollBtn = (faces: number): React.CSSProperties => ({ border: '1px solid #d9c3a8', background: '#fff8ef', color: '#a06a44', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, cursor: faces > 0 ? 'pointer' : 'not-allowed', opacity: faces > 0 ? 1 : 0.5, whiteSpace: 'nowrap' });
+  const rollBtn = (faces: number): React.CSSProperties => ({ border: '1px solid #d9c3a8', background: '#fff8ef', color: '#a06a44', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: faces > 0 ? 'pointer' : 'not-allowed', opacity: faces > 0 ? 1 : 0.5, whiteSpace: 'nowrap' });
   const dieOf = (abbr: string) => `d${facesOf(byAbbr, abbr)}`;
-  const lbl = (t: string) => <span style={{ fontSize: 12, color: '#9a978e' }}>{t}</span>;
-  const rollPart = (key: string, abbr: string) => (
+  // ── Formula building blocks: each part is a labelled box, joined by + / = ──
+  // A titled slot (label on top, control/value below) so the sum reads clearly.
+  const part = (label: string, node: React.ReactNode) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9a978e', letterSpacing: '.02em', whiteSpace: 'nowrap' }}>{label}</span>
+      {node}
+    </div>
+  );
+  const op = (s: string) => <span style={{ fontSize: 17, fontWeight: 700, color: '#c9c5bc', alignSelf: 'flex-end', paddingBottom: 7 }}>{s}</span>;
+  // A read-only value chip (for auto-derived parts like grade values).
+  const valChip = (v: number) => <span style={{ display: 'inline-block', minWidth: 44, textAlign: 'center', border: '1px solid #eee6da', borderRadius: 8, padding: '8px 10px', fontSize: 15, fontWeight: 800, color: '#2f2c25', background: '#faf7f1' }}>{v}</span>;
+  // The value + roll button for a die-rolled part.
+  const rollVal = (key: string, abbr: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      {lbl(`ทอย ${abbr} (${dieOf(abbr)})`)}
-      <span style={{ minWidth: 26, textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#2f2c25' }}>{n(key)}</span>
-      <button onClick={() => setS10({ [key]: rollDie(facesOf(byAbbr, abbr)) })} style={rollBtn(facesOf(byAbbr, abbr))}>🎲 ทอย</button>
+      <span style={{ minWidth: 34, textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#2f2c25', border: '1px solid #eee6da', borderRadius: 8, padding: '8px 6px', background: '#faf7f1' }}>{n(key)}</span>
+      <button onClick={() => setS10({ [key]: rollDie(facesOf(byAbbr, abbr)) })} style={rollBtn(facesOf(byAbbr, abbr))}>🎲</button>
     </span>
   );
 
   return (
     <div style={cardPlain}>
       <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>ตั้งชื่อ &amp; รายละเอียด</h1>
-      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 16px' }}>
-        ตั้งชื่อตัวละครและกำหนดค่าสำคัญ — ลูกเต๋าอ้างอิงเกรดสุดท้าย (A d10 · B d8 · C d6 · D d4 · X d2){isAncestry ? ' · เผ่า Ancestry ปรับ ± ได้เพิ่ม' : ''}
+      <p style={{ color: '#8d8a82', fontSize: 13.5, margin: '8px 0 4px' }}>
+        ตั้งชื่อตัวละครและกำหนดค่าสำคัญ แต่ละการ์ดคือสูตร: ช่อง "ระบุเอง" บวกกับส่วนที่มาจากเกรดของ Core Attribute{isAncestry ? ' · เผ่า Ancestry ปรับ ± ได้เพิ่ม' : ''}
       </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 16px', fontSize: 11.5, color: '#7a756c' }}>
+        <span style={{ padding: '3px 10px', borderRadius: 8, background: '#fff8ef', border: '1px solid #eee0cc' }}>🎲 ทอยลูกเต๋า: A d10 · B d8 · C d6 · D d4 · X d2</span>
+        <span style={{ padding: '3px 10px', borderRadius: 8, background: '#eef6f0', border: '1px solid #cfe6d6' }}>🛡 Nature Defense (DEX/PER): A 4 · B 3 · C 2 · D 1 · X 0</span>
+      </div>
 
       {(raceName || className) && (
         <div style={{ border: '1px solid #eae7e0', borderRadius: 12, background: '#faf9f7', padding: '12px 14px', marginBottom: 18 }}>
@@ -4811,41 +4839,40 @@ function Step10Details({
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName} placeholder="ตั้งชื่อตัวละคร…" style={{ display: 'block', marginTop: 6, width: '100%', maxWidth: 380, boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 10, padding: '10px 13px', fontSize: 14.5, background: '#fff' }} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
         <StatCard title="Scratch Point" total={scratchTotal} isAncestry={isAncestry} adjVal={a('scratch')} onAdj={(v) => setAdj('scratch', v)}>
-          {lbl('Base')}
-          <NumField value={n('baseScratch')} onCommit={(v) => setS10({ baseScratch: v })} />
-          {rollPart('scratchRollEND', 'END')}
-          {sumLvScratch(character) > 0 && <span style={{ fontSize: 12, color: '#a06a44', fontWeight: 700 }}>+ โบนัสเลือดจากเลเวล (ทอย END ต่อเลเวล): {sumLvScratch(character)}</span>}
+          {part('Base', <NumField value={n('baseScratch')} onCommit={(v) => setS10({ baseScratch: v })} width={64} />)}
+          {op('+')}
+          {part(`ทอย END (${dieOf('END')})`, rollVal('scratchRollEND', 'END'))}
+          {sumLvScratch(character) > 0 && (<>{op('+')}{part('เลือด/เลเวล', valChip(sumLvScratch(character)))}</>)}
         </StatCard>
 
         <StatCard title="Wound Point" total={woundTotal} isAncestry={isAncestry} adjVal={a('wound')} onAdj={(v) => setAdj('wound', v)}>
-          {lbl('ระบุเอง')}
-          <NumField value={n('wound')} onCommit={(v) => setS10({ wound: v })} />
+          {part('ระบุเอง', <NumField value={n('wound')} onCommit={(v) => setS10({ wound: v })} width={64} />)}
         </StatCard>
 
         <StatCard title="Nature Defense" total={natureTotal} isAncestry={isAncestry} adjVal={a('natureDef')} onAdj={(v) => setAdj('natureDef', v)}>
-          {lbl('ระบุเอง')}
-          <NumField value={n('natureBase')} onCommit={(v) => setS10({ natureBase: v })} />
-          {lbl(`+ หน้า DEX (${dieOf('DEX')} = ${faceDEX})`)}
-          {lbl(`+ หน้า PER (${dieOf('PER')} = ${facePER})`)}
+          {part('ระบุเอง', <NumField value={n('natureBase')} onCommit={(v) => setS10({ natureBase: v })} width={64} />)}
+          {op('+')}
+          {part(`DEX · เกรด ${gradeDEX}`, valChip(natDEX))}
+          {op('+')}
+          {part(`PER · เกรด ${gradePER}`, valChip(natPER))}
         </StatCard>
 
         <StatCard title="Sanity Point" total={sanityTotal} isAncestry={isAncestry} adjVal={a('sanity')} onAdj={(v) => setAdj('sanity', v)}>
-          {lbl('ค่าพื้นฐาน')}
-          <NumField value={n('sanityBase')} onCommit={(v) => setS10({ sanityBase: v })} />
-          {lbl(`+ หน้า CVN (${dieOf('CVN')} = ${faceCVN})`)}
-          {rollPart('sanityRollINT', 'INT')}
+          {part('ค่าพื้นฐาน', <NumField value={n('sanityBase')} onCommit={(v) => setS10({ sanityBase: v })} width={64} />)}
+          {op('+')}
+          {part(`CVN (${dieOf('CVN')})`, valChip(faceCVN))}
+          {op('+')}
+          {part(`ทอย INT (${dieOf('INT')})`, rollVal('sanityRollINT', 'INT'))}
         </StatCard>
 
         <StatCard title="Movement" total={moveTotal} isAncestry={isAncestry} adjVal={a('movement')} onAdj={(v) => setAdj('movement', v)}>
-          {lbl('ระบุเอง')}
-          <NumField value={n('movement')} onCommit={(v) => setS10({ movement: v })} />
+          {part('ระบุเอง', <NumField value={n('movement')} onCommit={(v) => setS10({ movement: v })} width={64} />)}
         </StatCard>
 
         <StatCard title="Willpower Point" total={wpTotal} isAncestry={isAncestry} adjVal={a('willpower')} onAdj={(v) => setAdj('willpower', v)}>
-          {lbl('ระบุเอง')}
-          <NumField value={n('willpower')} onCommit={(v) => setS10({ willpower: v })} />
+          {part('ระบุเอง', <NumField value={n('willpower')} onCommit={(v) => setS10({ willpower: v })} width={64} />)}
         </StatCard>
       </div>
     </div>
