@@ -137,11 +137,12 @@ export function ShopPage() {
 
   const toggleTag = (t: string) => setTags((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
 
+  // Only ticked types are stocked; unticked types never appear in the shop.
   const tagMatch = (it: CatalogItem) => {
-    if (tags.length === 0) return true;
     const tg = String(it.fields.tag ?? it.tags[0] ?? '');
     return tags.includes(tg);
   };
+  const nothingPicked = tags.length === 0 && !showBooks;
   const rarOf = (it: CatalogItem) => String(it.fields.rarity ?? '');
 
   // Normal shop pool: cumulative availability (rank ≤ tier), tag-filtered, no Quest
@@ -264,11 +265,12 @@ export function ShopPage() {
         </div>
 
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#6b6860', marginBottom: 8 }}>เลือกประเภทที่จะขาย (ติ๊กได้หลายอัน · ไม่ติ๊ก = ทุกประเภท)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#6b6860', marginBottom: 8 }}>เลือกประเภทที่จะขาย <span style={{ fontWeight: 400, color: '#a8a59d' }}>· ติ๊ก = มีขายในร้าน · ไม่ติ๊ก = ไม่มีเลย</span></div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {EQUIP_TAGS.map((t) => (
               <button key={t} onClick={() => toggleTag(t)} style={chip(tags.includes(t))}>{tags.includes(t) ? '✓ ' : ''}{t}</button>
             ))}
+            <button onClick={() => setTags([...EQUIP_TAGS])} style={{ ...chip(false), color: '#2f6b4f', borderColor: '#cbe0d2' }}>เลือกทั้งหมด</button>
             {tags.length > 0 && <button onClick={() => setTags([])} style={{ ...chip(false), color: '#b4513a', borderColor: '#f0d3cb' }}>ล้าง</button>}
             <button onClick={() => setShowBooks((b) => !b)} title="รวมหนังสือเวท (Magic) เข้าไปในร้าน" style={{ ...chip(showBooks), borderColor: showBooks ? '#5b3fa0' : '#e0ded7', background: showBooks ? '#5b3fa0' : '#fff', color: showBooks ? '#fff' : '#5b3fa0' }}>{showBooks ? '✓ ' : ''}📖 หนังสือเวท</button>
           </div>
@@ -276,11 +278,11 @@ export function ShopPage() {
 
         {!questMode && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={generate} style={{ padding: '11px 22px', background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 11, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={generate} disabled={nothingPicked} style={{ padding: '11px 22px', background: nothingPicked ? '#e0ded7' : '#e07a5f', color: '#fff', border: 'none', borderRadius: 11, fontSize: 14, fontWeight: 700, cursor: nothingPicked ? 'not-allowed' : 'pointer' }}>
               🎲 {shop ? 'สุ่มร้านใหม่' : 'สุ่มร้าน'}
             </button>
             <span style={{ fontSize: 11.5, color: '#a8a59d' }}>
-              เรต {tier}: {RARITY_ODDS[tier].map((n, i) => `${RARITIES[i][0]}${n}`).join(' / ')} · จับจาก {items.length} ไอเทม
+              {nothingPicked ? 'ติ๊กประเภทที่จะขายก่อน (หรือติ๊กหนังสือเวท)' : `เรต ${tier}: ${RARITY_ODDS[tier].map((n, i) => `${RARITIES[i][0]}${n}`).join(' / ')}`}
             </span>
           </div>
         )}
