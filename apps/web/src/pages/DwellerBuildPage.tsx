@@ -406,12 +406,15 @@ function CharacterSheet({
   const BAG_RE = /bag|backpack|sack|pouch|pack|กระเป๋า|เป้|ย่าม|ถุง/i;
   const isBagItem = (l: BagLine) => l.isBag ?? BAG_RE.test(l.name);
   const isPotion = (l: BagLine, cat?: CatalogItem) => (cat ? String(cat.fields.tag ?? '') === 'Potion' || cat.tags.includes('Potion') : false) || /potion|โพชั่น|ยา|ขวดยา/i.test(l.name);
+  // "Filled with water" items can be filled (+2kg) via a button.
+  const hasWaterTag = (l: BagLine) => { const cat = l.itemId ? equipById.get(l.itemId) : undefined; return !!cat && cat.tags.includes('Filled with water'); };
+  const effKg = (l: BagLine) => numData(l.kg) + (l.water ? 2 : 0); // effective weight incl. water
   const invZone = (l: BagLine) => l.zone ?? 'loot';
   const bagItems = bag.filter(isBagItem);
   const wornBags = bagItems.filter((b) => b.worn);
   const hasBag = bagItems.length > 0;
   const contentsOf = (id: string) => bag.filter((l) => l.inBag === id);
-  const bagUsedKg = (id: string) => Math.round(contentsOf(id).reduce((s, l) => s + numData(l.kg), 0) * 10) / 10;
+  const bagUsedKg = (id: string) => Math.round(contentsOf(id).reduce((s, l) => s + effKg(l), 0) * 10) / 10;
   // A free-zone line is one not stored inside a bag, not a worn bag (worn bags
   // render as containers), and not moved to the "พิเศษ" Extra zone.
   const inFreeZone = (l: BagLine) => !l.inBag && !l.extra && !(isBagItem(l) && l.worn);
@@ -420,13 +423,20 @@ function CharacterSheet({
   // Worn Clothing / Trinket kept in the "พิเศษ" tab.
   const extraItems = bag.filter((l) => l.extra);
   const EXTRA_RE = /clothing|เสื้อผ้า|trinket|เครื่องประดับ|เครื่องราง|apparel|เสื้อ|กางเกง|ชุด|แหวน|สร้อย|กำไล|cloak|robe|ต่างหู|เข็มกลัด/i;
-  const isExtraItem = (l: BagLine) => { const cat = l.itemId ? equipById.get(l.itemId) : undefined; const tag = String(cat?.fields.tag ?? ''); return tag === 'Clothing' || tag === 'Trinket' || EXTRA_RE.test(l.name); };
-  // Weight counts: non-bag Ready items always; a bag (and its contents) only when worn. Loot never counts.
-  const readyKg = ready.filter((l) => !isBagItem(l)).reduce((s, l) => s + numData(l.kg), 0);
-  const wornKg = wornBags.reduce((s, b) => s + numData(b.kg) + bagUsedKg(b.lineId), 0);
-  const carryKg = Math.round((readyKg + wornKg) * 10) / 10;
+  const isExtraItem = (l: BagLine) => { const cat = l.itemId ? equipById.get(l.itemId) : undefined; const tag = String(cat?.fields.tag ?? ''); return tag === 'Clothing' || tag === 'Trinket' || tag === 'Armor' || EXTRA_RE.test(l.name); };
+  // Worn armor (in the พิเศษ tab) adds its + Natural Defense to the character.
+  const wornDefBonus = extraItems.reduce((s, l) => { const cat = l.itemId ? equipById.get(l.itemId) : undefined; const tag = String(cat?.fields.tag ?? ''); return s + (tag === 'Armor' || tag === 'Shields' ? numData(cat?.fields.natDefBonus) : 0); }, 0);
+  // Weight counts: non-bag Ready items always; a bag (and its contents) only when
+  // worn; worn Extra (clothing/trinket) also count. Loot never counts.
+  const readyKg = ready.filter((l) => !isBagItem(l)).reduce((s, l) => s + effKg(l), 0);
+  const wornKg = wornBags.reduce((s, b) => s + effKg(b) + bagUsedKg(b.lineId), 0);
+  const extraKg = extraItems.reduce((s, l) => s + effKg(l), 0);
+  const carryKg = Math.round((readyKg + wornKg + extraKg) * 10) / 10;
   const bodyKg = sv('bodyKg', 0);
-  const carryMax = Math.round(bodyKg * 0.2 * 10) / 10; // cannot exceed 20% of body weight
+  // Carry limit = END-grade base (X8/D15/C20/B25/A30) + 20% of body weight.
+  const END_CARRY: Record<string, number> = { X: 8, D: 15, C: 20, B: 25, A: 30 };
+  const endCarryBase = END_CARRY[byAbbr['END'] ?? ''] ?? 0;
+  const carryMax = Math.round((endCarryBase + bodyKg * 0.2) * 10) / 10;
   const overloaded = carryMax > 0 && carryKg > carryMax;
   // Daily Calories needed scale off real body weight (~30 kcal/kg maintenance).
   const calGoalAuto = Math.round(bodyKg * 30);
@@ -480,6 +490,7 @@ function CharacterSheet({
           <span style={{ flex: 1 }} />
           {isBagItem(l) && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0', flex: 'none' }}>กระเป๋า{numData(l.cap) > 0 ? ` ${numData(l.cap)}kg` : ''}</span>}
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
+          {hasWaterTag(l) && <button onClick={() => setInv(l.lineId, { water: !l.water })} title={l.water ? 'เทน้ำออก (−2kg)' : 'เติมน้ำ (+2kg)'} style={{ flex: 'none', border: `1px solid ${l.water ? '#9fc3dd' : '#e0ded7'}`, background: l.water ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.water ? '💧 มีน้ำ +2kg' : '💧 เติมน้ำ'}</button>}
           {l.book && l.magicId && magicItemById.get(l.magicId) && <button onClick={() => openInfo(magicItemById.get(l.magicId!) ?? null, false)} title="รายละเอียดเวท" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ เวท</button>}
           {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
           {!catItem && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="ข้อมูลเสริม (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
@@ -487,15 +498,15 @@ function CharacterSheet({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
           {catItem
-            ? <span style={{ fontSize: 11, color: '#8d8a82', marginRight: 'auto' }} title="น้ำหนักจากข้อมูลไอเทม">⚖️ {numData(l.kg)} kg</span>
-            : <><NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} /><span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg</span></>}
+            ? <span style={{ fontSize: 11, color: '#8d8a82', marginRight: 'auto' }} title={l.water ? 'รวมน้ำ +2kg' : 'น้ำหนักจากข้อมูลไอเทม'}>⚖️ {effKg(l)} kg{l.water ? ' 💧' : ''}</span>
+            : <><NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} /><span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg{l.water ? ' +💧2' : ''}</span></>}
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
           {handEligible(l) && z !== 'loot' && (lineEquippedSlot(l)
             ? <button onClick={() => clearHand(lineEquippedSlot(l)!)} style={moveStyle('#b4513a', '#f0d3cb')} title="เอาออกจากมือ">✓ ถืออยู่ · ปลด</button>
             : <button onClick={() => setHandPick(l)} style={moveStyle('#2f6b4f', '#cbe0d2')} title="ถือเข้ามือ (เลือกมือ)">✋ Use เข้ามือ</button>)}
           {z !== 'loot' && <button onClick={() => dropToLoot(l)} style={moveStyle('#8d8a82', '#e0ded7')} title={campaignId ? 'วางลง Loot รวมของแคมเปญ' : undefined}>→ Loot</button>}
           {isBagItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { worn: true, zone: 'ready' })} style={moveStyle('#5b3fa0', '#d6c7f0')} title="สวมใส่กระเป๋าเพื่อใช้เก็บของ (นับน้ำหนัก)">🎒 สวมใส่</button>}
-          {isExtraItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { extra: true })} style={moveStyle('#b06a2a', '#e9d6bf')} title="สวมใส่ → ไปที่แท็บ “พิเศษ”">🧣 สวมใส่ (พิเศษ)</button>}
+          {isExtraItem(l) && z !== 'loot' && <button onClick={() => setInv(l.lineId, { extra: true })} style={moveStyle('#b06a2a', '#e9d6bf')} title="สวมใส่ → ไปที่แท็บ “พิเศษ”">{String(catItem?.fields.tag) === 'Armor' ? '🛡 สวมเกราะ' : '🧣 สวมใส่ (พิเศษ)'}</button>}
           {!isBagItem(l) && wornBags.map((b) => <button key={b.lineId} onClick={() => moveToBag(l.lineId, b.lineId)} style={moveStyle('#5b3fa0', '#d6c7f0')} title={`เก็บลง ${b.name}`}>→ {b.name}</button>)}
         </div>
       </div>
@@ -804,7 +815,7 @@ function CharacterSheet({
   const summaryRef = useRef('');
   const gradesSig = JSON.stringify(byAbbr);
   useEffect(() => {
-    const natDef = natureDef + naFromGear;
+    const natDef = natureDef + naFromGear + wornDefBonus;
     const key = `${natDef}|${scrMax}|${sanMax}|${gradesSig}`;
     if (summaryRef.current === key) return;
     summaryRef.current = key;
@@ -813,7 +824,7 @@ function CharacterSheet({
       setSheet({ summary: { natDef, scrMax, sanMax, grades: byAbbr } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [natureDef, naFromGear, scrMax, sanMax, gradesSig]);
+  }, [natureDef, naFromGear, wornDefBonus, scrMax, sanMax, gradesSig]);
   const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
   // Dweller Skill round tick toggle
   const skillChecked = sheet.skillChecked && typeof sheet.skillChecked === 'object' ? (sheet.skillChecked as Record<string, boolean>) : {};
@@ -1287,11 +1298,11 @@ function CharacterSheet({
                 <span style={{ fontSize: 9.5, color: '#bb9a86' }}>10 + DEX + PER · กดเลขเพื่อทอย</span>
               </div>
               {/* NATURAL DEFENSE — teal accent */}
-              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#eef7f1,#e6f1ea)', border: '1px solid #cfe6d6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={naFromGear > 0 ? `ฐาน ${natureDef} + เกราะ/โล่ ${naFromGear}` : undefined}>
+              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#eef7f1,#e6f1ea)', border: '1px solid #cfe6d6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={naFromGear + wornDefBonus > 0 ? `ฐาน ${natureDef}${naFromGear ? ` + โล่/มือ ${naFromGear}` : ''}${wornDefBonus ? ` + เกราะสวม ${wornDefBonus}` : ''}` : undefined}>
                 <span style={{ fontSize: 16 }}>🛡️</span>
-                <div style={{ fontSize: 32, fontWeight: 800, color: '#2f6b4f', lineHeight: 1 }}>{natureDef + naFromGear}</div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: '#2f6b4f', lineHeight: 1 }}>{natureDef + naFromGear + wornDefBonus}</div>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5a8a72', letterSpacing: '.03em' }}>Natural Defense</div>
-                {naFromGear > 0 && <div style={{ fontSize: 9.5, color: '#2f6b4f', fontWeight: 700, background: '#fff', border: '1px solid #cfe6d6', borderRadius: 6, padding: '1px 7px' }}>เกราะ/โล่ +{naFromGear}</div>}
+                {naFromGear + wornDefBonus > 0 && <div style={{ fontSize: 9.5, color: '#2f6b4f', fontWeight: 700, background: '#fff', border: '1px solid #cfe6d6', borderRadius: 6, padding: '1px 7px' }}>เกราะ/โล่ +{naFromGear + wornDefBonus}</div>}
               </div>
               {/* MOVEMENT — earthy accent */}
               <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#faf5ea,#f4ecdb)', border: '1px solid #e8dcc2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
@@ -1367,6 +1378,15 @@ function CharacterSheet({
                       </div>
                     ) : phase === 'Ehen' ? (
                       <div>
+                        {ehenType && (
+                          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '9px 11px', background: '#faf7fd', border: '1px solid #e6ddf0', borderRadius: 10 }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 800, color: '#8d7fb0', letterSpacing: '.05em' }}>อีเฮนในร่างกาย</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#5b3fa0' }}>{ehenLabel}</span>
+                            {sizeLabel && <span style={{ fontSize: 11.5, color: '#7a756c' }}>· ขนาด {sizeLabel}</span>}
+                            {ehenColor && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#5c4a2e' }}><span style={{ width: 11, height: 11, borderRadius: '50%', background: EHEN_COLOR_HEX[ehenColor], border: '1px solid rgba(0,0,0,.15)' }} />{ehenColor}</span>}
+                            {ehenDie && <button onClick={() => setRoll({ faces: parseInt(ehenDie.replace(/[^0-9]/g, ''), 10) || 6, adv: false })} title="ทอยลูกเต๋าผลิตอีเฮน" style={{ marginLeft: 'auto', fontSize: 11.5, padding: '4px 11px', borderRadius: 20, background: '#fdece2', color: '#c1502a', border: '1px solid #f2cdbc', cursor: 'pointer', fontWeight: 700 }}>ผลิต {ehenDie} 🎲</button>}
+                          </div>
+                        )}
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#6b5b45', marginBottom: 10 }}>Ehen <span style={{ fontSize: 11, fontWeight: 400, color: '#a8a59d' }}>· ความหนาแน่นของอีเฮนรอบตัว — เลือกแล้วกดทอย</span></div>
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                           {EHEN_DENSITY.map((e) => {
@@ -1550,7 +1570,7 @@ function CharacterSheet({
                     <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
                       <div style={{ fontSize: 10, color: '#a8a59d', fontWeight: 700, letterSpacing: '.04em' }}>แบกอยู่</div>
                       <div style={{ fontSize: 16, fontWeight: 800, color: overloaded ? '#c0432a' : '#2f6b4f' }}>{carryKg} / {carryMax} kg</div>
-                      <div style={{ fontSize: 9.5, color: overloaded ? '#c0432a' : '#b0ada4' }}>{overloaded ? 'แบกเกินพิกัด! (>20%)' : 'สูงสุด 20% ของน้ำหนักตัว'}</div>
+                      <div style={{ fontSize: 9.5, color: overloaded ? '#c0432a' : '#b0ada4' }} title={`END(${byAbbr['END'] ?? '—'}) ${endCarryBase} + 20% ของน้ำหนักตัว ${Math.round(bodyKg * 0.2 * 10) / 10}`}>{overloaded ? 'แบกเกินพิกัด!' : `END ${endCarryBase} + 20% น้ำหนักตัว`}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -1898,7 +1918,7 @@ function CharacterSheet({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
                   {/* ── Clothing & Trinket (worn extras) ── */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d', marginBottom: 9 }}>👕 เครื่องแต่งกาย &amp; เครื่องประดับ (สวมใส่)</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d', marginBottom: 9 }}>🛡 เกราะ &amp; เครื่องแต่งกาย &amp; เครื่องประดับ (สวมใส่)</div>
                     {extraItems.length === 0 ? (
                       <div style={{ fontSize: 11.5, color: '#bdbab2', padding: '10px 12px', border: '1px dashed #e0ded7', borderRadius: 9, lineHeight: 1.6 }}>ยังไม่มีของสวมใส่ — กด “🧣 สวมใส่ (พิเศษ)” ที่ Clothing หรือ Trinket ในแท็บช่องเก็บของ</div>
                     ) : (
@@ -1910,6 +1930,8 @@ function CharacterSheet({
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3c3a33' }}>{l.name}</span>
                                 {cat?.fields.tag ? <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#f3e6d4', color: '#b06a2a' }}>{String(cat.fields.tag)}</span> : null}
+                                {(String(cat?.fields.tag) === 'Armor' || String(cat?.fields.tag) === 'Shields') && numData(cat?.fields.natDefBonus) > 0 && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#e6f1ea', color: '#2f6b4f' }}>🛡 +{numData(cat?.fields.natDefBonus)}</span>}
+                                <span style={{ fontSize: 10.5, color: '#a8916a', fontWeight: 600 }}>⚖️ {numData(l.kg)} kg</span>
                                 <span style={{ flex: 1 }} />
                                 {cat && <button onClick={() => openInvInfo(cat, l.lineId)} title="ดูข้อมูล & แก้ไข" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
                                 <button onClick={() => setInv(l.lineId, { extra: false, zone: 'ready' })} title="ถอด → กลับช่องเก็บของ" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ถอด</button>
@@ -4048,8 +4070,13 @@ const CORE_PRODUCTION_DIE: Record<string, string> = { small: 'd6', medium: 'd8',
 const ORGAN_PRODUCTION_DIE: Record<string, string> = { small: 'd8', medium: 'd8', large: 'd10' };
 const MAGIC_RARITIES = ['Common', 'Uncommon'];
 // Color of Ehen — mirrors the Magic "Color of Ehen" (tag) options.
-const EHEN_COLORS = ['Pink', 'Silver', 'Blue', 'Purple', 'Yellow', 'Red', 'White', 'Black', 'Cyan'];
-const EHEN_COLOR_HEX: Record<string, string> = { Pink: '#e48fb0', Silver: '#b8b8b8', Blue: '#4a7fd0', Purple: '#7a52c0', Yellow: '#d9b93a', Red: '#c0453a', White: '#eeeee8', Black: '#333333', Cyan: '#3ab0c0' };
+const EHEN_COLORS = ['Red', 'Blue', 'Green', 'Yellow', 'Purple', 'White', 'Black', 'Orange', 'Indigo', 'Pink', 'Cyan', 'Brown', 'Silver', 'Gold', 'Rainbow'];
+const EHEN_COLOR_HEX: Record<string, string> = {
+  Red: '#c0453a', Blue: '#4a7fd0', Green: '#4a9d5b', Yellow: '#d9b93a', Purple: '#7a52c0',
+  White: '#eeeee8', Black: '#333333', Orange: '#e08a3c', Indigo: '#4b3fa0', Pink: '#e48fb0',
+  Cyan: '#3ab0c0', Brown: '#8a6240', Silver: '#b8b8b8', Gold: '#d4af37',
+  Rainbow: 'conic-gradient(from 0deg, #e05a5a, #e0a53c, #d9d13a, #4a9d5b, #4a7fd0, #7a52c0, #e05a5a)',
+};
 
 // Fetch every actual Magic (non-Feature) in the Wiwon, paging the catalog.
 async function fetchMagicSpells(wiwonIds: string[]): Promise<CatalogItem[]> {
@@ -4284,7 +4311,7 @@ const coinStr = (ic: number) => {
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface ItemRef { id: string; name: string }
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean }
+interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean; water?: boolean }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });

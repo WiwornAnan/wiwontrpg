@@ -141,6 +141,13 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   // #14 Requirements as a Core Attribute grade (the #13 "+ Damage" feeds the
   // existing damage badge below, not a separate stat row).
   if (category === 'equipment') {
+    const tag = fv(item, 'tag');
+    // + Natural Defense (Armor / Shields) — worn armor adds this to Natural Defense.
+    const natDef = fv(item, 'natDefBonus');
+    if ((tag === 'Armor' || tag === 'Shields') && natDef) stats.push({ label: '+ Natural Defense', value: `+${natDef}` });
+    // Specialization required (Tool).
+    const toolSpec = fv(item, 'toolSpec');
+    if (tag === 'Tool' && toolSpec) stats.push({ label: 'Specialization', value: toolSpec });
     const reqAttr = fv(item, 'reqAttr');
     if (reqAttr && reqAttr !== 'None') stats.push({ label: 'Requirements', value: `${reqAttr} ≥ ${fv(item, 'reqGrade') || '?'}` });
   }
