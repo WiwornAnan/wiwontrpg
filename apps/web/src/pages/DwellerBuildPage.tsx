@@ -499,6 +499,13 @@ function CharacterSheet({
   const invRow = (l: BagLine) => {
     const z = invZone(l);
     const catItem = l.itemId ? equipById.get(l.itemId) : undefined; // resolved master item (if from catalog)
+    // The equipment catalog loads async (~a beat). Until it finishes, an item with
+    // an itemId must NOT fall back to the "custom" layout (that made the row flip
+    // ✎/editable-weight → ⓘ/Use after a couple seconds). Treat it as a catalog
+    // row while pending; only genuinely custom when there's no id, or the catalog
+    // finished and the id wasn't found.
+    const catLoaded = equipment !== undefined;
+    const isCustomLine = !l.itemId || (catLoaded && !catItem);
     return (
       <div key={l.lineId} style={{ border: `1px solid ${zoneBd[z]}`, borderRadius: 8, padding: '8px 10px', background: zoneBg[z], opacity: dragId === l.lineId ? 0.45 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -518,12 +525,12 @@ function CharacterSheet({
           {isPotion(l, catItem) && <button onClick={() => setInv(l.lineId, { glass: !l.glass })} title={l.glass ? 'สลับกลับเป็นชื่ออย่างเดียว' : 'เปลี่ยนเป็นขวดแก้ว (Glass)'} style={{ flex: 'none', border: `1px solid ${l.glass ? '#9fc3dd' : '#e0ded7'}`, background: l.glass ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.glass ? '↩ ชื่อ' : '🧪 Glass'}</button>}
           {hasWaterTag(l) && <button onClick={() => setInv(l.lineId, { water: !l.water })} title={l.water ? 'เทน้ำออก (−2kg)' : 'เติมน้ำ (+2kg)'} style={{ flex: 'none', border: `1px solid ${l.water ? '#9fc3dd' : '#e0ded7'}`, background: l.water ? '#eaf3fa' : '#fff', color: '#3a7ca8', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>{l.water ? '💧 มีน้ำ +2kg' : '💧 เติมน้ำ'}</button>}
           {l.book && l.magicId && magicItemById.get(l.magicId) && <button onClick={() => openInfo(magicItemById.get(l.magicId!) ?? null, false)} title="รายละเอียดเวท" style={{ flex: 'none', border: '1px solid #d6c7f0', background: '#f3eefb', color: '#5b3fa0', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ เวท</button>}
-          {catItem && <button onClick={() => openInvInfo(catItem, l.lineId)} title="ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>ⓘ</button>}
-          {!catItem && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="ข้อมูลเสริม (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
+          {!isCustomLine && <button onClick={() => catItem && openInvInfo(catItem, l.lineId)} disabled={!catItem} title={catItem ? 'ดูข้อมูล & แก้ไขเฉพาะชิ้นนี้' : 'กำลังโหลดข้อมูลไอเทม…'} style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: catItem ? 'pointer' : 'default', opacity: catItem ? 1 : 0.5 }}>ⓘ</button>}
+          {isCustomLine && <button onClick={() => openInvInfo(null, l.lineId, l.name)} title="ข้อมูลเสริม (เฉพาะชิ้นนี้)" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 6, padding: '2px 7px', fontSize: 10.5, cursor: 'pointer' }}>✎</button>}
           <button onClick={() => delInv(l.lineId)} title="ลบ" style={{ background: 'none', border: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 14, flex: 'none' }}>×</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-          {catItem
+          {!isCustomLine
             ? <span style={{ fontSize: 11, color: '#8d8a82', marginRight: 'auto' }} title={l.water ? 'รวมน้ำ +2kg' : 'น้ำหนักจากข้อมูลไอเทม'}>⚖️ {effKg(l)} kg{l.water ? ' 💧' : ''}</span>
             : <><NumField value={numData(l.kg)} onCommit={(v) => setInv(l.lineId, { kg: v })} width={52} style={{ fontSize: 11, padding: '2px 6px', textAlign: 'left' }} /><span style={{ fontSize: 10, color: '#a8a59d', marginRight: 'auto' }}>kg{l.water ? ' +💧2' : ''}</span></>}
           {z !== 'ready' && <button onClick={() => setInv(l.lineId, { zone: 'ready' })} style={moveStyle('#2f6b4f', '#cbe0d2')}>→ Ready</button>}
