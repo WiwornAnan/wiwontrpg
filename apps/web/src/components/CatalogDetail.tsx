@@ -69,6 +69,14 @@ interface Props {
   onSubmitOfficial?: (item: CatalogItem) => void;
   // Duplicate this item into the user's own editable Homebrew (name + " (Copy)").
   onCopy?: (item: CatalogItem) => void;
+  // From the Dweller Sheet / Campaign: allow developing a HOMEBREW item's master
+  // config (Ehen Organ/Core toggles, Mana Slots, engraving, weapon arts) even
+  // though embedded. Passed true only for homebrew items the viewer may develop
+  // (the item's owner, or the campaign's Librarian). Never affects Official items.
+  homebrewEdit?: boolean;
+  // Called after a master-field edit so the embedding sheet can refetch its own
+  // catalog copy (its query key differs from the catalog page's).
+  onMasterEdited?: () => void;
   // When shown inside a floating window (which already supplies a frame + its
   // own scroll), drop the sticky sidebar positioning and the redundant card
   // chrome — otherwise `position:sticky;top:96` pushes the content down and
@@ -92,7 +100,7 @@ interface Props {
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
 const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
-export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, onCopy, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved, onLogUse }: Props) {
+export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, onCopy, homebrewEdit, onMasterEdited, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved, onLogUse }: Props) {
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -208,7 +216,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   // ----- Ehen Organ / Core: Mana Slots, spell engraving, weapon arts -----
   const patchFields = useMutation({
     mutationFn: (patch: Record<string, unknown>) => api.patch(`/catalog/${category}/item/${item.id}`, { fields: { ...item.fields, ...patch } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog', category] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['catalog', category] }); onMasterEdited?.(); },
   });
   const ehenOrgan = fv(item, 'ehenOrgan') === '1';
   const ehenCore = fv(item, 'ehenCore') === '1';
@@ -226,7 +234,11 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
   // Master item mutations are allowed ONLY on the admin catalog page (not
   // embedded). Inside the Dweller Sheet / Campaign (embedded) the database is
   // read-only; play edits go to the per-instance line instead.
-  const masterEdit = canEdit && !embedded;
+  // Homebrew "weapon development" from the sheet: the item's owner or the
+  // campaign's Librarian may edit a HOMEBREW master item's Ehen/engraving even
+  // when embedded. Official items stay read-only in play.
+  const homebrewMaster = !!homebrewEdit && item.isHomebrew;
+  const masterEdit = (canEdit && !embedded) || homebrewMaster;
   const canEditRefs = instanceMode || masterEdit;
   const ehenParen = ehenOrgan && ehenCore ? '(Organ + Core)' : ehenCore ? '(Core)' : '(Organ)';
   // Engraving capacity: odd slots grant +1 (1→1, 3→2, 5→3); dev may override.
@@ -322,7 +334,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         <StarButton catalogItemId={item.id} size={15} />
       </div>
 
-      {masterEdit && (
+      {masterEdit && !embedded && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={() => onEdit(item)} style={{ flex: 1, padding: 7, background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ✎ แก้ไขข้อมูล
@@ -445,7 +457,7 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {showEhen && (canEdit || hasEhen) && (
+      {showEhen && (canEdit || masterEdit || hasEhen) && (
         <div style={{ marginTop: 16 }}>
           {masterEdit && (
             <>

@@ -224,6 +224,7 @@ function CharacterSheet({
   patch: ReturnType<typeof useMutation<unknown, Error, { data?: Record<string, unknown>; step?: number; status?: 'draft' | 'complete'; name?: string }>>;
 }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const byAbbr = useEffectiveGrades(character);
   const wiwonIds = wiwonIdsOf(character);
   const d = character.data;
@@ -2090,17 +2091,26 @@ function CharacterSheet({
         const line = w.lineId ? bag.find((l) => l.lineId === w.lineId) : undefined;
         const artRefs = Array.isArray(line?.artRefs) ? (line!.artRefs as ItemRef[]) : [];
         const engRefs = Array.isArray(line?.engRefs) ? (line!.engRefs as ItemRef[]) : [];
+        // Re-read the item from the live catalog map so master edits (developing a
+        // Homebrew weapon: Ehen / engraving) reflect immediately in this window.
+        const liveItem = w.item ? equipById.get(w.item.id) ?? w.item : null;
+        // Develop a Homebrew item's master config from the sheet: the character's
+        // owner or the campaign's Librarian, homebrew only.
+        const canDevHomebrew = !!user && (character.ownerUserId === user.id || isLibrarian);
+        const homebrewDev = canDevHomebrew && !!liveItem?.isHomebrew;
         return (
-          <FloatWindow key={w.key} title={w.item?.name ?? w.title ?? 'ไอเทม'} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
-            {w.item && (
+          <FloatWindow key={w.key} title={liveItem?.name ?? w.title ?? 'ไอเทม'} onClose={() => closeInfo(w.key)} width={430} cascadeIndex={i}>
+            {liveItem && (
               <CatalogDetail
-                item={w.item}
-                cfg={CATALOG_CONFIGS[w.item.category]}
-                category={w.item.category}
+                item={liveItem}
+                cfg={CATALOG_CONFIGS[liveItem.category]}
+                category={liveItem.category}
                 isFeature={w.isFeature}
                 onEdit={() => {}}
                 embedded
-                instanceMode={!!line}
+                homebrewEdit={homebrewDev}
+                onMasterEdited={() => qc.invalidateQueries({ queryKey: ['sheet-equipment'] })}
+                instanceMode={!!line && !homebrewDev}
                 instanceArts={artRefs}
                 instanceEngraved={engRefs}
                 onInstanceArts={(next) => line && setInv(line.lineId, { artRefs: next })}
