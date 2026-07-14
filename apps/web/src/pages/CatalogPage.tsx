@@ -45,6 +45,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const bulkImport = useMutation({
@@ -111,6 +112,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
       setSelectedId(d.item.id);
       setEditItem(d.item);
       setAddOpen(true);
+      setCopyMsg(`สร้างสำเนาแล้ว: “${d.item.name}” (${isDev ? 'Official' : 'Homebrew ของคุณ'}) — กำลังแก้ไขสำเนาใหม่ · ต้นฉบับไม่ถูกแตะต้อง`);
     },
   });
 
@@ -138,6 +140,12 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
 
   return (
     <div className={layout.page} style={{ paddingTop: 32 }}>
+      {copyMsg && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: '#eef6f0', border: '1px solid #cfe6d6', color: '#2f6b4f', fontSize: 13, fontWeight: 600 }}>
+          <span style={{ flex: 1 }}>⧉ {copyMsg}</span>
+          <button onClick={() => setCopyMsg(null)} style={{ flex: 'none', border: '1px solid #cfe6d6', background: '#fff', color: '#2f6b4f', borderRadius: 7, padding: '3px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>รับทราบ ✓</button>
+        </div>
+      )}
       {/* title + stats box */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginBottom: 22 }}>
         <div style={{ maxWidth: 460 }}>

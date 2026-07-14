@@ -348,8 +348,21 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
       {/* Copy → an editable duplicate. A dev's copy is Official (make a variant);
           a regular user's is their own Homebrew. Hidden inside the sheet. */}
       {onCopy && user && !embedded && (
-        <button onClick={() => onCopy(item)} title={isDev ? 'คัดลอกเป็นไอเทม Official ใหม่ (variant) แล้วแก้ไขต่อได้ทันที' : 'คัดลอกไอเทมนี้เป็น Homebrew ของคุณ แล้วแก้ไขต่อได้ทันที'} style={{ width: '100%', marginTop: 8, padding: 8, background: '#f6f2ea', color: '#6b5b45', border: '1px solid #e2d7bf', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-          {isDev ? '⧉ Copy → สร้างสำเนา Official เพื่อแก้ไข' : '⧉ Copy เพื่อแก้ไข (สร้างเป็น Homebrew ของคุณ)'}
+        <button
+          onClick={() => onCopy(item)}
+          style={{ width: '100%', marginTop: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left', background: isDev ? '#fbf4e4' : '#f3effa', border: `1px solid ${isDev ? '#e6d3a4' : '#dccef0'}`, borderRadius: 10, cursor: 'pointer' }}
+        >
+          <span style={{ flex: 'none', width: 30, height: 30, borderRadius: 8, background: isDev ? '#c79a2e' : '#5b3fa0', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>⧉</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: isDev ? '#8a6a1f' : '#4a3d6b' }}>
+              ทำสำเนาไว้แก้ไข{isDev ? ' (สำเนา Official)' : ' (Homebrew ของคุณ)'}
+            </span>
+            <span style={{ display: 'block', fontSize: 10.5, color: '#8d8a82', marginTop: 1, lineHeight: 1.45 }}>
+              {isDev
+                ? 'คัดลอกทุกค่าเป็นไอเทม Official ชิ้นใหม่ (ชื่อ +“(Copy)”) แยกจากต้นฉบับ แล้วเปิดให้แก้ไขทันที'
+                : 'คัดลอกทุกค่าเป็นไอเทม Homebrew ของคุณ (ชื่อ +“(Copy)”) ไม่กระทบต้นฉบับ แล้วเปิดให้แก้ไขทันที'}
+            </span>
+          </span>
         </button>
       )}
 
