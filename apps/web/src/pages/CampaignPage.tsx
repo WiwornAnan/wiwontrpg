@@ -104,6 +104,7 @@ export function CampaignPage() {
   const delInit = useMutation({ mutationFn: (entryId: string) => api.delete(`/campaigns/${id}/initiative/${entryId}`), onSuccess: invalidate });
   const clearInit = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/initiative/clear`, {}), onSuccess: invalidate });
   const clearLog = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/log/clear`, {}), onSuccess: invalidate });
+  const nextTurn = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/initiative/next`, {}), onSuccess: invalidate });
   const [monName, setMonName] = useState('');
   const [monPicker, setMonPicker] = useState(false);
   const [monQuery, setMonQuery] = useState('');
@@ -123,8 +124,9 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean; initTurn?: string };
   const allowHomebrew = cdata.allowHomebrew !== false; // default: allowed
+  const initTurn = typeof cdata.initTurn === 'string' ? cdata.initTurn : '';
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
   const lootTrash: LootTrashItem[] = Array.isArray(cdata.lootTrash) ? cdata.lootTrash : [];
   const initiative: InitEntry[] = (Array.isArray(cdata.initiative) ? cdata.initiative : []).slice().sort((a, b) => b.value - a.value);
@@ -260,16 +262,19 @@ export function CampaignPage() {
 
           {/* initiative tracker — shared across the campaign */}
           <div style={box}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
               <span style={secLabel}>⚔️ INITIATIVE <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· ลำดับการเล่น</span></span>
-              {c.isLibrarian && initiative.length > 0 && <button onClick={() => clearInit.mutate()} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ล้าง</button>}
+              <span style={{ display: 'inline-flex', gap: 6 }}>
+                {c.isLibrarian && initiative.length > 0 && <button onClick={() => nextTurn.mutate()} disabled={nextTurn.isPending} style={{ border: 'none', background: '#b4842a', color: '#fff', borderRadius: 7, padding: '3px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>▶ ตาถัดไป</button>}
+                {c.isLibrarian && initiative.length > 0 && <button onClick={() => clearInit.mutate()} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ล้าง</button>}
+              </span>
             </div>
             {initiative.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', marginBottom: c.isLibrarian ? 10 : 0 }}>ยังไม่มีใครทอย Initiative</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: c.isLibrarian ? 12 : 0 }}>
                 {initiative.map((e, i) => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 9, background: '#faf9f7', border: `1px solid ${e.kind === 'monster' ? '#f0d3cb' : '#ece9e3'}` }}>
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 9, background: initTurn === e.id ? '#fbf3dd' : '#faf9f7', border: `1px solid ${initTurn === e.id ? '#e6c98a' : e.kind === 'monster' ? '#f0d3cb' : '#ece9e3'}` }}>
                     <span style={{ flex: 'none', width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#f7dca0' : '#ece9e3', color: '#5c4a2e', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: e.kind === 'monster' ? '#b4513a' : '#2f2c25' }}>{e.name}{e.kind === 'monster' && ' 👹'}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: e.kind === 'monster' ? '#b4513a' : '#2f2c25' }}>{e.name}{e.kind === 'monster' && ' 👹'}{initTurn === e.id && <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 800, color: '#b4842a', background: '#fff', border: '1px solid #e6c98a', borderRadius: 6, padding: '1px 7px' }}>◆ ถึงตา</span>}</span>
                     {c.isLibrarian ? (
                       <>
                         <button onClick={() => setInitValue.mutate({ entryId: e.id, value: e.value - 1 })} style={initStep}>−</button>

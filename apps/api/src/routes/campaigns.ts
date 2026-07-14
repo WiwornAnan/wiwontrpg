@@ -251,6 +251,7 @@ campaignsRouter.delete('/:id/initiative/:entryId', async (req, res) => {
   const data = parseData(c.data);
   const init = (Array.isArray(data.initiative) ? data.initiative : []) as { id: string }[];
   data.initiative = init.filter((e) => e.id !== req.params.entryId);
+  if (data.initTurn === req.params.entryId) delete data.initTurn;
   await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
 });
@@ -270,8 +271,24 @@ campaignsRouter.post('/:id/initiative/clear', async (req, res) => {
   if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
   const data = parseData(c.data);
   data.initiative = [];
+  delete data.initTurn;
   await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
   res.json({ ok: true });
+});
+
+// Advance the "current turn" pointer through the initiative order (highest
+// value first, same sort the UI shows). Loops back to the top at the end.
+campaignsRouter.post('/:id/initiative/next', async (req, res) => {
+  const c = await librarianCampaign(req.params.id, req.currentUser!.id);
+  if (!c) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const data = parseData(c.data);
+  const init = (Array.isArray(data.initiative) ? (data.initiative as { id: string; value: number }[]) : [])
+    .slice().sort((a, b) => b.value - a.value);
+  if (init.length === 0) { res.json({ ok: true }); return; }
+  const cur = typeof data.initTurn === 'string' ? init.findIndex((e) => e.id === data.initTurn) : -1;
+  data.initTurn = init[(cur + 1) % init.length].id;
+  await prisma.campaign.update({ where: { id: c.id }, data: { data: JSON.stringify(data) } });
+  res.json({ ok: true, initTurn: data.initTurn });
 });
 
 // Append an entry to the campaign's shared log (roll / magic / feature use).

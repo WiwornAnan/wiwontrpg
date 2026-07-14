@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, uploadImage } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -16,8 +16,30 @@ import layout from '../components/layout.module.css';
 
 interface BoardToken { id: string; kind: 'dweller' | 'monster' | 'custom'; refId?: string; name: string; color: string; emoji?: string; q: number; r: number }
 interface BoardPing { id: string; q: number; r: number; name: string; color: string; at: string }
-interface BoardMap { id: string; name: string; isActive: boolean; cols: number; rows: number; tokens: BoardToken[]; pings: BoardPing[]; updatedAt: string }
+interface BoardBg { url: string; w: number; x: number; y: number; opacity: number }
+interface PaletteEntry { id: string; color: string; label: string }
+interface BoardAura { id: string; by: string; radius: number; color: string; label: string; follow: boolean; tokenId?: string; q?: number; r?: number }
+interface BoardMap {
+  id: string; name: string; isActive: boolean; cols: number; rows: number;
+  tokens: BoardToken[]; pings: BoardPing[];
+  bg: BoardBg | null; palette: PaletteEntry[] | null;
+  terrain: Record<string, string>; elev: Record<string, number>; fog: Record<string, 1>;
+  auras: BoardAura[]; metersPerHex: number;
+  updatedAt: string;
+}
 interface MapMeta { id: string; name: string; isActive: boolean; cols: number; rows: number }
+
+// Terrain palette shown until the Librarian customises it (then stored on the map).
+const DEFAULT_PALETTE: PaletteEntry[] = [
+  { id: 'water', color: '#4a7fb5', label: 'น้ำ' },
+  { id: 'forest', color: '#4a7d4f', label: 'ป่า' },
+  { id: 'mountain', color: '#8d7a5a', label: 'ภูเขา / หิน' },
+  { id: 'sand', color: '#d9c48a', label: 'ทราย / ถนน' },
+  { id: 'wall', color: '#3c3a33', label: 'กำแพง / สิ่งกีดขวาง' },
+];
+
+type Tool = 'move' | 'paint' | 'erase' | 'elev-up' | 'elev-down' | 'fog-hide' | 'fog-reveal' | 'measure';
+type CellLayer = 'terrain' | 'elev' | 'fog';
 
 // Pointy-top hexes on an odd-r offset grid.
 const SQ3 = Math.sqrt(3);
@@ -40,6 +62,13 @@ function nearestHex(x: number, y: number, cols: number, rows: number): { q: numb
     if (d < bd) { bd = d; best = { q, r }; }
   }
   return bd <= (HEX * 1.5) ** 2 ? best : null;
+}
+
+// Hex distance on the odd-r offset grid (offset → cube coords → cube distance).
+function hexDist(a: { q: number; r: number }, b: { q: number; r: number }): number {
+  const ax = a.q - ((a.r - (a.r & 1)) / 2), az = a.r, ay = -ax - az;
+  const bx = b.q - ((b.r - (b.r & 1)) / 2), bz = b.r, by = -bx - bz;
+  return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
 }
 
 const num = (v: unknown, def = 0) => (typeof v === 'number' && isFinite(v) ? v : def);
@@ -133,6 +162,21 @@ export function BoardPage() {
     mutationFn: (v: { q: number; r: number }) => api.post(`/campaigns/${id}/maps/${mapId}/ping`, v),
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
   });
+  const patchBoard = useMutation({
+    mutationFn: (b: { bg?: BoardBg | null; palette?: PaletteEntry[]; metersPerHex?: number }) => api.patch(`/campaigns/${id}/maps/${mapId}/board`, b),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+  });
+  const paintCells = useMutation({
+    mutationFn: (b: { layer: CellLayer; cells: { q: number; r: number; v: string | number }[] }) => api.post(`/campaigns/${id}/maps/${mapId}/cells`, b),
+  });
+  const addAura = useMutation({
+    mutationFn: (b: { tokenId: string; radius: number; color: string; label: string; follow: boolean }) => api.post(`/campaigns/${id}/maps/${mapId}/auras`, b),
+    onSuccess: () => { setAuraForm(null); qc.invalidateQueries({ queryKey: boardKey }); },
+  });
+  const delAura = useMutation({
+    mutationFn: (auraId: string) => api.delete(`/campaigns/${id}/maps/${mapId}/auras/${auraId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+  });
 
   // ── view (pan/zoom) + interaction state ──
   const svgRef = useRef<SVGSVGElement>(null);
@@ -148,6 +192,20 @@ export function BoardPage() {
   const [monQuery, setMonQuery] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
   const [, setTick] = useState(0); // re-render for ping fade-out
+
+  // ── map tools ──
+  const [tool, setTool] = useState<Tool>('move');
+  const [paintId, setPaintId] = useState(DEFAULT_PALETTE[0].id);
+  const [showElevNums, setShowElevNums] = useState(true);
+  // Measure: A → (hover) → B. Distance in hexes × metersPerHex.
+  const [meas, setMeas] = useState<{ a: { q: number; r: number }; b?: { q: number; r: number } } | null>(null);
+  const [measHover, setMeasHover] = useState<{ q: number; r: number } | null>(null);
+  // Aura creation form (opened from the token info panel).
+  const [auraForm, setAuraForm] = useState<{ tokenId: string; radius: number; color: string; label: string; follow: boolean } | null>(null);
+  // Brush strokes render locally first (survives the 2s polls), then flush on release.
+  const overlay = useRef(new Map<string, { layer: CellLayer; v: string | number }>());
+  const [, bumpOverlay] = useState(0);
+  const bgRatioRef = useRef(new Map<string, number>()); // bg url -> naturalH/naturalW
 
   // Locally-seen time per ping id — pings render for 6s from when THIS client first saw them.
   const pingSeen = useRef(new Map<string, number>());
@@ -170,6 +228,11 @@ export function BoardPage() {
   const canMove = (t: BoardToken) =>
     !!c && (c.isLibrarian || (t.kind === 'dweller' && !!t.refId && c.members.some((m) => m.character.id === t.refId && m.character.ownerUserId === user?.id)));
 
+  // Layer readers: a fresh brush stroke (local overlay) wins over server data.
+  const cellTerrain = (key: string) => { const o = overlay.current.get(key); return o && o.layer === 'terrain' ? String(o.v) : map?.terrain[key] ?? ''; };
+  const cellElev = (key: string) => { const o = overlay.current.get(key); return o && o.layer === 'elev' ? Number(o.v) : map?.elev[key] ?? 0; };
+  const cellFog = (key: string) => { const o = overlay.current.get(key); return o && o.layer === 'fog' ? Number(o.v) === 1 : !!map?.fog[key]; };
+
   // Pan: drag the background. Window-level listeners (same pattern as the float windows).
   const startPan = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -182,9 +245,72 @@ export function BoardPage() {
     window.addEventListener('pointercancel', end);
   };
 
+  // Brush stroke: paint hexes locally while dragging, flush one batch on release.
+  const startStroke = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !map) return;
+    const layer: CellLayer = tool === 'paint' || tool === 'erase' ? 'terrain' : tool === 'elev-up' || tool === 'elev-down' ? 'elev' : 'fog';
+    const strokeCells = new Map<string, string | number>();
+    const applyAt = (clientX: number, clientY: number) => {
+      const p = toBoard(clientX, clientY);
+      const hex = nearestHex(p.x, p.y, map.cols, map.rows);
+      if (!hex) return;
+      const key = `${hex.q},${hex.r}`;
+      if (strokeCells.has(key)) return; // each hex once per stroke (matters for ▲▼)
+      let v: string | number;
+      if (tool === 'paint') v = paintId;
+      else if (tool === 'erase') v = '';
+      else if (tool === 'elev-up') v = Math.min(9, cellElev(key) + 1);
+      else if (tool === 'elev-down') v = Math.max(-9, cellElev(key) - 1);
+      else v = tool === 'fog-hide' ? 1 : 0;
+      strokeCells.set(key, v);
+      overlay.current.set(key, { layer, v });
+      bumpOverlay((n) => n + 1);
+    };
+    applyAt(e.clientX, e.clientY);
+    const onMove = (ev: PointerEvent) => applyAt(ev.clientX, ev.clientY);
+    const end = () => {
+      window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end);
+      if (strokeCells.size === 0) return;
+      const cells = [...strokeCells].map(([k, v]) => { const [q, r] = k.split(',').map(Number); return { q, r, v }; });
+      paintCells.mutate({ layer, cells }, {
+        onSettled: async () => {
+          await qc.invalidateQueries({ queryKey: boardKey });
+          // Drop only overlay entries this stroke owns (a newer stroke may have repainted them).
+          strokeCells.forEach((v, k) => { const o = overlay.current.get(k); if (o && o.layer === layer && o.v === v) overlay.current.delete(k); });
+          bumpOverlay((n) => n + 1);
+        },
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
+  // Measure clicks: 1st = anchor, 2nd = freeze target, 3rd = new anchor.
+  const measureClick = (e: React.PointerEvent) => {
+    if (!map) return;
+    const p = toBoard(e.clientX, e.clientY);
+    const hex = nearestHex(p.x, p.y, map.cols, map.rows);
+    if (!hex) return;
+    setMeas((m) => (!m || m.b ? { a: hex } : { a: m.a, b: hex }));
+  };
+
+  const onSvgDown = (e: React.PointerEvent) => {
+    if (!c?.isLibrarian && tool !== 'move' && tool !== 'measure') { startPan(e); return; }
+    if (tool === 'move') startPan(e);
+    else if (tool === 'measure') measureClick(e);
+    else startStroke(e);
+  };
+  const onSvgMove = (e: React.PointerEvent) => {
+    if (tool !== 'measure' || !meas || meas.b || !map) return;
+    const p = toBoard(e.clientX, e.clientY);
+    setMeasHover(nearestHex(p.x, p.y, map.cols, map.rows));
+  };
+
   // Token drag → snap to nearest hex on release; a near-still release = select.
   const startTokenDrag = (e: React.PointerEvent, t: BoardToken) => {
     if (e.button !== 0) return;
+    if (tool !== 'move') return; // let the stroke/measure handler on the svg take it
     e.stopPropagation();
     const sx = e.clientX, sy = e.clientY;
     const movable = canMove(t);
@@ -268,8 +394,51 @@ export function BoardPage() {
     return out;
   }, [map?.cols, map?.rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Background image aspect ratio (loaded once per url so <image> gets a height).
+  const [bgRatio, setBgRatio] = useState(0);
+  useEffect(() => {
+    const url = map?.bg?.url;
+    if (!url) { setBgRatio(0); return; }
+    const cached = bgRatioRef.current.get(url);
+    if (cached) { setBgRatio(cached); return; }
+    const img = new Image();
+    img.onload = () => { const ratio = img.naturalHeight / Math.max(1, img.naturalWidth); bgRatioRef.current.set(url, ratio); setBgRatio(ratio); };
+    img.src = url;
+  }, [map?.bg?.url]);
+
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
+
+  // ── derived render data ──
+  const palette = map?.palette && map.palette.length ? map.palette : DEFAULT_PALETTE;
+  const paletteById = new Map(palette.map((p) => [p.id, p]));
+  // Current initiative turn → highlight the matching token on the board.
+  const initiative = Array.isArray(c.data.initiative) ? (c.data.initiative as { id: string; name: string }[]) : [];
+  const initTurn = typeof c.data.initTurn === 'string' ? (c.data.initTurn as string) : '';
+  const turnEntry = initiative.find((e) => e.id === initTurn);
+  const isTurnToken = (t: BoardToken) =>
+    !!turnEntry && (turnEntry.id === `d:${t.refId}` || (t.kind !== 'dweller' && turnEntry.name === t.name));
+  // Auras resolved to a center (follow → the token's live position).
+  const resolvedAuras = (map?.auras ?? []).flatMap((a) => {
+    if (a.follow) {
+      const t = map?.tokens.find((x) => x.id === a.tokenId);
+      return t ? [{ ...a, cq: t.q, cr: t.r, tokenName: t.name }] : [];
+    }
+    return [{ ...a, cq: a.q ?? 0, cr: a.r ?? 0, tokenName: '' }];
+  });
+  const canDelAura = (a: BoardAura) => c.isLibrarian || a.by === user.id;
+  // Player fog rule: fogged cells hide other people's tokens (own stays visible).
+  const isMine = (t: BoardToken) => t.kind === 'dweller' && !!t.refId && c.members.some((m) => m.character.id === t.refId && m.character.ownerUserId === user.id);
+  const tokenHidden = (t: BoardToken) => !c.isLibrarian && cellFog(`${t.q},${t.r}`) && !isMine(t);
+  // Measure numbers (hex count + real distance from the map scale).
+  const measB = meas?.b ?? measHover;
+  const measInfo = map && meas && measB ? (() => {
+    const dist = hexDist(meas.a, measB);
+    const meters = dist * map.metersPerHex;
+    const distTxt = meters >= 1000 ? `${(meters / 1000).toLocaleString('th-TH', { maximumFractionDigits: 2 })} กม.` : `${meters.toLocaleString('th-TH', { maximumFractionDigits: 1 })} ม.`;
+    const dElev = cellElev(`${measB.q},${measB.r}`) - cellElev(`${meas.a.q},${meas.a.r}`);
+    return { dist, distTxt, dElev };
+  })() : null;
 
   const btn: React.CSSProperties = { border: '1px solid #e0ded7', background: '#fff', color: '#5f5c54', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' };
   const chip = (on: boolean): React.CSSProperties => ({ ...btn, background: on ? '#15140f' : '#fff', color: on ? '#fff' : '#5f5c54', borderColor: on ? '#15140f' : '#e0ded7' });
@@ -312,6 +481,39 @@ export function BoardPage() {
       )}
       {!c.isLibrarian && map && <div style={{ fontSize: 12.5, color: '#8d8a82', marginBottom: 10 }}>แผนที่: <b style={{ color: '#46443c' }}>{map.name}</b></div>}
 
+      {/* tools row */}
+      {map && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {([
+            ['move', '🖐 เลื่อน/ย้าย'],
+            ['measure', '📏 วัดระยะ'],
+            ...(c.isLibrarian ? [
+              ['paint', '🖌 ระบายสี'],
+              ['erase', '🧽 ลบสี'],
+              ['elev-up', '▲ ยกพื้น'],
+              ['elev-down', '▼ กดพื้น'],
+              ['fog-hide', '🌫 ซ่อน (หมอก)'],
+              ['fog-reveal', '☀ เปิดหมอก'],
+            ] as [Tool, string][] : []),
+          ] as [Tool, string][]).map(([t, label]) => (
+            <button key={t} onClick={() => { setTool(t); if (t !== 'measure') { setMeas(null); setMeasHover(null); } }} style={chip(tool === t)}>{label}</button>
+          ))}
+          <button onClick={() => setShowElevNums((s) => !s)} style={{ ...btn, opacity: showElevNums ? 1 : 0.55 }} title="แสดง/ซ่อนตัวเลขระดับความสูง">🔢 เลขระดับ</button>
+          {tool === 'paint' && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4, padding: '4px 9px', background: '#faf9f7', border: '1px solid #ece9e3', borderRadius: 10 }}>
+              {(map.palette && map.palette.length ? map.palette : DEFAULT_PALETTE).map((p) => (
+                <button key={p.id} onClick={() => setPaintId(p.id)} title={p.label} style={{ width: 22, height: 22, borderRadius: 6, background: p.color, border: paintId === p.id ? '2.5px solid #15140f' : '2.5px solid #fff', outline: '1px solid #d8d5ce', cursor: 'pointer', padding: 0, flex: 'none' }} />
+              ))}
+            </span>
+          )}
+          {tool === 'measure' && map && (
+            <span style={{ fontSize: 11.5, color: '#8a6a3a', background: '#fbf3dd', border: '1px solid #e6c98a', borderRadius: 8, padding: '4px 11px' }}>
+              1 ช่อง = {map.metersPerHex.toLocaleString('th-TH')} ม.{c.isLibrarian ? ' (แก้ได้ใน ⚙ ตั้งค่า)' : ''}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* board */}
       {!map ? (
         <div style={{ border: '1px dashed #d8d5ce', borderRadius: 16, padding: '70px 20px', textAlign: 'center', color: '#a8a59d', background: '#faf9f7' }}>
@@ -329,19 +531,77 @@ export function BoardPage() {
         <div style={{ position: 'relative', border: '1px solid #e4e2dc', borderRadius: 16, overflow: 'hidden', background: '#f4f0e8' }}>
           <svg
             ref={svgRef}
-            style={{ display: 'block', width: '100%', height: 'calc(100vh - 235px)', minHeight: 440, touchAction: 'none', cursor: 'grab', userSelect: 'none' }}
-            onPointerDown={startPan}
+            style={{ display: 'block', width: '100%', height: 'calc(100vh - 268px)', minHeight: 420, touchAction: 'none', cursor: tool === 'move' ? 'grab' : 'crosshair', userSelect: 'none' }}
+            onPointerDown={onSvgDown}
+            onPointerMove={onSvgMove}
             onDoubleClick={onDblClick}
           >
             <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-              {/* grid */}
-              {hexes.map((h) => (
-                <polygon key={`${h.q},${h.r}`} points={h.pts} fill="#fbf9f4" stroke="#ddd6c8" strokeWidth={1.2} />
-              ))}
+              {/* background map image */}
+              {map.bg && bgRatio > 0 && (
+                <image href={map.bg.url} x={map.bg.x} y={map.bg.y} width={map.bg.w} height={map.bg.w * bgRatio} opacity={map.bg.opacity} preserveAspectRatio="none" pointerEvents="none" />
+              )}
+              {/* grid + terrain */}
+              {hexes.map((h) => {
+                const key = `${h.q},${h.r}`;
+                const ter = cellTerrain(key);
+                const col = ter ? paletteById.get(ter)?.color : undefined;
+                return <polygon key={key} points={h.pts} fill={col ?? (map.bg ? 'transparent' : '#fbf9f4')} fillOpacity={col ? 0.62 : 1} stroke="#c9c2b2" strokeWidth={1} />;
+              })}
+              {/* elevation shading + level numbers */}
+              {hexes.map((h) => {
+                const key = `${h.q},${h.r}`;
+                const v = cellElev(key);
+                if (v === 0) return null;
+                return (
+                  <g key={`e${key}`} pointerEvents="none">
+                    <polygon points={h.pts} fill={v > 0 ? '#fffbe8' : '#16324f'} fillOpacity={v > 0 ? Math.min(0.09 * v, 0.5) : Math.min(0.11 * -v, 0.55)} />
+                    {showElevNums && (
+                      <text x={hexX(h.q, h.r)} y={hexY(h.r) - HEX * 0.45} textAnchor="middle" style={{ fontSize: 9.5, fontWeight: 800, fill: v > 0 ? '#8a6a3a' : '#2a5fbd', paintOrder: 'stroke', stroke: '#ffffffcc', strokeWidth: 2.5 }}>
+                        {v > 0 ? `+${v}` : v}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              {/* auras (พื้นที่อาณาเขต) */}
+              {resolvedAuras.map((a) => {
+                const cells = hexes.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) <= a.radius);
+                return (
+                  <g key={a.id} pointerEvents="none">
+                    {cells.map((h) => <polygon key={`${a.id}${h.q},${h.r}`} points={h.pts} fill={a.color} fillOpacity={0.18} />)}
+                    {cells.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) === a.radius).map((h) => (
+                      <polygon key={`${a.id}o${h.q},${h.r}`} points={h.pts} fill="none" stroke={a.color} strokeWidth={1.6} strokeOpacity={0.55} />
+                    ))}
+                    {a.label && <text x={hexX(a.cq, a.cr)} y={hexY(a.cr) + HEX * 1.1} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: a.color, paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◎ {a.label}</text>}
+                  </g>
+                );
+              })}
+              {/* fog of war — opaque for players, translucent for the Librarian */}
+              {hexes.map((h) => {
+                const key = `${h.q},${h.r}`;
+                if (!cellFog(key)) return null;
+                return <polygon key={`f${key}`} points={h.pts} fill="#262019" fillOpacity={c.isLibrarian ? 0.3 : 0.97} stroke={c.isLibrarian ? '#26201955' : '#1b1712'} strokeWidth={1} pointerEvents="none" />;
+              })}
               {/* drag target highlight */}
               {drag && drag.moved && canMove(drag.token) && (() => {
                 const hex = nearestHex(drag.x, drag.y, map.cols, map.rows);
                 return hex ? <polygon points={hexPoints(hex.q, hex.r)} fill="#e07a5f22" stroke="#e07a5f" strokeWidth={2} /> : null;
+              })()}
+              {/* measure line */}
+              {meas && measB && measInfo && (() => {
+                const x1 = hexX(meas.a.q, meas.a.r), y1 = hexY(meas.a.r);
+                const x2 = hexX(measB.q, measB.r), y2 = hexY(measB.r);
+                return (
+                  <g pointerEvents="none">
+                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#b4842a" strokeWidth={3} strokeDasharray="7 5" strokeLinecap="round" />
+                    <circle cx={x1} cy={y1} r={6} fill="#b4842a" />
+                    <circle cx={x2} cy={y2} r={6} fill="#b4842a" />
+                    <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 12} textAnchor="middle" style={{ fontSize: 13.5, fontWeight: 800, fill: '#8a6a3a', paintOrder: 'stroke', stroke: '#fff', strokeWidth: 4 }}>
+                      {measInfo.dist} ช่อง · {measInfo.distTxt}{measInfo.dElev !== 0 ? ` · ${measInfo.dElev > 0 ? `↑ สูงขึ้น +${measInfo.dElev}` : `↓ ต่ำลง ${measInfo.dElev}`}` : ''}
+                    </text>
+                  </g>
+                );
               })()}
               {/* pings */}
               {pings.map((p) => (
@@ -355,24 +615,31 @@ export function BoardPage() {
                 </g>
               ))}
               {/* tokens */}
-              {map.tokens.map((t) => {
+              {map.tokens.filter((t) => !tokenHidden(t)).map((t) => {
                 const isDrag = drag?.token.id === t.id && drag.moved;
                 const x = isDrag ? drag.x : hexX(t.q, t.r);
                 const y = isDrag ? drag.y : hexY(t.r);
                 const movable = canMove(t);
                 const sel = t.id === selTokenId;
+                const turn = isTurnToken(t);
                 return (
                   <g
                     key={t.id}
                     transform={`translate(${x},${y})`}
                     onPointerDown={(e) => startTokenDrag(e, t)}
-                    style={{ cursor: movable ? 'grab' : 'pointer' }}
+                    style={{ cursor: tool !== 'move' ? 'crosshair' : movable ? 'grab' : 'pointer' }}
                   >
+                    {turn && (
+                      <circle r={HEX * 0.86} fill="none" stroke="#e0a72a" strokeWidth={3.5}>
+                        <animate attributeName="stroke-opacity" values="1;0.35;1" dur="1.4s" repeatCount="indefinite" />
+                      </circle>
+                    )}
                     {sel && <circle r={HEX * 0.78} fill="none" stroke="#e07a5f" strokeWidth={2.5} strokeDasharray="5 4" />}
                     <circle r={HEX * 0.6} fill={t.color} stroke="#fff" strokeWidth={movable ? 3 : 2} opacity={isDrag ? 0.85 : 1} />
                     <text y={t.emoji ? 7 : 6} textAnchor="middle" style={{ fontSize: t.emoji ? 20 : 17, fontWeight: 800, fill: '#fff', pointerEvents: 'none' }}>
                       {t.emoji ?? (t.kind === 'monster' ? '👹' : (t.name || '?').charAt(0).toUpperCase())}
                     </text>
+                    {turn && <text y={-HEX * 0.95} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: '#b4842a', paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◆ ถึงตา</text>}
                     <text y={HEX * 0.6 + 15} textAnchor="middle" style={{ fontSize: 11.5, fontWeight: 700, fill: '#3c3a33', paintOrder: 'stroke', stroke: '#fbf9f4', strokeWidth: 3.5, pointerEvents: 'none' }}>
                       {t.name.length > 14 ? t.name.slice(0, 13) + '…' : t.name}
                     </text>
@@ -383,9 +650,46 @@ export function BoardPage() {
           </svg>
 
           {/* hint bar */}
-          <div style={{ position: 'absolute', left: 10, bottom: 10, fontSize: 10.5, color: '#8d8a82', background: 'rgba(255,255,255,.85)', border: '1px solid #e4e2dc', borderRadius: 8, padding: '5px 10px', pointerEvents: 'none' }}>
-            ลากพื้นหลัง = เลื่อน · ล้อเมาส์ = ซูม · ดับเบิลคลิก = 📍 ชี้จุดให้ทุกคนเห็น{c.isLibrarian || map.tokens.some(canMove) ? ' · ลากตัวหมาก = ย้าย' : ''}
+          <div style={{ position: 'absolute', left: 10, bottom: 10, fontSize: 10.5, color: '#8d8a82', background: 'rgba(255,255,255,.85)', border: '1px solid #e4e2dc', borderRadius: 8, padding: '5px 10px', pointerEvents: 'none', maxWidth: '55%' }}>
+            {tool === 'measure' ? 'คลิกจุดแรก แล้วคลิกจุดปลายเพื่อวัดระยะ · คลิกอีกครั้งเริ่มใหม่'
+              : tool !== 'move' ? 'คลิก/ลากบนช่องเพื่อระบาย · สลับกลับ 🖐 เพื่อเลื่อนแผนที่'
+              : `ลากพื้นหลัง = เลื่อน · ล้อเมาส์ = ซูม · ดับเบิลคลิก = 📍 ชี้จุดให้ทุกคนเห็น${c.isLibrarian || map.tokens.some(canMove) ? ' · ลากตัวหมาก = ย้าย' : ''}`}
           </div>
+
+          {/* terrain legend (ตารางบอกสี) — everyone sees; Librarian edits */}
+          <div style={{ position: 'absolute', right: 10, bottom: 10, width: c.isLibrarian ? 210 : 170, background: 'rgba(255,255,255,.94)', border: '1px solid #e4e2dc', borderRadius: 11, padding: '9px 11px', maxHeight: 240, overflowY: 'auto' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.05em', color: '#a8a59d', marginBottom: 6 }}>สัญลักษณ์สี</div>
+            {palette.map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                {c.isLibrarian
+                  ? <input type="color" value={p.color} onChange={(e) => patchBoard.mutate({ palette: palette.map((x) => (x.id === p.id ? { ...x, color: e.target.value } : x)) })} style={{ width: 18, height: 18, padding: 0, border: 'none', background: 'none', cursor: 'pointer', flex: 'none' }} />
+                  : <span style={{ width: 13, height: 13, borderRadius: 4, background: p.color, flex: 'none', border: '1px solid rgba(0,0,0,.15)' }} />}
+                {c.isLibrarian
+                  ? <input key={p.id + p.label} defaultValue={p.label} placeholder="ความหมาย…" onBlur={(e) => { if (e.target.value !== p.label) patchBoard.mutate({ palette: palette.map((x) => (x.id === p.id ? { ...x, label: e.target.value } : x)) }); }} style={{ flex: 1, minWidth: 0, border: 'none', borderBottom: '1px dashed #e0ded7', background: 'transparent', outline: 'none', fontSize: 11.5, color: '#46443c' }} />
+                  : <span style={{ flex: 1, fontSize: 11.5, color: '#46443c' }}>{p.label || '—'}</span>}
+                {c.isLibrarian && palette.length > 1 && <button onClick={() => patchBoard.mutate({ palette: palette.filter((x) => x.id !== p.id) })} title="ลบสีนี้" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 12, flex: 'none', padding: 0 }}>×</button>}
+              </div>
+            ))}
+            {c.isLibrarian && (
+              <button onClick={() => patchBoard.mutate({ palette: [...palette, { id: `c${Date.now().toString(36)}`, color: '#888888', label: '' }] })} style={{ marginTop: 3, border: '1px dashed #d8d5ce', background: '#fff', color: '#8d8a82', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer', width: '100%' }}>＋ เพิ่มสี</button>
+            )}
+          </div>
+
+          {/* aura list — anyone can see; delete if yours (or Librarian) */}
+          {resolvedAuras.length > 0 && (
+            <div style={{ position: 'absolute', left: 10, top: 10, width: 200, background: 'rgba(255,255,255,.94)', border: '1px solid #e4e2dc', borderRadius: 11, padding: '9px 11px', maxHeight: 220, overflowY: 'auto' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.05em', color: '#a8a59d', marginBottom: 6 }}>◎ อาณาเขต ({resolvedAuras.length})</div>
+              {resolvedAuras.map((a) => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: a.color, flex: 'none', border: '1px solid rgba(0,0,0,.15)' }} />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#46443c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {a.label || 'อาณาเขต'} · {a.radius} ช่อง {a.follow ? `· 🔗 ${a.tokenName}` : '· 📍 ปักหมุด'}
+                  </span>
+                  {canDelAura(a) && <button onClick={() => delAura.mutate(a.id)} title="ลบอาณาเขต" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 12, flex: 'none', padding: 0 }}>×</button>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* selected token info */}
           {selected && (
@@ -441,6 +745,36 @@ export function BoardPage() {
                 <button onClick={() => selected.refId && setMonsterInfo(selected.refId)} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: '#b4513a', background: '#fbeae6', border: '1px solid #f0d3cb', borderRadius: 8, padding: '7px', cursor: 'pointer', marginBottom: 6 }}>ⓘ ดูข้อมูลมอนสเตอร์</button>
               )}
 
+              {/* aura (พื้นที่อาณาเขต) — Librarian on any token; a player on their own */}
+              {(c.isLibrarian || isMine(selected)) && (
+                auraForm && auraForm.tokenId === selected.id ? (
+                  <div style={{ border: '1px solid #e2d7f2', background: '#faf8fd', borderRadius: 9, padding: 9, marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#5b3fa0', flex: 1 }}>◎ อาณาเขตใหม่</span>
+                      <button onClick={() => setAuraForm(null)} style={{ border: 'none', background: 'none', color: '#a8a59d', cursor: 'pointer', fontSize: 13, padding: 0 }}>×</button>
+                    </div>
+                    <input value={auraForm.label} onChange={(e) => setAuraForm({ ...auraForm, label: e.target.value })} placeholder="ชื่อ เช่น แสงศักดิ์สิทธิ์" style={{ border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 11.5, outline: 'none' }} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#5f5c54' }}>
+                      รัศมี
+                      <input type="number" min={1} max={30} value={auraForm.radius} onChange={(e) => setAuraForm({ ...auraForm, radius: Math.min(30, Math.max(1, Math.round(Number(e.target.value) || 1))) })} style={{ width: 56, border: '1px solid #e0ded7', borderRadius: 7, padding: '5px 7px', fontSize: 11.5, textAlign: 'center' }} />
+                      ช่อง <span style={{ color: '#a8a59d' }}>(≈ {(auraForm.radius * map.metersPerHex).toLocaleString('th-TH')} ม.)</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {SWATCHES.map((col) => (
+                        <button key={col} onClick={() => setAuraForm({ ...auraForm, color: col })} style={{ width: 17, height: 17, borderRadius: '50%', background: col, border: auraForm.color === col ? '2px solid #15140f' : '2px solid #fff', outline: '1px solid #e0ded7', cursor: 'pointer', padding: 0 }} />
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button onClick={() => setAuraForm({ ...auraForm, follow: true })} style={{ flex: 1, border: `1px solid ${auraForm.follow ? '#5b3fa0' : '#e0ded7'}`, background: auraForm.follow ? '#ede7f6' : '#fff', color: auraForm.follow ? '#5b3fa0' : '#8d8a82', borderRadius: 7, padding: '5px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>🔗 ตามตัวละคร</button>
+                      <button onClick={() => setAuraForm({ ...auraForm, follow: false })} style={{ flex: 1, border: `1px solid ${!auraForm.follow ? '#5b3fa0' : '#e0ded7'}`, background: !auraForm.follow ? '#ede7f6' : '#fff', color: !auraForm.follow ? '#5b3fa0' : '#8d8a82', borderRadius: 7, padding: '5px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>📍 ปักไว้ตรงนี้</button>
+                    </div>
+                    <button onClick={() => addAura.mutate(auraForm)} disabled={addAura.isPending} style={{ border: 'none', background: '#5b3fa0', color: '#fff', borderRadius: 7, padding: '7px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>สร้างอาณาเขต</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setAuraForm({ tokenId: selected.id, radius: 2, color: '#8a5fc0', label: '', follow: true })} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: '#5b3fa0', background: '#f3effa', border: '1px solid #e2d7f2', borderRadius: 8, padding: '7px', cursor: 'pointer', marginBottom: 6 }}>◎ สร้างอาณาเขตรอบตัวนี้</button>
+                )
+              )}
+
               {c.isLibrarian && (
                 <div style={{ borderTop: '1px dashed #efece6', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
                   <input key={selected.id + selected.name} defaultValue={selected.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== selected.name) patchToken.mutate({ tokenId: selected.id, name: v }); }} style={{ border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 12, outline: 'none' }} />
@@ -478,6 +812,41 @@ export function BoardPage() {
                 <input key={`r${map.rows}`} type="number" min={6} max={60} defaultValue={map.rows} onBlur={(e) => { const v = Math.min(60, Math.max(6, Math.round(Number(e.target.value) || map.rows))); if (v !== map.rows) patchMap.mutate({ rows: v }); }} style={{ display: 'block', marginTop: 5, width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '9px 12px', fontSize: 13 }} />
               </label>
             </div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82' }}>มาตราส่วน — 1 ช่อง = ? เมตร
+              <input key={`m${map.metersPerHex}`} type="number" min={0.01} step={0.5} defaultValue={map.metersPerHex} onBlur={(e) => { const v = Number(e.target.value) || 1.5; if (v !== map.metersPerHex) patchBoard.mutate({ metersPerHex: v }); }} style={{ display: 'block', marginTop: 5, width: 140, boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 9, padding: '9px 12px', fontSize: 13 }} />
+            </label>
+
+            <div style={{ borderTop: '1px dashed #ece9e3', paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#8d8a82', marginBottom: 8 }}>🖼 ภาพแผนที่พื้นหลัง (ใต้ตารางหกเหลี่ยม)</div>
+              <label style={{ display: 'inline-block', border: '1px solid #d8cfc0', background: '#f6f2ea', color: '#6b5b45', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                {map.bg ? 'เปลี่ยนรูป…' : 'อัปโหลดรูป…'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  try {
+                    const url = await uploadImage(f);
+                    patchBoard.mutate({ bg: { url, w: Math.round(boardW(map.cols)), x: 0, y: 0, opacity: 1 } });
+                  } catch { window.alert('อัปโหลดรูปไม่สำเร็จ'); }
+                  e.target.value = '';
+                }} />
+              </label>
+              {map.bg && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+                    {([['w', 'ความกว้างรูป', map.bg.w], ['x', 'เลื่อนแนวนอน (X)', map.bg.x], ['y', 'เลื่อนแนวตั้ง (Y)', map.bg.y]] as const).map(([k, label, val]) => (
+                      <label key={k} style={{ fontSize: 11, fontWeight: 700, color: '#8d8a82' }}>{label}
+                        <input key={`${k}${val}`} type="number" defaultValue={val} onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== val && map.bg) patchBoard.mutate({ bg: { ...map.bg, [k]: v } }); }} style={{ display: 'block', marginTop: 4, width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                      </label>
+                    ))}
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#8d8a82' }}>ความทึบ (0.1–1)
+                      <input key={`o${map.bg.opacity}`} type="number" min={0.1} max={1} step={0.1} defaultValue={map.bg.opacity} onBlur={(e) => { const v = Math.min(1, Math.max(0.1, Number(e.target.value) || 1)); if (v !== map.bg?.opacity && map.bg) patchBoard.mutate({ bg: { ...map.bg, opacity: v } }); }} style={{ display: 'block', marginTop: 4, width: '100%', boxSizing: 'border-box', border: '1px solid #e0ded7', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                    </label>
+                  </div>
+                  <button onClick={() => patchBoard.mutate({ bg: null })} style={{ marginTop: 8, border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 8, padding: '7px 13px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>เอารูปออก</button>
+                </>
+              )}
+            </div>
+
             <button onClick={() => { if (window.confirm(`ลบแผนที่ “${map.name}” ถาวร? ตัวหมากบนแผนที่นี้จะหายไปด้วย`)) deleteMap.mutate(); }} style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 9, padding: '9px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>🗑 ลบแผนที่นี้</button>
           </div>
         </Modal>
