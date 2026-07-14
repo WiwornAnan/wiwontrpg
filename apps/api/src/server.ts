@@ -14,6 +14,7 @@ import { articlesRouter } from './routes/articles.js';
 import { coversRouter } from './routes/covers.js';
 import { charactersRouter } from './routes/characters.js';
 import { campaignsRouter } from './routes/campaigns.js';
+import { boardsRouter } from './routes/boards.js';
 import { wizardRouter } from './routes/wizard.js';
 import { catalogRouter } from './routes/catalog.js';
 import { tagsRouter } from './routes/tags.js';
@@ -102,6 +103,7 @@ app.use('/api/articles', articlesRouter);
 app.use('/api/wiwon-covers', coversRouter);
 app.use('/api/characters', charactersRouter);
 app.use('/api/campaigns', campaignsRouter);
+app.use('/api/campaigns', boardsRouter); // hex battle maps (/:id/maps…)
 app.use('/api/wizard', wizardRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/tags', tagsRouter);

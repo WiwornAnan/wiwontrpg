@@ -161,6 +161,7 @@ export function CampaignPage() {
           ) : <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>{c.name}</h1>}
           <div style={{ fontSize: 12.5, color: '#9a978e', marginTop: 4 }}>{c.isLibrarian ? 'บรรณารักษ์ (Librarian)' : 'ผู้เล่น'} · {c.members.length} ตัวละคร · รหัสเข้าร่วม <b style={{ color: '#5c4a2e', letterSpacing: 1 }}>{c.joinCode}</b></div>
         </div>
+        <Link to={`/campaign/${id}/board`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d8cfc0', background: '#f6f2ea', color: '#6b5b45', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}>🗺 กระดานวิวรณ์</Link>
         {c.isLibrarian && <button onClick={() => setDelOpen(true)} style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ลบแคมเปญ</button>}
       </div>
 

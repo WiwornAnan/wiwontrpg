@@ -65,8 +65,29 @@ model Campaign {
 
   librarian User             @relation("CampaignLibrarian", fields: [librarianUserId], references: [id], onDelete: Cascade)
   members   CampaignMember[]
+  maps      CampaignMap[]
 
   @@index([librarianUserId])
+}
+
+// A hex battle map ("กระดานวิวรณ์") inside a campaign. The Librarian may keep
+// several maps (scenes) and flags one as active for the players. `data` holds
+// the board state as JSON (tokens, pings; later terrain/elevation/fog) so the
+// shape can evolve without migrations.
+model CampaignMap {
+  id         String   @id @default(cuid())
+  campaignId String
+  name       String   @default("แผนที่ใหม่")
+  isActive   Boolean  @default(false)
+  cols       Int      @default(22)
+  rows       Int      @default(15)
+  data       String   @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
 }
 
 model CampaignMember {
