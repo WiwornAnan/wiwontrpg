@@ -509,6 +509,7 @@ function CharacterSheet({
             style={{ flex: 'none', cursor: 'grab', color: '#c9c5bd', fontSize: 14, lineHeight: 1, userSelect: 'none' }}
           >⠿</span>
           <input key={l.name} defaultValue={l.name} onBlur={(e) => { if (e.target.value !== l.name) setInv(l.lineId, { name: e.target.value }); }} style={{ flex: 'none', minWidth: 0, maxWidth: 150, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#3c3a33' }} />
+          <input key={'sub' + (l.sub ?? '')} defaultValue={l.sub ?? ''} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.sub ?? '')) setInv(l.lineId, { sub: v }); }} placeholder="＋ ชื่อรอง" title="ชื่อรอง / ฉายาของไอเทมชิ้นนี้" style={{ flex: 'none', minWidth: 0, maxWidth: 130, border: 'none', borderBottom: l.sub ? '1px dashed #ddd6c8' : '1px dashed transparent', background: 'transparent', outline: 'none', fontSize: 11, fontStyle: 'italic', color: '#9a8f7e' }} />
           {l.glass && <span style={{ flex: 'none', fontSize: 10.5, fontWeight: 700, color: '#3a7ca8' }}>(Glass)</span>}
           {l.book && <span style={{ flex: 'none', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#ede7f6', color: '#5b3fa0' }}>📖 Book</span>}
           <span style={{ flex: 1 }} />
@@ -3713,10 +3714,13 @@ const COIN_DEFS = [
 const QL_TO_IC = 500; // 1 QL = 5 SC = 500 IC
 const PURCHASE_TAGS = ['Life lesson', 'Local Knowledge', 'Social', 'Specialization', 'Language', 'Weapon Proficiency'];
 const qlCostOf = (f: CatalogItem) => parseInt(String(f.fields.ql ?? '').replace(/[^0-9]/g, ''), 10) || 0;
+// Auto-conversion caps at Gold — Platinum (PC) is a prestige/"honorary" coin
+// that players may hold, but value is never rolled up into it automatically.
+const CONVERT_DEFS = COIN_DEFS.filter((c) => c.key !== 'PC');
 const decomposeIC = (total: number) => {
   let rest = Math.max(0, Math.round(total));
   const out: Record<string, number> = {};
-  for (const c of COIN_DEFS) { out[c.key] = Math.floor(rest / c.ic); rest -= out[c.key] * c.ic; }
+  for (const c of CONVERT_DEFS) { out[c.key] = Math.floor(rest / c.ic); rest -= out[c.key] * c.ic; }
   return out;
 };
 const numData = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 0);
@@ -4383,7 +4387,7 @@ const coinStr = (ic: number) => {
 const priceOf = (m: CatalogItem) => parseInt(String(m.fields.costNum ?? '').replace(/[^0-9]/g, ''), 10) || 0;
 
 interface ItemRef { id: string; name: string }
-interface BagLine { lineId: string; itemId: string; name: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean; water?: boolean; trashedAt?: number }
+interface BagLine { lineId: string; itemId: string; name: string; sub?: string; priceIC: number; zone?: 'loot' | 'ready' | 'bag'; kg?: number; isBag?: boolean; desc?: string; dur?: number; durMax?: number; arts?: string; engrave?: string; artRefs?: ItemRef[]; engRefs?: ItemRef[]; worn?: boolean; cap?: number; inBag?: string; glass?: boolean; book?: boolean; magicId?: string; extra?: boolean; water?: boolean; trashedAt?: number }
 
 async function fetchEquipment(): Promise<CatalogItem[]> {
   const params = new URLSearchParams({ isFeature: 'false', scope: 'all' });

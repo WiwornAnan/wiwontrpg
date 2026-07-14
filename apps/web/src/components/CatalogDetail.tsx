@@ -67,6 +67,8 @@ interface Props {
   isFeature: boolean;
   onEdit: (item: CatalogItem) => void;
   onSubmitOfficial?: (item: CatalogItem) => void;
+  // Duplicate this item into the user's own editable Homebrew (name + " (Copy)").
+  onCopy?: (item: CatalogItem) => void;
   // When shown inside a floating window (which already supplies a frame + its
   // own scroll), drop the sticky sidebar positioning and the redundant card
   // chrome — otherwise `position:sticky;top:96` pushes the content down and
@@ -90,7 +92,7 @@ interface Props {
 const EXCLUDE_STAT = new Set(['source', 'rarity', 'school']);
 const MAGIC_EXCLUDE = new Set(['ql', 'knowledge', 'curiosity', 'cost']);
 
-export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved, onLogUse }: Props) {
+export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmitOfficial, onCopy, embedded, instanceMode, instanceArts, instanceEngraved, onInstanceArts, onInstanceEngraved, onLogUse }: Props) {
   const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -329,6 +331,13 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
             ลบข้อมูล
           </button>
         </div>
+      )}
+
+      {/* Copy → own editable Homebrew. Any logged-in user, outside the sheet. */}
+      {onCopy && user && !embedded && (
+        <button onClick={() => onCopy(item)} title="คัดลอกไอเทมนี้เป็น Homebrew ของคุณ แล้วแก้ไขต่อได้ทันที" style={{ width: '100%', marginTop: 8, padding: 8, background: '#f6f2ea', color: '#6b5b45', border: '1px solid #e2d7bf', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          ⧉ Copy เพื่อแก้ไข (สร้างเป็น Homebrew ของคุณ)
+        </button>
       )}
 
       <Modal

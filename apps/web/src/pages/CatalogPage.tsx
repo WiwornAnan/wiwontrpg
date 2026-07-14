@@ -90,6 +90,28 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
     },
   });
 
+  // Copy an item → a new Homebrew owned by the user (name + " (Copy)"), then open
+  // the edit modal on it so they can tweak without rewriting from scratch.
+  const copyItem = useMutation({
+    mutationFn: (item: CatalogItem) => api.post<{ item: CatalogItem }>(`/catalog/${category}`, {
+      name: `${item.name} (Copy)`,
+      subtitle: item.subtitle ?? undefined,
+      isFeature: !!item.isFeature,
+      relatedWiwonId: item.relatedWiwonId ?? undefined,
+      fields: item.fields ?? {},
+      description: item.description ?? '',
+      tags: item.tags ?? [],
+      iconUrl: item.iconUrl ?? undefined,
+    }),
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ['catalog', category] });
+      setQuery((q) => ({ ...q, scope: 'homebrew' }));
+      setSelectedId(d.item.id);
+      setEditItem(d.item);
+      setAddOpen(true);
+    },
+  });
+
   useEffect(() => {
     if (selected) setParams(selected.id ? { item: selected.id } : {}, { replace: true });
   }, [selected, setParams]);
@@ -239,7 +261,7 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 22, alignItems: 'start' }}>
         {/* detail (left) */}
         {selected ? (
-          <CatalogDetail key={selected.id} item={selected} cfg={cfg} category={category} isFeature={isFeature} onEdit={(it) => { setEditItem(it); setAddOpen(true); }} onSubmitOfficial={setSubmitItem} />
+          <CatalogDetail key={selected.id} item={selected} cfg={cfg} category={category} isFeature={isFeature} onEdit={(it) => { setEditItem(it); setAddOpen(true); }} onSubmitOfficial={setSubmitItem} onCopy={user ? (it) => copyItem.mutate(it) : undefined} />
         ) : (
           <div style={{ background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: '50px 24px', textAlign: 'center', color: '#a8a59d', fontSize: 13, position: 'sticky', top: 96 }}>
             เลือกรายการเพื่อดูรายละเอียด

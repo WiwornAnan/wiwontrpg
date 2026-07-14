@@ -20,7 +20,8 @@ interface Props {
 // numeric mirror keys the list/filters sort on (e.g. cost -> costNum)
 const NUM_MIRROR: Record<string, string> = { weight: 'weightNum', dr: 'drNum' };
 // Iron-coin total → a "n PC · n GC …" display string.
-const COIN_TIERS_STR: [string, number][] = [['PC', 10000], ['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
+// Caps at Gold — Platinum is a prestige coin, item costs never quote it.
+const COIN_TIERS_STR: [string, number][] = [['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
 function coinStr(ic: number): string {
   let rest = Math.max(0, Math.round(ic));
   const parts: string[] = [];

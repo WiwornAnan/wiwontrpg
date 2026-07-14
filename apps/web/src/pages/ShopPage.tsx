@@ -69,7 +69,8 @@ function sampleN<T>(arr: T[], n: number): T[] {
 }
 
 // Format a total Iron-Coin value back into coin denominations for display.
-const COIN_ABBR: [string, number][] = [['PC', 10000], ['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
+// Caps at Gold (GC) — Platinum is a prestige coin, prices never quote it.
+const COIN_ABBR: [string, number][] = [['GC', 1000], ['SC', 100], ['CC', 10], ['IC', 1]];
 function coinStr(ic: number): string {
   const v = Math.max(0, Math.round(ic));
   if (v === 0) return '0';
