@@ -345,10 +345,11 @@ export function CatalogDetail({ item, cfg, category, isFeature, onEdit, onSubmit
         </div>
       )}
 
-      {/* Copy → own editable Homebrew. Any logged-in user, outside the sheet. */}
+      {/* Copy → an editable duplicate. A dev's copy is Official (make a variant);
+          a regular user's is their own Homebrew. Hidden inside the sheet. */}
       {onCopy && user && !embedded && (
-        <button onClick={() => onCopy(item)} title="คัดลอกไอเทมนี้เป็น Homebrew ของคุณ แล้วแก้ไขต่อได้ทันที" style={{ width: '100%', marginTop: 8, padding: 8, background: '#f6f2ea', color: '#6b5b45', border: '1px solid #e2d7bf', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-          ⧉ Copy เพื่อแก้ไข (สร้างเป็น Homebrew ของคุณ)
+        <button onClick={() => onCopy(item)} title={isDev ? 'คัดลอกเป็นไอเทม Official ใหม่ (variant) แล้วแก้ไขต่อได้ทันที' : 'คัดลอกไอเทมนี้เป็น Homebrew ของคุณ แล้วแก้ไขต่อได้ทันที'} style={{ width: '100%', marginTop: 8, padding: 8, background: '#f6f2ea', color: '#6b5b45', border: '1px solid #e2d7bf', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          {isDev ? '⧉ Copy → สร้างสำเนา Official เพื่อแก้ไข' : '⧉ Copy เพื่อแก้ไข (สร้างเป็น Homebrew ของคุณ)'}
         </button>
       )}
 

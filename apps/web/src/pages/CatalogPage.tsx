@@ -105,7 +105,9 @@ export function CatalogPage({ category }: { category: CatalogCategory }) {
     }),
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ['catalog', category] });
-      setQuery((q) => ({ ...q, scope: 'homebrew' }));
+      // A dev's copy is Official; a user's is Homebrew — switch to the scope that
+      // actually contains the new item so it's visible + selected for editing.
+      setQuery((q) => ({ ...q, scope: isDev ? 'official' : 'homebrew' }));
       setSelectedId(d.item.id);
       setEditItem(d.item);
       setAddOpen(true);
