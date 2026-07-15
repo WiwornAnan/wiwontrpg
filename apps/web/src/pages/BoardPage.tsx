@@ -99,6 +99,17 @@ const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?
 const SWATCHES = ['#e07a5f', '#2a5fbd', '#2f7d4f', '#8a5fc0', '#b4842a', '#c04a7a', '#2f8d8a', '#5f5030', '#b4513a', '#15140f'];
 const miniBtn: React.CSSProperties = { width: 24, height: 24, flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, fontSize: 13, fontWeight: 800, cursor: 'pointer', lineHeight: 1 };
 
+// Topographic elevation bands — each level gets its own distinct colour so height
+// reads at a glance (warm earth going up, deepening blue going down).
+const ELEV_UP = ['#efe3bd', '#e8d193', '#ddbc6d', '#d0a64f', '#c29038', '#b27b28', '#a1681d', '#8f5715', '#7d480f'];
+const ELEV_DOWN = ['#c6dbe9', '#9fc3da', '#7aaac9', '#5b91b6', '#44799f', '#356387', '#2a4f6f', '#213d58', '#192e43'];
+const elevFill = (v: number) => (v > 0 ? ELEV_UP[Math.min(v, 9) - 1] : ELEV_DOWN[Math.min(-v, 9) - 1]);
+// Shared-edge corner pairs per neighbor direction (pointy-top, odd-r offset) —
+// used to draw "cliff" lines where the ground drops between two hexes.
+const edgeDirs = (r: number): [number, number, number, number][] => (r & 1
+  ? [[1, 0, 0, 1], [-1, 0, 3, 4], [1, 1, 1, 2], [0, 1, 2, 3], [1, -1, 5, 0], [0, -1, 4, 5]]
+  : [[1, 0, 0, 1], [-1, 0, 3, 4], [0, 1, 1, 2], [-1, 1, 2, 3], [0, -1, 5, 0], [-1, -1, 4, 5]]);
+
 async function fetchMonsters(): Promise<CatalogItem[]> {
   const out: CatalogItem[] = [];
   for (let page = 1; page < 50; page++) {
@@ -579,21 +590,39 @@ export function BoardPage() {
                 const col = ter ? paletteById.get(ter)?.color : undefined;
                 return <polygon key={key} points={h.pts} fill={col ?? (map.bg ? 'transparent' : '#fbf9f4')} fillOpacity={col ? 0.62 : 1} stroke="#c9c2b2" strokeWidth={1} />;
               })}
-              {/* elevation shading + level numbers */}
+              {/* elevation — banded topographic tint + level numbers */}
               {hexes.map((h) => {
                 const key = `${h.q},${h.r}`;
                 const v = cellElev(key);
                 if (v === 0) return null;
                 return (
                   <g key={`e${key}`} pointerEvents="none">
-                    <polygon points={h.pts} fill={v > 0 ? '#fffbe8' : '#16324f'} fillOpacity={v > 0 ? Math.min(0.09 * v, 0.5) : Math.min(0.11 * -v, 0.55)} />
+                    <polygon points={h.pts} fill={elevFill(v)} fillOpacity={v > 0 ? 0.55 : 0.6} />
                     {showElevNums && (
-                      <text x={hexX(h.q, h.r)} y={hexY(h.r) - HEX * 0.45} textAnchor="middle" style={{ fontSize: 9.5, fontWeight: 800, fill: v > 0 ? '#8a6a3a' : '#2a5fbd', paintOrder: 'stroke', stroke: '#ffffffcc', strokeWidth: 2.5 }}>
+                      <text x={hexX(h.q, h.r)} y={hexY(h.r) - HEX * 0.45} textAnchor="middle" style={{ fontSize: 9.5, fontWeight: 800, fill: v > 0 ? '#6b4a17' : '#1c3a56', paintOrder: 'stroke', stroke: '#ffffffcc', strokeWidth: 2.5 }}>
                         {v > 0 ? `+${v}` : v}
                       </text>
                     )}
                   </g>
                 );
+              })}
+              {/* cliff edges — a dark rim wherever the ground drops to a neighbor,
+                  thicker the bigger the drop, so plateaus/pits read without numbers */}
+              {hexes.map((h) => {
+                const v = cellElev(`${h.q},${h.r}`);
+                const cx = hexX(h.q, h.r), cy = hexY(h.r);
+                const lines: React.ReactNode[] = [];
+                for (const [dq, dr, c1, c2] of edgeDirs(h.r)) {
+                  const nq = h.q + dq, nr = h.r + dr;
+                  if (nq < 0 || nr < 0 || nq >= map.cols || nr >= map.rows) continue;
+                  const nv = cellElev(`${nq},${nr}`);
+                  if (nv >= v) continue;
+                  lines.push(
+                    <line key={`${dq},${dr}`} x1={cx + CORNERS[c1][0]} y1={cy + CORNERS[c1][1]} x2={cx + CORNERS[c2][0]} y2={cy + CORNERS[c2][1]}
+                      stroke={v > 0 || nv >= 0 ? '#5c4a2e' : '#16324f'} strokeWidth={1.6 + Math.min(v - nv, 4) * 0.9} strokeOpacity={0.55} strokeLinecap="round" />,
+                  );
+                }
+                return lines.length ? <g key={`cl${h.q},${h.r}`} pointerEvents="none">{lines}</g> : null;
               })}
               {/* auras (พื้นที่อาณาเขต) */}
               {resolvedAuras.map((a) => {
