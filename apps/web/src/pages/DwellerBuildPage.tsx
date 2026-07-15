@@ -1532,19 +1532,20 @@ function CharacterSheet({
                           <span style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>WILL-POWER</span>
                           <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {WP_MAX}</span>
                         </div>
-                        {/* Will-power as 3 glowing orbs */}
-                        <div style={{ display: 'flex', gap: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                          {Array.from({ length: WP_MAX }).map((_, i) => {
+                        {/* Will-power as 3 boxes: [] | [] | [] */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, flex: 1 }}>
+                          {Array.from({ length: WP_MAX }).flatMap((_, i) => {
                             const on = i < wpCur;
-                            return (
+                            const boxBtn = (
                               <button
-                                key={i}
+                                key={`wp${i}`}
                                 disabled={despair}
                                 onClick={() => { if (!despair) setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 }); }}
                                 title={despair ? 'สิ้นหวัง — Willpower หายไป' : `${wpCur} / ${WP_MAX} — กดเพื่อปรับ`}
-                                style={{ width: 36, height: 36, flex: 'none', borderRadius: '50%', cursor: despair ? 'not-allowed' : 'pointer', border: on ? '1px solid #4f7290' : '2px dashed #cfdce4', background: on ? 'radial-gradient(circle at 34% 30%, #bcd4e6 0%, #6d90ac 55%, #4f7290 100%)' : '#eef3f6', boxShadow: on ? 'inset 0 -2px 5px rgba(0,0,0,.2), 0 2px 7px rgba(79,114,144,.4)' : 'none', color: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .12s, background .15s', transform: on ? 'scale(1)' : 'scale(.9)' }}
-                              >{on ? '✦' : ''}</button>
+                                style={{ width: 42, height: 34, flex: 'none', borderRadius: 8, cursor: despair ? 'not-allowed' : 'pointer', border: on ? '1px solid #4f7290' : '2px solid #d5e0e7', background: on ? 'linear-gradient(160deg,#7f9fba,#59809e)' : '#f2f6f8', boxShadow: on ? 'inset 0 -2px 4px rgba(0,0,0,.16)' : 'none' }}
+                              />
                             );
+                            return i === 0 ? [boxBtn] : [<span key={`sep${i}`} style={{ color: '#cfccc4', fontSize: 16, fontWeight: 300, userSelect: 'none' }}>|</span>, boxBtn];
                           })}
                         </div>
                       </div>
