@@ -14,7 +14,7 @@ import layout from '../components/layout.module.css';
 
 // ── "กระดานวิวรณ์" — the campaign hex battle board ──
 
-interface BoardToken { id: string; kind: 'dweller' | 'monster' | 'custom'; refId?: string; name: string; color: string; emoji?: string; q: number; r: number }
+interface BoardToken { id: string; kind: 'dweller' | 'monster' | 'custom'; refId?: string; name: string; color: string; emoji?: string; q: number; r: number; size?: number; facing?: number; tail?: { q: number; r: number }[]; hidden?: boolean }
 interface BoardPing { id: string; q: number; r: number; name: string; color: string; at: string }
 interface BoardBg { url: string; w: number; x: number; y: number; opacity: number }
 interface PaletteEntry { id: string; color: string; label: string }
@@ -70,12 +70,34 @@ function hexDist(a: { q: number; r: number }, b: { q: number; r: number }): numb
   const bx = b.q - ((b.r - (b.r & 1)) / 2), bz = b.r, by = -bx - bz;
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
 }
+function hexNeighbors(p: { q: number; r: number }, cols: number, rows: number): { q: number; r: number }[] {
+  const odd = p.r & 1;
+  const deltas = odd
+    ? [[1, 0], [-1, 0], [1, -1], [0, -1], [1, 1], [0, 1]]
+    : [[1, 0], [-1, 0], [0, -1], [-1, -1], [0, 1], [-1, 1]];
+  return deltas.map(([dq, dr]) => ({ q: p.q + dq, r: p.r + dr })).filter((n) => n.q >= 0 && n.r >= 0 && n.q < cols && n.r < rows);
+}
+// Rope-pull a snake tail behind a moved head (mirror of the server logic, for
+// the optimistic update so the body follows the drag instantly).
+function dragTail(head: { q: number; r: number }, tail: { q: number; r: number }[], cols: number, rows: number): { q: number; r: number }[] {
+  let ahead = head;
+  return tail.map((seg) => {
+    if (hexDist(seg, ahead) <= 1) { ahead = seg; return seg; }
+    const options = hexNeighbors(ahead, cols, rows);
+    let best = options[0] ?? seg;
+    let bd = Infinity;
+    for (const n of options) { const dist = hexDist(n, seg); if (dist < bd) { bd = dist; best = n; } }
+    ahead = best;
+    return best;
+  });
+}
 
 const num = (v: unknown, def = 0) => (typeof v === 'number' && isFinite(v) ? v : def);
 const WOUND_NAMES = ['ปกติ', 'First Blood', 'Impaired', 'Suppressed', 'Desperate Edge', "Death's Door"];
 const buffLabel = (k: string) => BUFF_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const statusLabel = (k: string) => STATUS_EFFECTS.find((e) => e[0] === k)?.[1] ?? k;
 const SWATCHES = ['#e07a5f', '#2a5fbd', '#2f7d4f', '#8a5fc0', '#b4842a', '#c04a7a', '#2f8d8a', '#5f5030', '#b4513a', '#15140f'];
+const miniBtn: React.CSSProperties = { width: 24, height: 24, flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#6b6860', borderRadius: 7, fontSize: 13, fontWeight: 800, cursor: 'pointer', lineHeight: 1 };
 
 async function fetchMonsters(): Promise<CatalogItem[]> {
   const out: CatalogItem[] = [];
@@ -144,7 +166,12 @@ export function BoardPage() {
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: boardKey });
       const prev = qc.getQueryData<{ map: BoardMap }>(boardKey);
-      if (prev) qc.setQueryData(boardKey, { map: { ...prev.map, tokens: prev.map.tokens.map((t) => (t.id === v.tokenId ? { ...t, q: v.q, r: v.r } : t)) } });
+      if (prev) qc.setQueryData(boardKey, { map: { ...prev.map, tokens: prev.map.tokens.map((t) => {
+        if (t.id !== v.tokenId) return t;
+        const moved = { ...t, q: v.q, r: v.r };
+        if (t.tail?.length) moved.tail = dragTail({ q: v.q, r: v.r }, t.tail, prev.map.cols, prev.map.rows);
+        return moved;
+      }) } });
       return { prev };
     },
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev); },
@@ -157,6 +184,10 @@ export function BoardPage() {
   const deleteToken = useMutation({
     mutationFn: (tokenId: string) => api.delete(`/campaigns/${id}/maps/${mapId}/tokens/${tokenId}`),
     onSuccess: () => { setSelToken(null); qc.invalidateQueries({ queryKey: boardKey }); },
+  });
+  const tokenTail = useMutation({
+    mutationFn: (v: { tokenId: string; op: 'add' | 'remove' }) => api.post(`/campaigns/${id}/maps/${mapId}/tokens/${v.tokenId}/tail`, { op: v.op }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
   });
   const sendPing = useMutation({
     mutationFn: (v: { q: number; r: number }) => api.post(`/campaigns/${id}/maps/${mapId}/ping`, v),
@@ -614,6 +645,24 @@ export function BoardPage() {
                   <text x={hexX(p.q, p.r)} y={hexY(p.r) - 16} textAnchor="middle" style={{ fontSize: 11, fontWeight: 800, fill: p.color, paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>📍 {p.name}</text>
                 </g>
               ))}
+              {/* snake tails — beneath every head so bodies never cover faces */}
+              {map.tokens.filter((t) => !tokenHidden(t)).map((t) => {
+                if (!t.tail?.length) return null;
+                const ghost = !!t.hidden; // only the Librarian ever receives hidden ones
+                const segR = HEX * 0.42 * Math.min(t.size ?? 1, 1.6);
+                const pts = [{ q: t.q, r: t.r }, ...t.tail];
+                return (
+                  <g key={`tail${t.id}`} pointerEvents="none" opacity={ghost ? 0.4 : 0.9}>
+                    {pts.slice(1).map((seg, i) => {
+                      const prev = pts[i];
+                      return <line key={`l${i}`} x1={hexX(prev.q, prev.r)} y1={hexY(prev.r)} x2={hexX(seg.q, seg.r)} y2={hexY(seg.r)} stroke={t.color} strokeWidth={segR * 1.1} strokeLinecap="round" opacity={0.55} />;
+                    })}
+                    {t.tail.map((seg, i) => (
+                      <circle key={i} cx={hexX(seg.q, seg.r)} cy={hexY(seg.r)} r={segR * (1 - (i / Math.max(1, t.tail!.length)) * 0.35)} fill={t.color} stroke="#fff" strokeWidth={1.5} />
+                    ))}
+                  </g>
+                );
+              })}
               {/* tokens */}
               {map.tokens.filter((t) => !tokenHidden(t)).map((t) => {
                 const isDrag = drag?.token.id === t.id && drag.moved;
@@ -622,25 +671,36 @@ export function BoardPage() {
                 const movable = canMove(t);
                 const sel = t.id === selTokenId;
                 const turn = isTurnToken(t);
+                const sz = t.size ?? 1;
+                const R = HEX * 0.6 * sz;
+                const ghost = !!t.hidden; // Librarian-only preview of an unrevealed token
                 return (
                   <g
                     key={t.id}
                     transform={`translate(${x},${y})`}
                     onPointerDown={(e) => startTokenDrag(e, t)}
                     style={{ cursor: tool !== 'move' ? 'crosshair' : movable ? 'grab' : 'pointer' }}
+                    opacity={ghost ? 0.45 : 1}
                   >
                     {turn && (
-                      <circle r={HEX * 0.86} fill="none" stroke="#e0a72a" strokeWidth={3.5}>
+                      <circle r={R + HEX * 0.26} fill="none" stroke="#e0a72a" strokeWidth={3.5}>
                         <animate attributeName="stroke-opacity" values="1;0.35;1" dur="1.4s" repeatCount="indefinite" />
                       </circle>
                     )}
-                    {sel && <circle r={HEX * 0.78} fill="none" stroke="#e07a5f" strokeWidth={2.5} strokeDasharray="5 4" />}
-                    <circle r={HEX * 0.6} fill={t.color} stroke="#fff" strokeWidth={movable ? 3 : 2} opacity={isDrag ? 0.85 : 1} />
-                    <text y={t.emoji ? 7 : 6} textAnchor="middle" style={{ fontSize: t.emoji ? 20 : 17, fontWeight: 800, fill: '#fff', pointerEvents: 'none' }}>
+                    {sel && <circle r={R + HEX * 0.18} fill="none" stroke="#e07a5f" strokeWidth={2.5} strokeDasharray="5 4" />}
+                    {/* facing arrow — the "head" direction */}
+                    {t.facing !== undefined && (
+                      <g transform={`rotate(${(t.facing % 6) * 60})`} pointerEvents="none">
+                        <polygon points={`${R + 15},0 ${R + 4},-7 ${R + 4},7`} fill={t.color} stroke="#fff" strokeWidth={1.5} strokeLinejoin="round" />
+                      </g>
+                    )}
+                    <circle r={R} fill={t.color} stroke="#fff" strokeWidth={movable ? 3 : 2} strokeDasharray={ghost ? '5 4' : undefined} opacity={isDrag ? 0.85 : 1} />
+                    <text y={(t.emoji ? 7 : 6) * sz} textAnchor="middle" style={{ fontSize: (t.emoji ? 20 : 17) * sz, fontWeight: 800, fill: '#fff', pointerEvents: 'none' }}>
                       {t.emoji ?? (t.kind === 'monster' ? '👹' : (t.name || '?').charAt(0).toUpperCase())}
                     </text>
-                    {turn && <text y={-HEX * 0.95} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: '#b4842a', paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◆ ถึงตา</text>}
-                    <text y={HEX * 0.6 + 15} textAnchor="middle" style={{ fontSize: 11.5, fontWeight: 700, fill: '#3c3a33', paintOrder: 'stroke', stroke: '#fbf9f4', strokeWidth: 3.5, pointerEvents: 'none' }}>
+                    {turn && <text y={-(R + HEX * 0.35)} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: '#b4842a', paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◆ ถึงตา</text>}
+                    {ghost && <text y={-(R + 7)} textAnchor="middle" style={{ fontSize: 11, pointerEvents: 'none' }}>🙈</text>}
+                    <text y={R + 15} textAnchor="middle" style={{ fontSize: 11.5, fontWeight: 700, fill: '#3c3a33', paintOrder: 'stroke', stroke: '#fbf9f4', strokeWidth: 3.5, pointerEvents: 'none' }}>
                       {t.name.length > 14 ? t.name.slice(0, 13) + '…' : t.name}
                     </text>
                   </g>
@@ -775,8 +835,36 @@ export function BoardPage() {
                 )
               )}
 
+              {/* size / facing / tail — the token's owner or the Librarian */}
+              {canMove(selected) && (
+                <div style={{ borderTop: '1px dashed #efece6', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 2 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#8d8a82' }}>
+                    ขนาด
+                    <input type="range" min={0.6} max={3} step={0.1} value={selected.size ?? 1} onChange={(e) => patchToken.mutate({ tokenId: selected.id, size: Number(e.target.value) })} style={{ flex: 1 }} />
+                    <span style={{ minWidth: 34, textAlign: 'right', color: '#5c4a2e' }}>{(selected.size ?? 1).toFixed(1)}×</span>
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#8d8a82' }}>
+                    ทิศทาง
+                    <button onClick={() => patchToken.mutate({ tokenId: selected.id, facing: ((selected.facing ?? 0) + 5) % 6 })} title="หมุนซ้าย" style={miniBtn}>↺</button>
+                    <span style={{ width: 26, textAlign: 'center', fontSize: 13, color: '#5c4a2e', display: 'inline-block', transform: selected.facing !== undefined ? `rotate(${selected.facing * 60}deg)` : 'none' }}>{selected.facing !== undefined ? '➤' : '—'}</span>
+                    <button onClick={() => patchToken.mutate({ tokenId: selected.id, facing: ((selected.facing ?? 0) + 1) % 6 })} title="หมุนขวา" style={miniBtn}>↻</button>
+                    <button onClick={() => patchToken.mutate({ tokenId: selected.id, facing: selected.facing === undefined ? 0 : null })} style={{ ...miniBtn, width: 'auto', padding: '0 9px', fontSize: 10.5 }}>{selected.facing === undefined ? 'แสดงลูกศร' : 'ซ่อนลูกศร'}</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#8d8a82' }}>
+                    หาง (ลำตัว)
+                    <button onClick={() => tokenTail.mutate({ tokenId: selected.id, op: 'remove' })} disabled={!selected.tail?.length} title="ลดหาง" style={{ ...miniBtn, opacity: selected.tail?.length ? 1 : 0.4 }}>−</button>
+                    <span style={{ width: 24, textAlign: 'center', fontSize: 12.5, color: '#5c4a2e' }}>{selected.tail?.length ?? 0}</span>
+                    <button onClick={() => tokenTail.mutate({ tokenId: selected.id, op: 'add' })} disabled={(selected.tail?.length ?? 0) >= 20} title="เพิ่มหาง (เช่น งูยักษ์)" style={miniBtn}>＋</button>
+                    <span style={{ fontWeight: 400, color: '#b0ada4', fontSize: 10 }}>ลากหัว → หางไหลตาม</span>
+                  </div>
+                </div>
+              )}
+
               {c.isLibrarian && (
                 <div style={{ borderTop: '1px dashed #efece6', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <button onClick={() => patchToken.mutate({ tokenId: selected.id, hidden: !selected.hidden })} style={{ border: `1px solid ${selected.hidden ? '#e6c98a' : '#e0ded7'}`, background: selected.hidden ? '#fbf3dd' : '#fff', color: selected.hidden ? '#8a6a1f' : '#5f5c54', borderRadius: 7, padding: '7px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                    {selected.hidden ? '🙈 ซ่อนอยู่ — กดเพื่อเปิดให้ผู้เล่นเห็น' : '👁 ผู้เล่นมองเห็น — กดเพื่อซ่อน'}
+                  </button>
                   <input key={selected.id + selected.name} defaultValue={selected.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== selected.name) patchToken.mutate({ tokenId: selected.id, name: v }); }} style={{ border: '1px solid #e0ded7', borderRadius: 7, padding: '6px 9px', fontSize: 12, outline: 'none' }} />
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {SWATCHES.map((col) => (

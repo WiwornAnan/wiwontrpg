@@ -20,6 +20,10 @@ export interface BoardToken {
   emoji?: string;
   q: number; // offset column
   r: number; // offset row
+  size?: number; // visual scale (0.6–3, default 1)
+  facing?: number; // direction arrow, 0–5 (×60°); undefined = no arrow
+  tail?: { q: number; r: number }[]; // extra body segments (giant snake etc.)
+  hidden?: boolean; // Librarian-only visibility until revealed
 }
 interface BoardPing { id: string; q: number; r: number; name: string; color: string; at: string }
 interface BoardBg { url: string; w: number; x: number; y: number; opacity: number }
@@ -79,20 +83,56 @@ function withMemberTokens(c: CampaignWithMembers, tokens: BoardToken[], cols: nu
   return out;
 }
 
-const serializeMap = (m: { id: string; name: string; isActive: boolean; cols: number; rows: number; data: string; updatedAt: Date }) => {
+// Hex-grid geometry (pointy-top, odd-r offset) — used to drag snake tails.
+function hexDist(a: { q: number; r: number }, b: { q: number; r: number }): number {
+  const ax = a.q - ((a.r - (a.r & 1)) / 2), az = a.r, ay = -ax - az;
+  const bx = b.q - ((b.r - (b.r & 1)) / 2), bz = b.r, by = -bx - bz;
+  return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
+}
+function hexNeighbors(p: { q: number; r: number }, cols: number, rows: number): { q: number; r: number }[] {
+  const odd = p.r & 1;
+  const deltas = odd
+    ? [[1, 0], [-1, 0], [1, -1], [0, -1], [1, 1], [0, 1]]
+    : [[1, 0], [-1, 0], [0, -1], [-1, -1], [0, 1], [-1, 1]];
+  return deltas
+    .map(([dq, dr]) => ({ q: p.q + dq, r: p.r + dr }))
+    .filter((n) => n.q >= 0 && n.r >= 0 && n.q < cols && n.r < rows);
+}
+// Pull the tail behind a moved head, rope-style: each segment that fell more
+// than 1 hex behind steps to the neighbor of the segment ahead nearest to it —
+// the body follows gradually instead of teleporting as one block.
+export function dragTail(head: { q: number; r: number }, tail: { q: number; r: number }[], cols: number, rows: number): { q: number; r: number }[] {
+  let ahead = head;
+  return tail.map((seg) => {
+    if (hexDist(seg, ahead) <= 1) { ahead = seg; return seg; }
+    const options = hexNeighbors(ahead, cols, rows);
+    let best = options[0] ?? seg;
+    let bd = Infinity;
+    for (const n of options) { const dist = hexDist(n, seg); if (dist < bd) { bd = dist; best = n; } }
+    ahead = best;
+    return best;
+  });
+}
+
+// `forLibrarian` — players never receive hidden tokens (or auras bound to them).
+const serializeMap = (m: { id: string; name: string; isActive: boolean; cols: number; rows: number; data: string; updatedAt: Date }, forLibrarian: boolean) => {
   const d = parseData(m.data);
   // Only ship pings from the last 30s — old ones are noise and get pruned on write.
   const cutoff = Date.now() - 30_000;
+  const allTokens = Array.isArray(d.tokens) ? d.tokens : [];
+  const tokens = forLibrarian ? allTokens : allTokens.filter((t) => !t.hidden);
+  const hiddenIds = new Set(allTokens.filter((t) => t.hidden).map((t) => t.id));
+  const auras = (Array.isArray(d.auras) ? d.auras : []).filter((a) => forLibrarian || !(a.follow && a.tokenId && hiddenIds.has(a.tokenId)));
   return {
     id: m.id, name: m.name, isActive: m.isActive, cols: m.cols, rows: m.rows,
-    tokens: Array.isArray(d.tokens) ? d.tokens : [],
+    tokens,
     pings: (Array.isArray(d.pings) ? d.pings : []).filter((p) => new Date(p.at).getTime() > cutoff),
     bg: d.bg ?? null,
     palette: Array.isArray(d.palette) ? d.palette : null,
     terrain: d.terrain && typeof d.terrain === 'object' ? d.terrain : {},
     elev: d.elev && typeof d.elev === 'object' ? d.elev : {},
     fog: d.fog && typeof d.fog === 'object' ? d.fog : {},
-    auras: Array.isArray(d.auras) ? d.auras : [],
+    auras,
     metersPerHex: Number(d.metersPerHex) > 0 ? Number(d.metersPerHex) : 1.5,
     updatedAt: m.updatedAt.toISOString(),
   };
@@ -118,7 +158,7 @@ boardsRouter.post('/:id/maps', async (req, res) => {
   const map = await prisma.campaignMap.create({
     data: { campaignId: c.id, name, cols, rows, isActive: count === 0, data: JSON.stringify({ tokens }) },
   });
-  res.status(201).json({ map: serializeMap(map) });
+  res.status(201).json({ map: serializeMap(map, true) });
 });
 
 // Full board state — what the board page polls.
@@ -127,7 +167,7 @@ boardsRouter.get('/:id/maps/:mapId', async (req, res) => {
   if (!c || !isMember(c, req.currentUser!.id)) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
   const map = await prisma.campaignMap.findFirst({ where: { id: req.params.mapId, campaignId: c.id } });
   if (!map) { res.status(404).json({ error: 'ไม่พบแผนที่' }); return; }
-  res.json({ map: serializeMap(map) });
+  res.json({ map: serializeMap(map, c.librarianUserId === req.currentUser!.id) });
 });
 
 boardsRouter.patch('/:id/maps/:mapId', async (req, res) => {
@@ -152,7 +192,7 @@ boardsRouter.patch('/:id/maps/:mapId', async (req, res) => {
     patch.isActive = true;
   }
   const updated = await prisma.campaignMap.update({ where: { id: map.id }, data: patch });
-  res.json({ map: serializeMap(updated) });
+  res.json({ map: serializeMap(updated, true) });
 });
 
 boardsRouter.delete('/:id/maps/:mapId', async (req, res) => {
@@ -212,25 +252,75 @@ boardsRouter.post('/:id/maps/:mapId/tokens/:tokenId/move', async (req, res) => {
   if (c.librarianUserId !== me && !ownsIt) { res.status(403).json({ error: 'ขยับได้เฉพาะตัวหมากของตัวเอง' }); return; }
   const q = Math.min(map.cols - 1, Math.max(0, Math.round(Number(req.body?.q) || 0)));
   const r = Math.min(map.rows - 1, Math.max(0, Math.round(Number(req.body?.r) || 0)));
-  d.tokens = tokens.map((t) => (t.id === token.id ? { ...t, q, r } : t));
+  d.tokens = tokens.map((t) => {
+    if (t.id !== token.id) return t;
+    const moved = { ...t, q, r };
+    // A long body (giant snake) is pulled along behind the head, segment by segment.
+    if (Array.isArray(t.tail) && t.tail.length) moved.tail = dragTail({ q, r }, t.tail, map.cols, map.rows);
+    return moved;
+  });
+  await prisma.campaignMap.update({ where: { id: map.id }, data: { data: JSON.stringify(d) } });
+  res.json({ ok: true });
+});
+
+// Grow / shrink a token's tail (giant snake body). Same permission as moving it.
+boardsRouter.post('/:id/maps/:mapId/tokens/:tokenId/tail', async (req, res) => {
+  const me = req.currentUser!.id;
+  const c = await loadCampaign(req.params.id);
+  if (!c || !isMember(c, me)) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const map = await prisma.campaignMap.findFirst({ where: { id: req.params.mapId, campaignId: c.id } });
+  if (!map) { res.status(404).json({ error: 'ไม่พบแผนที่' }); return; }
+  const d = parseData(map.data);
+  const tokens = Array.isArray(d.tokens) ? d.tokens : [];
+  const token = tokens.find((t) => t.id === req.params.tokenId);
+  if (!token) { res.status(404).json({ error: 'ไม่พบตัวหมาก' }); return; }
+  const ownsIt = token.kind === 'dweller' && !!token.refId &&
+    c.members.some((m) => m.characterId === token.refId && m.character.ownerUserId === me);
+  if (c.librarianUserId !== me && !ownsIt) { res.status(403).json({ error: 'แก้ได้เฉพาะตัวหมากของตัวเอง' }); return; }
+  const op = req.body?.op === 'remove' ? 'remove' : 'add';
+  const tail = Array.isArray(token.tail) ? [...token.tail] : [];
+  if (op === 'remove') tail.pop();
+  else if (tail.length < 20) {
+    // New segment appears at a free hex next to the current last segment (or head).
+    const last = tail[tail.length - 1] ?? { q: token.q, r: token.r };
+    const taken = new Set([`${token.q},${token.r}`, ...tail.map((s) => `${s.q},${s.r}`)]);
+    const spot = hexNeighbors(last, map.cols, map.rows).find((n) => !taken.has(`${n.q},${n.r}`)) ?? last;
+    tail.push(spot);
+  }
+  d.tokens = tokens.map((t) => (t.id === token.id ? { ...t, tail } : t));
   await prisma.campaignMap.update({ where: { id: map.id }, data: { data: JSON.stringify(d) } });
   res.json({ ok: true });
 });
 
 boardsRouter.patch('/:id/maps/:mapId/tokens/:tokenId', async (req, res) => {
+  const me = req.currentUser!.id;
   const c = await loadCampaign(req.params.id);
-  if (!c || c.librarianUserId !== req.currentUser!.id) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  if (!c || !isMember(c, me)) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const isLib = c.librarianUserId === me;
   const map = await prisma.campaignMap.findFirst({ where: { id: req.params.mapId, campaignId: c.id } });
   if (!map) { res.status(404).json({ error: 'ไม่พบแผนที่' }); return; }
   const d = parseData(map.data);
+  const target = (Array.isArray(d.tokens) ? d.tokens : []).find((t) => t.id === req.params.tokenId);
+  if (!target) { res.status(404).json({ error: 'ไม่พบตัวหมาก' }); return; }
+  const ownsIt = target.kind === 'dweller' && !!target.refId &&
+    c.members.some((m) => m.characterId === target.refId && m.character.ownerUserId === me);
+  // Librarian edits everything; the token's owner may adjust facing/size only.
+  if (!isLib && !ownsIt) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
   d.tokens = (Array.isArray(d.tokens) ? d.tokens : []).map((t) => {
     if (t.id !== req.params.tokenId) return t;
-    return {
-      ...t,
-      ...(typeof req.body?.name === 'string' && req.body.name.trim() ? { name: req.body.name.trim().slice(0, 60) } : {}),
-      ...(typeof req.body?.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(req.body.color) ? { color: req.body.color } : {}),
-      ...(typeof req.body?.emoji === 'string' ? { emoji: req.body.emoji.slice(0, 4) || undefined } : {}),
-    };
+    const next = { ...t };
+    if ('facing' in (req.body ?? {})) {
+      const f = req.body.facing;
+      next.facing = f === null || f === undefined || f === '' ? undefined : ((Math.round(Number(f)) % 6) + 6) % 6;
+    }
+    if (req.body?.size !== undefined) next.size = Math.min(3, Math.max(0.6, Number(req.body.size) || 1));
+    if (isLib) {
+      if (typeof req.body?.name === 'string' && req.body.name.trim()) next.name = req.body.name.trim().slice(0, 60);
+      if (typeof req.body?.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(req.body.color)) next.color = req.body.color;
+      if (typeof req.body?.emoji === 'string') next.emoji = req.body.emoji.slice(0, 4) || undefined;
+      if (typeof req.body?.hidden === 'boolean') next.hidden = req.body.hidden || undefined;
+    }
+    return next;
   });
   await prisma.campaignMap.update({ where: { id: map.id }, data: { data: JSON.stringify(d) } });
   res.json({ ok: true });
