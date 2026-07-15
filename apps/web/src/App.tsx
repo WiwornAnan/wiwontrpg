@@ -67,10 +67,9 @@ export function App() {
         onClick={() => setSimpleDiceOpen((o) => !o)}
         title="ทอยลูกเต๋าเอง (d2–d20)"
         aria-label="เปิดหน้าต่างทอยลูกเต๋าเอง"
-        style={{ position: 'fixed', left: 22, bottom: 22, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: `1px solid ${simpleDiceOpen ? '#c79a2e' : '#e0d7c2'}`, background: simpleDiceOpen ? '#463f34' : '#fff', color: simpleDiceOpen ? '#f7dca0' : '#8a6a3a', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, lineHeight: 1 }}
+        style={{ position: 'fixed', left: 22, bottom: 22, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: `1px solid ${simpleDiceOpen ? '#c79a2e' : '#e0d7c2'}`, background: simpleDiceOpen ? '#463f34' : '#fff', color: simpleDiceOpen ? '#f7dca0' : '#8a6a3a', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, letterSpacing: '-.02em' }}
       >
-        <span style={{ fontSize: 20 }}>⬢</span>
-        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.02em' }}>d20</span>
+        d?
       </button>
       <SimpleDiceRoller open={simpleDiceOpen} onClose={() => setSimpleDiceOpen(false)} />
     </>

@@ -306,6 +306,15 @@ function CharacterSheet({
     window.addEventListener('wiwon-dice', handler);
     return () => window.removeEventListener('wiwon-dice', handler);
   }, []);
+  // Plain dice roller (bottom-left) → the campaign Log, when in a campaign.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { text: string; roll?: RollData };
+      logRef.current('roll', d.text, { roll: d.roll });
+    };
+    window.addEventListener('wiwon-simple-roll', handler);
+    return () => window.removeEventListener('wiwon-simple-roll', handler);
+  }, []);
   // Full catalog (all Wiwon, all levels) for the Magic/Feature pickers + detail resolution
   const { data: allMagic } = useQuery({ queryKey: ['sheet-all-magic'], queryFn: () => fetchMagicSpells([]) });
   const { data: allFeatures } = useQuery({ queryKey: ['sheet-all-features'], queryFn: () => fetchFeaturesByTag('', []) });

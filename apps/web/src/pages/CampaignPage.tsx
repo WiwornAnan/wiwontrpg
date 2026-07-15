@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -120,6 +120,15 @@ export function CampaignPage() {
   const restoreLoot = useMutation({ mutationFn: (lootId: string) => api.post(`/campaigns/${id}/loot/restore`, { lootId }), onSuccess: invalidate });
   const purgeLoot = useMutation({ mutationFn: (lootId: string) => api.post(`/campaigns/${id}/loot/purge`, { lootId }), onSuccess: invalidate });
   const clearLootTrash = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/loot/trash-clear`, {}), onSuccess: invalidate });
+
+  // Plain dice roller (bottom-left) → the campaign Log, posted as the Librarian.
+  const isLibRef = useRef(false); isLibRef.current = !!c?.isLibrarian;
+  const postGMRollRef = useRef(postGMRoll); postGMRollRef.current = postGMRoll;
+  useEffect(() => {
+    const handler = (e: Event) => { const d = (e as CustomEvent).detail as { text: string; roll?: RollData }; if (isLibRef.current) postGMRollRef.current.mutate({ kind: 'roll', text: d.text, roll: d.roll }); };
+    window.addEventListener('wiwon-simple-roll', handler);
+    return () => window.removeEventListener('wiwon-simple-roll', handler);
+  }, []);
 
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
