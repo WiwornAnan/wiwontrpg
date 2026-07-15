@@ -664,6 +664,10 @@ function CharacterSheet({
   const magicTier = sheet.magicTier && typeof sheet.magicTier === 'object' ? (sheet.magicTier as Record<string, string>) : {};
   const magTierOf = (key: string) => magicTier[key] ?? 'known';
   const setMagTier = (key: string, tier: string) => setSheet({ magicTier: { ...magicTier, [key]: tier } });
+  // Per-spell CP value the player fills in on the Magic tab.
+  const magicCP = sheet.magicCP && typeof sheet.magicCP === 'object' ? (sheet.magicCP as Record<string, string>) : {};
+  const magCPOf = (key: string) => magicCP[key] ?? '';
+  const setMagCP = (key: string, v: string) => setSheet({ magicCP: { ...magicCP, [key]: v } });
   const magicExtra: Extra[] = Array.isArray(sheet.magicExtra) ? (sheet.magicExtra as Extra[]) : [];
   const magicRows = [
     ...magicIds.map((id) => ({ key: id, name: magicItemById.get(id)?.name ?? '(เวทมนตร์)', item: magicItemById.get(id) ?? null, custom: false })),
@@ -1528,10 +1532,20 @@ function CharacterSheet({
                           <span style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>WILL-POWER</span>
                           <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {WP_MAX}</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'center' }}>
-                          {Array.from({ length: WP_MAX }).map((_, i) => (
-                            <button key={i} disabled={despair} onClick={() => { if (!despair) setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 }); }} title={despair ? 'สิ้นหวัง — Willpower หายไป' : `${wpCur} / ${WP_MAX}`} style={{ height: 20, borderRadius: 6, cursor: despair ? 'not-allowed' : 'pointer', border: 'none', background: i < wpCur ? `rgba(105,145,175,${1 - (i / WP_MAX) * 0.4})` : '#e3edf2' }} />
-                          ))}
+                        {/* Will-power as 3 glowing orbs */}
+                        <div style={{ display: 'flex', gap: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                          {Array.from({ length: WP_MAX }).map((_, i) => {
+                            const on = i < wpCur;
+                            return (
+                              <button
+                                key={i}
+                                disabled={despair}
+                                onClick={() => { if (!despair) setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 }); }}
+                                title={despair ? 'สิ้นหวัง — Willpower หายไป' : `${wpCur} / ${WP_MAX} — กดเพื่อปรับ`}
+                                style={{ width: 36, height: 36, flex: 'none', borderRadius: '50%', cursor: despair ? 'not-allowed' : 'pointer', border: on ? '1px solid #4f7290' : '2px dashed #cfdce4', background: on ? 'radial-gradient(circle at 34% 30%, #bcd4e6 0%, #6d90ac 55%, #4f7290 100%)' : '#eef3f6', boxShadow: on ? 'inset 0 -2px 5px rgba(0,0,0,.2), 0 2px 7px rgba(79,114,144,.4)' : 'none', color: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .12s, background .15s', transform: on ? 'scale(1)' : 'scale(.9)' }}
+                              >{on ? '✦' : ''}</button>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1824,6 +1838,10 @@ function CharacterSheet({
                             {r.custom
                               ? <input key={r.name} defaultValue={r.name} onBlur={(e) => { if (e.target.value !== r.name) renameMagic(r.key, e.target.value); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#46443c' }} />
                               : <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: '#46443c' }}>{r.name}</span>}
+                            <label title="CP ของเวทนี้" style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 800, color: '#7a6aa0' }}>
+                              CP
+                              <input key={`cp${r.key}${magCPOf(r.key)}`} defaultValue={magCPOf(r.key)} onBlur={(e) => { const v = e.target.value.trim(); if (v !== magCPOf(r.key)) setMagCP(r.key, v); }} inputMode="numeric" placeholder="–" style={{ width: 40, textAlign: 'center', border: '1px solid #d6c7f0', borderRadius: 6, padding: '3px 4px', fontSize: 12, fontWeight: 700, color: '#5b3fa0', outline: 'none', background: '#fff' }} />
+                            </label>
                             <div style={{ display: 'flex', gap: 3, flex: 'none' }} title="ย้ายระดับ">
                               {MAGIC_TIERS.map((tt) => { const on = magTierOf(r.key) === tt.key; return <button key={tt.key} onClick={() => { setMagTier(r.key, tt.key); setMagicTab(tt.key); }} title={`ย้ายไประดับ “${tt.label}”`} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e2d7f4'}`, background: on ? '#ede7f6' : '#fff', color: on ? '#5b3fa0' : '#a8a59d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>{tt.label}</button>; })}
                             </div>

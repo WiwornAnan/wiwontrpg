@@ -130,7 +130,7 @@ export function SimpleDiceRoller({ open, onClose }: { open: boolean; onClose: ()
         {/* latest result */}
         {latest && (
           <div style={{ textAlign: 'center', padding: '12px 10px', borderRadius: 12, background: flash ? '#fbf3dd' : '#f6f4ef', border: '1px solid #e8e2d4', transition: 'background .3s' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#a08a5a' }}>{latest.label}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a08a5a' }}>{latest.label} <span style={{ fontWeight: 500, color: '#c4c0b7' }}>· {new Date(latest.id).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span></div>
             <div style={{ fontSize: 34, fontWeight: 800, color: '#3c3a33', lineHeight: 1.05 }}>{latest.total}</div>
             <div style={{ fontSize: 11, color: '#9a978e', marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center' }}>
               {latest.dice.map((r, i) => (
@@ -153,6 +153,7 @@ export function SimpleDiceRoller({ open, onClose }: { open: boolean; onClose: ()
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 120, overflowY: 'auto' }}>
               {history.slice(1).map((r) => (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
+                  <span style={{ flex: 'none', color: '#bdbab2', fontVariantNumeric: 'tabular-nums' }}>{new Date(r.id).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
                   <span style={{ flex: 1, minWidth: 0, color: '#a08a5a', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
                   <span style={{ flex: 'none', fontWeight: 800, color: '#3c3a33' }}>{r.total}</span>
                 </div>
