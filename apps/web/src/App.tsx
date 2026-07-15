@@ -67,9 +67,17 @@ export function App() {
         onClick={() => setSimpleDiceOpen((o) => !o)}
         title="ทอยลูกเต๋าเอง (d2–d20)"
         aria-label="เปิดหน้าต่างทอยลูกเต๋าเอง"
-        style={{ position: 'fixed', left: 22, bottom: 22, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: `1px solid ${simpleDiceOpen ? '#c79a2e' : '#e0d7c2'}`, background: simpleDiceOpen ? '#463f34' : '#fff', color: simpleDiceOpen ? '#f7dca0' : '#8a6a3a', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, letterSpacing: '-.02em' }}
+        style={{ position: 'fixed', left: 22, bottom: 22, zIndex: 150, width: 56, height: 56, borderRadius: '50%', border: `1px solid ${simpleDiceOpen ? '#c79a2e' : '#e0d7c2'}`, background: simpleDiceOpen ? '#463f34' : '#fff', color: simpleDiceOpen ? '#f7dca0' : '#8a6a3a', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        d?
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round">
+          <polygon points="12,2 21,7 21,17 12,22 3,17 3,7" />
+          <polygon points="12,2 18,10 12,15 6,10" />
+          <line x1="12" y1="15" x2="12" y2="22" />
+          <line x1="6" y1="10" x2="3" y2="17" />
+          <line x1="18" y1="10" x2="21" y2="17" />
+          <line x1="6" y1="10" x2="3" y2="7" />
+          <line x1="18" y1="10" x2="21" y2="7" />
+        </svg>
       </button>
       <SimpleDiceRoller open={simpleDiceOpen} onClose={() => setSimpleDiceOpen(false)} />
     </>

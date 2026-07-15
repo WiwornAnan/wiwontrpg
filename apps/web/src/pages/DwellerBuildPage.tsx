@@ -1532,20 +1532,19 @@ function CharacterSheet({
                           <span style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>WILL-POWER</span>
                           <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {WP_MAX}</span>
                         </div>
-                        {/* Will-power as 3 boxes: [] | [] | [] */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, flex: 1 }}>
-                          {Array.from({ length: WP_MAX }).flatMap((_, i) => {
+                        {/* Will-power as 3 stacked boxes (same style as the blessing boxes) */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1, justifyContent: 'center' }}>
+                          {Array.from({ length: WP_MAX }).map((_, i) => {
                             const on = i < wpCur;
-                            const boxBtn = (
+                            return (
                               <button
                                 key={`wp${i}`}
                                 disabled={despair}
                                 onClick={() => { if (!despair) setSheet({ wpCur: i + 1 === wpCur ? i : i + 1 }); }}
                                 title={despair ? 'สิ้นหวัง — Willpower หายไป' : `${wpCur} / ${WP_MAX} — กดเพื่อปรับ`}
-                                style={{ width: 42, height: 34, flex: 'none', borderRadius: 8, cursor: despair ? 'not-allowed' : 'pointer', border: on ? '1px solid #4f7290' : '2px solid #d5e0e7', background: on ? 'linear-gradient(160deg,#7f9fba,#59809e)' : '#f2f6f8', boxShadow: on ? 'inset 0 -2px 4px rgba(0,0,0,.16)' : 'none' }}
-                              />
+                                style={{ flex: 1, minHeight: 34, borderRadius: 12, cursor: despair ? 'not-allowed' : 'pointer', background: on ? 'linear-gradient(90deg,#8fb0cc,#5d84a4)' : '#eef4f8', border: `1.5px solid ${on ? '#4f7290' : '#d5e0e7'}`, boxShadow: on ? '0 0 0 3px rgba(93,132,164,.22), 0 3px 10px rgba(60,100,140,.28)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a9bccb', fontSize: 15, fontWeight: 800, transition: 'all .15s' }}
+                              >{on ? '' : <span style={{ opacity: .55 }}>＋</span>}</button>
                             );
-                            return i === 0 ? [boxBtn] : [<span key={`sep${i}`} style={{ color: '#cfccc4', fontSize: 16, fontWeight: 300, userSelect: 'none' }}>|</span>, boxBtn];
                           })}
                         </div>
                       </div>
