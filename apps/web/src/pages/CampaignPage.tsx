@@ -62,6 +62,15 @@ interface RollData { total: number; parts?: RollPart[]; ego?: number; ambient?: 
 interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; roll?: RollData; itemId?: string; isFeature?: boolean }
 interface InitEntry { id: string; name: string; value: number; kind: string }
 interface LootTrashItem { id: string; name: string; kg?: number; desc?: string; itemId?: string; trashedAt?: string }
+// "ตารางวัดระดับตัวตน" — 10 tri-state check rows (red left / green centre / gold right).
+type CheckState = '' | 'red' | 'green' | 'gold';
+interface CheckItem { text: string; state: CheckState }
+const CHECK_ROWS = 10;
+const CHECK_COLORS: { key: Exclude<CheckState, ''>; c: string; bg: string; bd: string; label: string }[] = [
+  { key: 'red', c: '#c0432a', bg: '#fbeae6', bd: '#f0d0c4', label: 'แดง' },
+  { key: 'green', c: '#2f6b4f', bg: '#eaf6ee', bd: '#cfe6d6', label: 'เขียว' },
+  { key: 'gold', c: '#a5851f', bg: '#fbf3dd', bd: '#ead9a6', label: 'ทอง' },
+];
 const rollD = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
 const rollSym = (m?: string) => (m === 'adv' ? '▲' : m === 'dis' ? '▼' : '');
 const rollParts = (r: RollData): RollPart[] => {
@@ -167,7 +176,7 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean; initTurn?: string };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean; initTurn?: string; checklist?: CheckItem[] };
   const allowHomebrew = cdata.allowHomebrew !== false; // default: allowed
   const initTurn = typeof cdata.initTurn === 'string' ? cdata.initTurn : '';
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
@@ -181,6 +190,12 @@ export function CampaignPage() {
   const saveNotes = (n: Note[]) => setData({ notes: n });
   const calNotes: CalNote[] = Array.isArray(cdata.calNotes) ? cdata.calNotes : [];
   const saveCalNotes = (n: CalNote[]) => setData({ calNotes: n });
+  const checklist: CheckItem[] = (() => {
+    const raw = Array.isArray(cdata.checklist) ? cdata.checklist : [];
+    return Array.from({ length: CHECK_ROWS }, (_, i) => ({ text: typeof raw[i]?.text === 'string' ? raw[i]!.text : '', state: (raw[i]?.state ?? '') as CheckState }));
+  })();
+  const saveChecklist = (n: CheckItem[]) => setData({ checklist: n });
+  const setCheck = (i: number, p: Partial<CheckItem>) => saveChecklist(checklist.map((x, j) => (j === i ? { ...x, ...p } : x)));
 
   const applyTargets = targets ?? c.members.map((m) => m.character.id);
   const anyPicked = Object.values(pickBuffs).some(Boolean) || Object.values(pickStatus).some(Boolean);
@@ -287,6 +302,11 @@ export function CampaignPage() {
               );
             })()}
             {slotMsg && <div style={{ fontSize: 11.5, fontWeight: 700, color: slotMsg.includes('✓') ? '#2f6b4f' : '#b4513a', marginBottom: 6 }}>{slotMsg}</div>}
+            {c.isLibrarian && (
+              <Link to={`/campaign/${id}/timescript`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', border: '1px solid #cdb8ec', background: '#f3eefb', color: '#5b3fa0', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>
+                📜 เปิด Time Script <span style={{ fontSize: 10.5, fontWeight: 500, color: '#8a7ab5' }}>· ตารางบันทึก 3 คอลัมน์</span>
+              </Link>
+            )}
             {c.members.length === 0 ? <div style={{ fontSize: 13, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีผู้เล่นเข้าร่วม — แชร์รหัส {c.joinCode}</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {c.members.map(({ character: ch }) => {
@@ -348,6 +368,50 @@ export function CampaignPage() {
               </div>
             )}
           </div>
+
+          {/* ตารางวัดระดับตัวตน — 10 tri-state check rows (Librarian) */}
+          {c.isLibrarian && (
+            <div style={box}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ ...secLabel, marginBottom: 0, flex: 1 }}>ตารางวัดระดับตัวตน</div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {CHECK_COLORS.map((col) => <span key={col.key} title={col.label} style={{ width: 11, height: 11, borderRadius: '50%', background: col.c, display: 'inline-block' }} />)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {checklist.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#bdbab2', width: 16, textAlign: 'right', flex: 'none' }}>{i + 1}</span>
+                    <input
+                      defaultValue={row.text}
+                      key={`${i}:${row.text}`}
+                      onBlur={(e) => { if (e.target.value !== row.text) setCheck(i, { text: e.target.value }); }}
+                      placeholder="รายการ…"
+                      style={{ flex: 1, minWidth: 0, border: '1px solid #ece9e3', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, outline: 'none', background: '#faf9f7', fontFamily: 'inherit', color: '#46443c' }}
+                    />
+                    <div style={{ display: 'flex', gap: 0, flex: 'none' }}>
+                      {CHECK_COLORS.map((col, ci) => {
+                        const on = row.state === col.key;
+                        return (
+                          <button
+                            key={col.key}
+                            onClick={() => setCheck(i, { state: on ? '' : col.key })}
+                            title={col.label}
+                            style={{ width: 30, height: 30, border: `1px solid ${on ? col.c : '#e4e1da'}`, borderLeft: ci === 0 ? undefined : 'none', borderTopLeftRadius: ci === 0 ? 8 : 0, borderBottomLeftRadius: ci === 0 ? 8 : 0, borderTopRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, borderBottomRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, background: on ? col.c : col.bg, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          >
+                            {on && <span style={{ color: '#fff', fontSize: 15, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button onClick={() => saveChecklist(Array.from({ length: CHECK_ROWS }, () => ({ text: '', state: '' as CheckState })))} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 8, padding: '5px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>ล้างทั้งหมด</button>
+              </div>
+            </div>
+          )}
 
           {/* character traits — Virtues / Flaws / Merits / Demerits (Librarian) */}
           {c.isLibrarian && c.members.length > 0 && (

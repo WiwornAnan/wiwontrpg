@@ -12,6 +12,7 @@ import { CharactersPage } from './pages/CharactersPage';
 import { DwellerSheetPage } from './pages/DwellerSheetPage';
 import { DwellerBuildPage } from './pages/DwellerBuildPage';
 import { CampaignPage } from './pages/CampaignPage';
+import { CampaignTimeScriptPage } from './pages/CampaignTimeScriptPage';
 import { BoardPage } from './pages/BoardPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ShopPage } from './pages/ShopPage';
@@ -39,6 +40,7 @@ export function App() {
           <Route path="/dweller/build/:id" element={<DwellerBuildPage mode="build" />} />
           <Route path="/dweller/sheet/:id" element={<DwellerBuildPage mode="sheet" />} />
           <Route path="/campaign/:id" element={<CampaignPage />} />
+          <Route path="/campaign/:id/timescript" element={<CampaignTimeScriptPage />} />
           <Route path="/campaign/:id/board" element={<BoardPage />} />
           <Route path="/magic" element={<CatalogPage key="magic" category="magic" />} />
           <Route path="/equipment" element={<CatalogPage key="equipment" category="equipment" />} />
