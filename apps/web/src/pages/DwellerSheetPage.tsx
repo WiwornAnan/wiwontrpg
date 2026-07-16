@@ -104,6 +104,13 @@ export function DwellerSheetPage() {
                     {(c.extraSlots ?? 0) > 0 && <span title={`ขยายช่องตัวละครแล้ว +${c.extraSlots}`} style={{ flex: 'none', fontSize: 9.5, fontWeight: 800, borderRadius: 5, padding: '2px 6px', background: '#fbf3dd', color: '#8a6a1e', border: '1px solid #ead9a6' }}>✨ +{c.extraSlots}</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: '#9a978e', marginTop: 2 }}>{c.members.length}/{c.memberCap ?? 3} ตัวละคร · รหัส {c.joinCode}</div>
+                  {c.members.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                      {c.members.map(({ memberId, character: ch }) => (
+                        <span key={memberId} style={{ fontSize: 10.5, fontWeight: 600, color: '#6b5b45', background: '#f0ece4', borderRadius: 6, padding: '2px 8px', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name || 'ตัวละคร'}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '3px 9px', background: c.isLibrarian ? '#efe7f6' : '#eef4fb', color: c.isLibrarian ? '#5b3fa0' : '#2a5fbd' }}>{c.isLibrarian ? 'บรรณารักษ์' : 'ผู้เล่น'}</span>
               </button>
