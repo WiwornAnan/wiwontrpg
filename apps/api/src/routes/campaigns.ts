@@ -105,17 +105,24 @@ campaignsRouter.post('/join', async (req, res) => {
   const joinCode = String(req.body?.joinCode ?? '').trim().toUpperCase();
   const characterId = String(req.body?.characterId ?? '');
   if (!joinCode || !characterId) { res.status(400).json({ error: 'กรอกรหัสและเลือกตัวละคร' }); return; }
+  const move = req.body?.move === true;
   const campaign = await prisma.campaign.findUnique({ where: { joinCode }, include: { _count: { select: { members: true } } } });
   if (!campaign) { res.status(404).json({ error: 'ไม่พบแคมเปญจากรหัสนี้' }); return; }
   const character = await prisma.character.findUnique({ where: { id: characterId } });
   if (!character || character.ownerUserId !== me) { res.status(404).json({ error: 'ไม่พบตัวละคร' }); return; }
-  const existing = await prisma.campaignMember.findUnique({ where: { characterId } });
-  if (existing) { res.status(400).json({ error: 'ตัวละครนี้อยู่ในแคมเปญอื่นแล้ว' }); return; }
-  // Seat cap: base 3 + purchased packs. The Librarian buys more with Cr.
+  // A character lives in exactly one campaign. If it's already in another, the
+  // owner may MOVE it here (leaves the old one). Seat cap is checked first so a
+  // move never strands the character out of both campaigns.
+  const existing = await prisma.campaignMember.findUnique({ where: { characterId }, include: { campaign: { select: { name: true } } } });
+  if (existing && existing.campaignId === campaign.id) { res.status(400).json({ error: 'ตัวละครนี้อยู่ในแคมเปญนี้อยู่แล้ว' }); return; }
   const cap = CAMPAIGN_BASE_SLOTS + campaign.extraSlots;
   if (campaign._count.members >= cap) {
     res.status(409).json({ error: `แคมเปญเต็มแล้ว (${cap} คน) — ให้ Librarian เปิดช่องเพิ่ม` });
     return;
+  }
+  if (existing) {
+    if (!move) { res.status(409).json({ error: `ตัวละครนี้อยู่ในแคมเปญ "${existing.campaign.name || 'อื่น'}" แล้ว`, needsMove: true, fromCampaignName: existing.campaign.name || '' }); return; }
+    await prisma.campaignMember.delete({ where: { id: existing.id } });
   }
   await prisma.campaignMember.create({ data: { campaignId: campaign.id, characterId } });
   const full = await prisma.campaign.findUnique({ where: { id: campaign.id }, include: withMembers });

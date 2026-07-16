@@ -51,11 +51,23 @@ export function DwellerSheetPage() {
     mutationFn: () => api.post<{ campaign: CampaignDTO }>('/campaigns', { name: 'แคมเปญใหม่' }),
     onSuccess: (res) => { qc.invalidateQueries({ queryKey: ['campaigns'] }); navigate(`/campaign/${res.campaign.id}`); },
   });
+  const [moveConfirm, setMoveConfirm] = useState<{ fromName: string } | null>(null);
   const joinCamp = useMutation({
-    mutationFn: () => api.post<{ campaign: CampaignDTO }>('/campaigns/join', { joinCode, characterId: joinChar }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); setJoinCode(''); setJoinChar(''); setJoinErr(''); },
-    onError: (e: Error) => setJoinErr(e.message || 'เข้าร่วมไม่สำเร็จ'),
+    mutationFn: (move: boolean) => api.post<{ campaign: CampaignDTO }>('/campaigns/join', { joinCode, characterId: joinChar, move }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); setJoinCode(''); setJoinChar(''); setJoinErr(''); setMoveConfirm(null); },
+    onError: (e: Error) => { setMoveConfirm(null); setJoinErr(e.message || 'เข้าร่วมไม่สำเร็จ'); },
   });
+  // A character can only be in one campaign. If the chosen one already belongs to
+  // another, confirm a MOVE (leaves the old) before joining.
+  const currentCampaignOf = (characterId: string) =>
+    campaigns.find((cp) => cp.members.some((m) => m.character.id === characterId));
+  const attemptJoin = () => {
+    setJoinErr('');
+    if (!joinCode || !joinChar) return;
+    const cur = currentCampaignOf(joinChar);
+    if (cur) setMoveConfirm({ fromName: cur.name || 'แคมเปญเดิม' });
+    else joinCamp.mutate(false);
+  };
 
   const openCharacter = (c: Character) =>
     navigate(c.status === 'complete' ? `/dweller/sheet/${c.id}` : `/dweller/build/${c.id}`);
@@ -124,7 +136,7 @@ export function DwellerSheetPage() {
                   <option value="">— เลือกตัวละคร —</option>
                   {characters.map((c) => <option key={c.id} value={c.id}>{c.name || 'ตัวละครใหม่'}</option>)}
                 </select>
-                <button onClick={() => { setJoinErr(''); if (joinCode && joinChar) joinCamp.mutate(); }} disabled={!joinCode || !joinChar || joinCamp.isPending} style={{ background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12.5, fontWeight: 700, cursor: joinCode && joinChar ? 'pointer' : 'not-allowed', opacity: joinCode && joinChar ? 1 : 0.5 }}>เข้าร่วม</button>
+                <button onClick={attemptJoin} disabled={!joinCode || !joinChar || joinCamp.isPending} style={{ background: '#e07a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12.5, fontWeight: 700, cursor: joinCode && joinChar ? 'pointer' : 'not-allowed', opacity: joinCode && joinChar ? 1 : 0.5 }}>เข้าร่วม</button>
               </div>
               {joinErr && <div style={{ fontSize: 11.5, color: '#b4513a', marginTop: 6 }}>{joinErr}</div>}
             </div>
@@ -199,6 +211,25 @@ export function DwellerSheetPage() {
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#3c3a33' }}>
           แน่ใจแล้วใช่ไหมว่าจะลบ <b>{delTarget?.name || 'ตัวละครใหม่'}</b>?<br />
           <span style={{ color: '#b4513a', fontWeight: 600 }}>การลบนี้ถาวร — ข้อมูลตัวละคร ชีต และของทั้งหมดจะหายไปและกู้คืนไม่ได้</span>
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!moveConfirm}
+        onClose={() => setMoveConfirm(null)}
+        title="ย้ายตัวละครมาแคมเปญนี้?"
+        width={440}
+        footer={
+          <>
+            <Button variant="ghost" disabled={joinCamp.isPending} onClick={() => setMoveConfirm(null)}>ยกเลิก</Button>
+            <Button variant="coral" disabled={joinCamp.isPending} onClick={() => joinCamp.mutate(true)}>{joinCamp.isPending ? 'กำลังย้าย…' : 'ย้ายมาที่นี่'}</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.75, color: '#3c3a33' }}>
+          ตัวละครนี้อยู่ในแคมเปญ <b>{moveConfirm?.fromName}</b> อยู่แล้ว<br />
+          ตัวละครหนึ่งอยู่ได้ทีละแคมเปญ — ถ้าย้ายมาที่นี่ ตัวละครจะ<b>ออกจาก {moveConfirm?.fromName}</b> โดยอัตโนมัติ
+          <br /><span style={{ color: '#8a857c', fontSize: 12.5 }}>(ข้อมูลตัวละคร ชีต และของ ไม่หาย — เฉพาะการเป็นสมาชิกแคมเปญเดิมที่ถูกยกเลิก)</span>
         </p>
       </Modal>
     </div>

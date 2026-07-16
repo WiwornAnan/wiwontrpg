@@ -6,16 +6,19 @@ import type { CampaignDTO } from '../data/statusEffects';
 import layout from '../components/layout.module.css';
 
 const COLS = 3;
+const DEFAULT_HEADERS = ['เวลา', 'เหตุการณ์', 'หมายเหตุ'];
 interface TSRow { id: string; cells: string[] }
 interface TimeScript { headers: string[]; rows: TSRow[] }
 
-const pad = (arr: string[], n: number) => Array.from({ length: n }, (_, i) => arr[i] ?? '');
+const pad = (arr: string[], n: number, fill: string[] = []) => Array.from({ length: n }, (_, i) => arr[i] ?? fill[i] ?? '');
 
-// A free-form 3-column notebook ("Time Script") the Librarian keeps per campaign.
-// The header row defaults to the campaign's character names; every other cell is
-// free text. Rows can be added without limit and the whole grid can be cleared.
+// A free-form 3-column notebook ("Time Script") the Librarian keeps PER character
+// in a campaign. Each character has its own table; the page title is that
+// character's name. Header cells + every body cell are free text, rows can be
+// added without limit, and the whole grid can be cleared. Stored under
+// campaign.data.timeScripts keyed by characterId.
 export function CampaignTimeScriptPage() {
-  const { id } = useParams();
+  const { id, characterId } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -35,22 +38,26 @@ export function CampaignTimeScriptPage() {
   if (isLoading || !c) return <Shell><p style={{ color: '#8d8a82' }}>กำลังโหลด…</p></Shell>;
   if (!c.isLibrarian) return <Shell><p style={{ color: '#b4513a' }}>เฉพาะ Librarian ของแคมเปญนี้เท่านั้น</p><Link to={`/campaign/${id}`}>← กลับ</Link></Shell>;
 
-  const memberNames = c.members.map((m) => m.character.name || 'ตัวละคร');
-  const raw = (c.data.timeScript ?? {}) as Partial<TimeScript>;
+  const member = c.members.find((m) => m.character.id === characterId);
+  if (!member) return <Shell><p style={{ color: '#b4513a' }}>ไม่พบตัวละครนี้ในแคมเปญ</p><Link to={`/campaign/${id}`}>← กลับแคมเปญ</Link></Shell>;
+  const charName = member.character.name || 'ตัวละคร';
+
+  const scripts = (c.data.timeScripts ?? {}) as Record<string, Partial<TimeScript>>;
+  const raw = scripts[characterId!] ?? {};
   const ts: TimeScript = {
-    headers: pad(Array.isArray(raw.headers) ? raw.headers : memberNames, COLS),
+    headers: pad(Array.isArray(raw.headers) ? raw.headers : [], COLS, DEFAULT_HEADERS),
     rows: Array.isArray(raw.rows) && raw.rows.length > 0
       ? raw.rows.map((r) => ({ id: r.id, cells: pad(r.cells ?? [], COLS) }))
       : [{ id: `r${Date.now()}`, cells: pad([], COLS) }],
   };
-  const save = (next: TimeScript) => patch.mutate({ data: { ...c.data, timeScript: next } });
+  const save = (next: TimeScript) => patch.mutate({ data: { ...c.data, timeScripts: { ...scripts, [characterId!]: next } } });
 
   const setHeader = (i: number, v: string) => save({ ...ts, headers: ts.headers.map((h, j) => (j === i ? v : h)) });
   const setCell = (rowId: string, ci: number, v: string) =>
     save({ ...ts, rows: ts.rows.map((r) => (r.id === rowId ? { ...r, cells: r.cells.map((x, j) => (j === ci ? v : x)) } : r)) });
   const addRow = () => save({ ...ts, rows: [...ts.rows, { id: `r${Date.now()}${Math.floor(Math.random() * 999)}`, cells: pad([], COLS) }] });
-  const delRow = (rowId: string) => save({ ...ts, rows: ts.rows.filter((r) => r.id !== rowId).length ? ts.rows.filter((r) => r.id !== rowId) : [{ id: `r${Date.now()}`, cells: pad([], COLS) }] });
-  const clearAll = () => { if (window.confirm('ล้างข้อมูลทั้งหมดใน Time Script? (หัวตารางกลับเป็นชื่อตัวละคร)')) save({ headers: pad(memberNames, COLS), rows: [{ id: `r${Date.now()}`, cells: pad([], COLS) }] }); };
+  const delRow = (rowId: string) => { const rest = ts.rows.filter((r) => r.id !== rowId); save({ ...ts, rows: rest.length ? rest : [{ id: `r${Date.now()}`, cells: pad([], COLS) }] }); };
+  const clearAll = () => { if (window.confirm(`ล้างข้อมูลทั้งหมดใน Time Script ของ "${charName}"?`)) save({ headers: [...DEFAULT_HEADERS], rows: [{ id: `r${Date.now()}`, cells: pad([], COLS) }] }); };
 
   const cell = { border: '1px solid #e7e4dd', padding: 0, verticalAlign: 'top' as const };
   const area = { width: '100%', minHeight: 60, border: 'none', outline: 'none', resize: 'vertical' as const, padding: '9px 11px', fontSize: 13, lineHeight: 1.55, fontFamily: 'inherit', color: '#46443c', background: 'transparent', boxSizing: 'border-box' as const };
@@ -59,12 +66,24 @@ export function CampaignTimeScriptPage() {
     <Shell>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
         <button onClick={() => navigate(`/campaign/${id}`)} style={{ border: '1px solid #e0ded7', background: '#fff', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, color: '#6f6b62', cursor: 'pointer' }}>← กลับแคมเปญ</button>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26 }}>📜 Time Script</h1>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 25 }}>📜 Time Script · {charName}</h1>
           <div style={{ fontSize: 12.5, color: '#9a978e', marginTop: 2 }}>{c.name} · ตารางบันทึก 3 คอลัมน์ · บันทึกอัตโนมัติ</div>
         </div>
         <button onClick={clearAll} style={{ border: '1px solid #f0d3cb', background: '#fff', color: '#b4513a', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>ล้างข้อมูลในตาราง</button>
       </div>
+
+      {/* Quick switch to other characters' Time Scripts */}
+      {c.members.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {c.members.map((m) => {
+            const on = m.character.id === characterId;
+            return (
+              <Link key={m.character.id} to={`/campaign/${id}/timescript/${m.character.id}`} style={{ textDecoration: 'none', fontSize: 11.5, fontWeight: 700, borderRadius: 8, padding: '5px 11px', border: `1px solid ${on ? '#5b3fa0' : '#e0ded7'}`, background: on ? '#5b3fa0' : '#fff', color: on ? '#fff' : '#6b5b45' }}>{m.character.name || 'ตัวละคร'}</Link>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 16, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 520 }}>

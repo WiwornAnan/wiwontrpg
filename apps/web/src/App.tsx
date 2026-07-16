@@ -40,7 +40,7 @@ export function App() {
           <Route path="/dweller/build/:id" element={<DwellerBuildPage mode="build" />} />
           <Route path="/dweller/sheet/:id" element={<DwellerBuildPage mode="sheet" />} />
           <Route path="/campaign/:id" element={<CampaignPage />} />
-          <Route path="/campaign/:id/timescript" element={<CampaignTimeScriptPage />} />
+          <Route path="/campaign/:id/timescript/:characterId" element={<CampaignTimeScriptPage />} />
           <Route path="/campaign/:id/board" element={<BoardPage />} />
           <Route path="/magic" element={<CatalogPage key="magic" category="magic" />} />
           <Route path="/equipment" element={<CatalogPage key="equipment" category="equipment" />} />

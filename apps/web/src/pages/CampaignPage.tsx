@@ -125,10 +125,11 @@ export function CampaignPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); navigate('/dweller'); },
   });
   const [slotMsg, setSlotMsg] = useState('');
+  const [slotConfirm, setSlotConfirm] = useState(false);
   const buySlots = useMutation({
     mutationFn: () => api.post<{ campaign: CampaignDTO }>(`/campaigns/${id}/buy-slots`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); qc.invalidateQueries({ queryKey: ['me'] }); setSlotMsg('เปิดช่องเพิ่มแล้ว +2 ✓'); setTimeout(() => setSlotMsg(''), 2600); },
-    onError: (e) => setSlotMsg(e instanceof ApiError ? e.message : 'เปิดช่องไม่สำเร็จ'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); qc.invalidateQueries({ queryKey: ['me'] }); setSlotConfirm(false); setSlotMsg('เปิดช่องเพิ่มแล้ว +2 ✓'); setTimeout(() => setSlotMsg(''), 2600); },
+    onError: (e) => { setSlotConfirm(false); setSlotMsg(e instanceof ApiError ? e.message : 'เปิดช่องไม่สำเร็จ'); },
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ['campaign', id] });
   const addMonster = useMutation({ mutationFn: (b: { name: string; value: number }) => api.post(`/campaigns/${id}/initiative/monster`, b), onSuccess: invalidate });
@@ -140,6 +141,7 @@ export function CampaignPage() {
   const [monName, setMonName] = useState('');
   const [monPicker, setMonPicker] = useState(false);
   const [monQuery, setMonQuery] = useState('');
+  const [checkChar, setCheckChar] = useState(''); // which character's ตารางวัดระดับตัวตน is shown
   const [selDay, setSelDay] = useState<number | null>(null); // calendar day whose notes are shown
   const [calNoteText, setCalNoteText] = useState('');
   const [skillDie, setSkillDie] = useState<Record<string, number>>({}); // per-skill chosen die faces
@@ -176,7 +178,7 @@ export function CampaignPage() {
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
-  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean; initTurn?: string; checklist?: CheckItem[] };
+  const cdata = c.data as { clock?: Clock; clockPrev?: Clock; notes?: Note[]; log?: LogEntry[]; initiative?: InitEntry[]; calNotes?: CalNote[]; lootTrash?: LootTrashItem[]; allowHomebrew?: boolean; initTurn?: string; checklists?: Record<string, CheckItem[]> };
   const allowHomebrew = cdata.allowHomebrew !== false; // default: allowed
   const initTurn = typeof cdata.initTurn === 'string' ? cdata.initTurn : '';
   const log: LogEntry[] = Array.isArray(cdata.log) ? cdata.log : [];
@@ -190,11 +192,14 @@ export function CampaignPage() {
   const saveNotes = (n: Note[]) => setData({ notes: n });
   const calNotes: CalNote[] = Array.isArray(cdata.calNotes) ? cdata.calNotes : [];
   const saveCalNotes = (n: CalNote[]) => setData({ calNotes: n });
+  // ตารางวัดระดับตัวตน — one 10-row tri-state checklist PER character.
+  const checkCharId = checkChar || (c.members[0]?.character.id ?? '');
+  const checklists = (cdata.checklists ?? {}) as Record<string, CheckItem[]>;
   const checklist: CheckItem[] = (() => {
-    const raw = Array.isArray(cdata.checklist) ? cdata.checklist : [];
+    const raw = Array.isArray(checklists[checkCharId]) ? checklists[checkCharId] : [];
     return Array.from({ length: CHECK_ROWS }, (_, i) => ({ text: typeof raw[i]?.text === 'string' ? raw[i]!.text : '', state: (raw[i]?.state ?? '') as CheckState }));
   })();
-  const saveChecklist = (n: CheckItem[]) => setData({ checklist: n });
+  const saveChecklist = (n: CheckItem[]) => setData({ checklists: { ...checklists, [checkCharId]: n } });
   const setCheck = (i: number, p: Partial<CheckItem>) => saveChecklist(checklist.map((x, j) => (j === i ? { ...x, ...p } : x)));
 
   const applyTargets = targets ?? c.members.map((m) => m.character.id);
@@ -294,7 +299,7 @@ export function CampaignPage() {
                   <span title={`เต็มที่ ${cap} คน (พื้นฐาน ${CAMPAIGN_BASE_SLOTS}${cap > CAMPAIGN_BASE_SLOTS ? ` + ซื้อเพิ่ม ${cap - CAMPAIGN_BASE_SLOTS}` : ''})`} style={{ fontSize: 11, fontWeight: 800, color: full ? '#b4513a' : '#2f6b4f', background: full ? '#fbeae6' : '#eaf6ee', border: `1px solid ${full ? '#f0d0c4' : '#cfe6d6'}`, borderRadius: 7, padding: '3px 9px' }}>👥 {c.members.length}/{cap}</span>
                   {(c.extraSlots ?? 0) > 0 && <span title={`แคมเปญนี้ขยายช่องตัวละครแล้ว +${c.extraSlots} (ซื้อ ${(c.extraSlots ?? 0) / CAMPAIGN_SLOT_PACK_SIZE} ครั้ง)`} style={{ fontSize: 11, fontWeight: 800, color: '#8a6a1e', background: '#fbf3dd', border: '1px solid #ead9a6', borderRadius: 7, padding: '3px 9px' }}>✨ ขยายช่องแล้ว +{c.extraSlots}</span>}
                   {c.isLibrarian && (
-                    <button onClick={() => buySlots.mutate()} disabled={buySlots.isPending} title={`เปิดช่องอีก ${CAMPAIGN_SLOT_PACK_SIZE} คน ด้วย ${CAMPAIGN_SLOT_PACK_COST} Cr.`} style={{ border: '1px solid #d8c48f', background: '#fbf3dd', color: '#8a6a1e', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 800, cursor: buySlots.isPending ? 'wait' : 'pointer' }}>
+                    <button onClick={() => { setSlotMsg(''); setSlotConfirm(true); }} disabled={buySlots.isPending} title={`เปิดช่องอีก ${CAMPAIGN_SLOT_PACK_SIZE} คน ด้วย ${CAMPAIGN_SLOT_PACK_COST} Cr.`} style={{ border: '1px solid #d8c48f', background: '#fbf3dd', color: '#8a6a1e', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 800, cursor: buySlots.isPending ? 'wait' : 'pointer' }}>
                       ＋ เปิดช่อง +{CAMPAIGN_SLOT_PACK_SIZE} · {CAMPAIGN_SLOT_PACK_COST} Cr.
                     </button>
                   )}
@@ -302,11 +307,6 @@ export function CampaignPage() {
               );
             })()}
             {slotMsg && <div style={{ fontSize: 11.5, fontWeight: 700, color: slotMsg.includes('✓') ? '#2f6b4f' : '#b4513a', marginBottom: 6 }}>{slotMsg}</div>}
-            {c.isLibrarian && (
-              <Link to={`/campaign/${id}/timescript`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', border: '1px solid #cdb8ec', background: '#f3eefb', color: '#5b3fa0', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>
-                📜 เปิด Time Script <span style={{ fontSize: 10.5, fontWeight: 500, color: '#8a7ab5' }}>· ตารางบันทึก 3 คอลัมน์</span>
-              </Link>
-            )}
             {c.members.length === 0 ? <div style={{ fontSize: 13, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีผู้เล่นเข้าร่วม — แชร์รหัส {c.joinCode}</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {c.members.map(({ character: ch }) => {
@@ -336,6 +336,7 @@ export function CampaignPage() {
                     <div key={ch.id} style={{ border: '1px solid #ece9e3', borderRadius: 11, padding: '11px 13px', background: '#faf9f7' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                         <span style={{ flex: 1, fontSize: 14, fontWeight: 800, color: '#2f2c25' }}>{ch.name || 'ตัวละคร'}</span>
+                        {c.isLibrarian && <Link to={`/campaign/${id}/timescript/${ch.id}`} title="เปิด Time Script ของตัวละครนี้" style={{ fontSize: 11.5, fontWeight: 700, color: '#5b3fa0', background: '#f3eefb', border: '1px solid #d6c8ee', borderRadius: 7, padding: '5px 10px', textDecoration: 'none' }}>📜 Time Script</Link>}
                         {c.isLibrarian && <Link to={`/dweller/sheet/${ch.id}`} style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#5b3fa0', borderRadius: 7, padding: '5px 11px', textDecoration: 'none' }}>เปิด Dweller Sheet</Link>}
                         {c.isLibrarian && <button onClick={() => removeMember.mutate(ch.id)} title="เอาออกจากแคมเปญ" style={{ border: 'none', background: 'none', color: '#cb5a44', cursor: 'pointer', fontSize: 15 }}>×</button>}
                       </div>
@@ -368,50 +369,6 @@ export function CampaignPage() {
               </div>
             )}
           </div>
-
-          {/* ตารางวัดระดับตัวตน — 10 tri-state check rows (Librarian) */}
-          {c.isLibrarian && (
-            <div style={box}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <div style={{ ...secLabel, marginBottom: 0, flex: 1 }}>ตารางวัดระดับตัวตน</div>
-                <div style={{ display: 'flex', gap: 5 }}>
-                  {CHECK_COLORS.map((col) => <span key={col.key} title={col.label} style={{ width: 11, height: 11, borderRadius: '50%', background: col.c, display: 'inline-block' }} />)}
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {checklist.map((row, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#bdbab2', width: 16, textAlign: 'right', flex: 'none' }}>{i + 1}</span>
-                    <input
-                      defaultValue={row.text}
-                      key={`${i}:${row.text}`}
-                      onBlur={(e) => { if (e.target.value !== row.text) setCheck(i, { text: e.target.value }); }}
-                      placeholder="รายการ…"
-                      style={{ flex: 1, minWidth: 0, border: '1px solid #ece9e3', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, outline: 'none', background: '#faf9f7', fontFamily: 'inherit', color: '#46443c' }}
-                    />
-                    <div style={{ display: 'flex', gap: 0, flex: 'none' }}>
-                      {CHECK_COLORS.map((col, ci) => {
-                        const on = row.state === col.key;
-                        return (
-                          <button
-                            key={col.key}
-                            onClick={() => setCheck(i, { state: on ? '' : col.key })}
-                            title={col.label}
-                            style={{ width: 30, height: 30, border: `1px solid ${on ? col.c : '#e4e1da'}`, borderLeft: ci === 0 ? undefined : 'none', borderTopLeftRadius: ci === 0 ? 8 : 0, borderBottomLeftRadius: ci === 0 ? 8 : 0, borderTopRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, borderBottomRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, background: on ? col.c : col.bg, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-                          >
-                            {on && <span style={{ color: '#fff', fontSize: 15, fontWeight: 900, lineHeight: 1 }}>✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                <button onClick={() => saveChecklist(Array.from({ length: CHECK_ROWS }, () => ({ text: '', state: '' as CheckState })))} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 8, padding: '5px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>ล้างทั้งหมด</button>
-              </div>
-            </div>
-          )}
 
           {/* character traits — Virtues / Flaws / Merits / Demerits (Librarian) */}
           {c.isLibrarian && c.members.length > 0 && (
@@ -721,6 +678,64 @@ export function CampaignPage() {
         </div>
       </div>
 
+      {/* ตารางวัดระดับตัวตน — per-character, full width at the bottom (Librarian) */}
+      {c.isLibrarian && (
+        <div style={{ ...box, marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ ...secLabel, marginBottom: 0 }}>ตารางวัดระดับตัวตน</div>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {CHECK_COLORS.map((col) => <span key={col.key} title={col.label} style={{ width: 11, height: 11, borderRadius: '50%', background: col.c, display: 'inline-block' }} />)}
+            </div>
+            <div style={{ flex: 1 }} />
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {c.members.map(({ character: ch }) => {
+                const on = ch.id === checkCharId;
+                return <button key={ch.id} onClick={() => setCheckChar(ch.id)} style={{ border: `1px solid ${on ? '#5b3fa0' : '#e0ded7'}`, background: on ? '#5b3fa0' : '#fff', color: on ? '#fff' : '#6b5b45', borderRadius: 8, padding: '4px 11px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>{ch.name || 'ตัวละคร'}</button>;
+              })}
+            </div>
+          </div>
+          {c.members.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '6px 0' }}>ยังไม่มีตัวละครในแคมเปญ — เพิ่มผู้เล่นก่อนจึงจะกำหนดตารางได้</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, color: '#a8a59d', marginBottom: 8 }}>กำหนดให้ตัวละคร: <b style={{ color: '#5b3fa0' }}>{c.members.find((m) => m.character.id === checkCharId)?.character.name || 'ตัวละคร'}</b> · แต่ละตัวละครมีตารางแยกกัน</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
+                {checklist.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#bdbab2', width: 16, textAlign: 'right', flex: 'none' }}>{i + 1}</span>
+                    <input
+                      defaultValue={row.text}
+                      key={`${checkCharId}:${i}:${row.text}`}
+                      onBlur={(e) => { if (e.target.value !== row.text) setCheck(i, { text: e.target.value }); }}
+                      placeholder="รายการ…"
+                      style={{ flex: 1, minWidth: 0, border: '1px solid #ece9e3', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, outline: 'none', background: '#faf9f7', fontFamily: 'inherit', color: '#46443c' }}
+                    />
+                    <div style={{ display: 'flex', gap: 0, flex: 'none' }}>
+                      {CHECK_COLORS.map((col, ci) => {
+                        const on = row.state === col.key;
+                        return (
+                          <button
+                            key={col.key}
+                            onClick={() => setCheck(i, { state: on ? '' : col.key })}
+                            title={col.label}
+                            style={{ width: 30, height: 30, border: `1px solid ${on ? col.c : '#e4e1da'}`, borderLeft: ci === 0 ? undefined : 'none', borderTopLeftRadius: ci === 0 ? 8 : 0, borderBottomLeftRadius: ci === 0 ? 8 : 0, borderTopRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, borderBottomRightRadius: ci === CHECK_COLORS.length - 1 ? 8 : 0, background: on ? col.c : col.bg, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          >
+                            {on && <span style={{ color: '#fff', fontSize: 15, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                <button onClick={() => { if (window.confirm('ล้างตารางวัดระดับตัวตนของตัวละครนี้ทั้งหมด?')) saveChecklist(Array.from({ length: CHECK_ROWS }, () => ({ text: '', state: '' as CheckState }))); }} style={{ border: '1px solid #e0ded7', background: '#fff', color: '#8d8a82', borderRadius: 8, padding: '5px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>ล้างทั้งหมด</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <Modal open={monPicker} onClose={() => setMonPicker(false)} title="เพิ่มมอนสเตอร์เข้า Initiative" dark>
         <p style={{ fontSize: 12.5, color: '#8d8a82', margin: '0 0 10px' }}>กด “เพิ่ม + ทอย” เพื่อทอย Initiative = 10 + DEX + PER จากค่าจริงของมอนสเตอร์</p>
         <input value={monQuery} onChange={(e) => setMonQuery(e.target.value)} placeholder="🔍 ค้นหามอนสเตอร์…" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #3a3730', borderRadius: 10, padding: '9px 12px', fontSize: 13, background: '#221f1a', color: '#f3ede1', outline: 'none', marginBottom: 10 }} />
@@ -749,6 +764,21 @@ export function CampaignPage() {
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''}>
         {detail && <CatalogDetail item={detail} cfg={CATALOG_CONFIGS[detail.category]} category={detail.category} isFeature={!!detail.isFeature} onEdit={() => {}} embedded />}
+      </Modal>
+
+      <Modal open={slotConfirm} onClose={() => setSlotConfirm(false)} title="เปิดช่องตัวละครเพิ่ม" width={440}
+        footer={<>
+          <Button variant="ghost" onClick={() => setSlotConfirm(false)}>ยกเลิก</Button>
+          <Button variant="coral" disabled={buySlots.isPending || (user?.creditBalance ?? 0) < CAMPAIGN_SLOT_PACK_COST} onClick={() => buySlots.mutate()}>{buySlots.isPending ? 'กำลังเปิด…' : `จ่าย ${CAMPAIGN_SLOT_PACK_COST} Cr.`}</Button>
+        </>}>
+        <p style={{ margin: '0 0 12px', fontSize: 14, lineHeight: 1.7 }}>
+          เปิดช่องตัวละครในแคมเปญนี้เพิ่มอีก <b>{CAMPAIGN_SLOT_PACK_SIZE} คน</b> (จาก {c.memberCap ?? CAMPAIGN_BASE_SLOTS} → {(c.memberCap ?? CAMPAIGN_BASE_SLOTS) + CAMPAIGN_SLOT_PACK_SIZE} คน) โดยใช้ <b>{CAMPAIGN_SLOT_PACK_COST} Cr.</b>
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, background: '#faf9f6', border: '1px solid var(--border-faint)', borderRadius: 9, padding: '9px 12px' }}>
+          <span style={{ color: '#8a857c' }}>Cr. คงเหลือของคุณ</span>
+          <span style={{ fontWeight: 800, color: (user?.creditBalance ?? 0) < CAMPAIGN_SLOT_PACK_COST ? '#b4513a' : '#2f6b4f' }}>{user?.creditBalance ?? 0} Cr.</span>
+        </div>
+        {(user?.creditBalance ?? 0) < CAMPAIGN_SLOT_PACK_COST && <div style={{ fontSize: 11.5, color: '#b4513a', marginTop: 8 }}>Cr. ไม่พอ — เติม Cr. ได้ที่เมนูบัญชี (มุมขวาบน)</div>}
       </Modal>
     </div>
   );
