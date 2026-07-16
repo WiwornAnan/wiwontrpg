@@ -250,7 +250,7 @@ export function BoardPage() {
   const [auraForm, setAuraForm] = useState<{ tokenId: string; radius: number; color: string; label: string; follow: boolean } | null>(null);
   // Brush strokes render locally first (survives the 2s polls), then flush on release.
   const overlay = useRef(new Map<string, { layer: CellLayer; v: string | number }>());
-  const [, bumpOverlay] = useState(0);
+  const [overlayBump, bumpOverlay] = useState(0);
   const bgRatioRef = useRef(new Map<string, number>()); // bg url -> naturalH/naturalW
 
   // Locally-seen time per ping id — pings render for 6s from when THIS client first saw them.
@@ -259,10 +259,14 @@ export function BoardPage() {
     if (!pingSeen.current.has(p.id)) pingSeen.current.set(p.id, Date.now());
     return Date.now() - (pingSeen.current.get(p.id) ?? 0) < 6000;
   });
+  // Only tick (to fade pings) while pings actually exist — otherwise the whole
+  // board would needlessly re-render twice a second.
+  const anyPing = (map?.pings?.length ?? 0) > 0;
   useEffect(() => {
+    if (!anyPing) return;
     const iv = window.setInterval(() => setTick((t) => t + 1), 700);
     return () => window.clearInterval(iv);
-  }, []);
+  }, [anyPing]);
 
   const toBoard = (clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -361,12 +365,19 @@ export function BoardPage() {
     const sx = e.clientX, sy = e.clientY;
     const movable = canMove(t);
     setDrag({ token: t, x: hexX(t.q, t.r), y: hexY(t.r), moved: false });
+    // Coalesce pointer moves to one state update per animation frame — the pointer
+    // fires far faster than we can repaint, and without this the queue backs up
+    // and the drag feels laggy.
+    let raf = 0; let pending: { x: number; y: number; moved: boolean } | null = null;
     const onMove = (ev: PointerEvent) => {
       if (!movable && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) return;
       const p = toBoard(ev.clientX, ev.clientY);
-      setDrag((d) => (d ? { ...d, x: p.x, y: p.y, moved: d.moved || Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6 } : d));
+      pending = { x: p.x, y: p.y, moved: Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6 };
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; if (pending) setDrag((d) => (d ? { ...d, x: pending!.x, y: pending!.y, moved: d.moved || pending!.moved } : d)); });
     };
     const end = (ev: PointerEvent) => {
+      if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end);
       const cur = dragRef.current;
       setDrag(null);
@@ -452,12 +463,84 @@ export function BoardPage() {
     img.src = url;
   }, [map?.bg?.url]);
 
+  // The board's *static* layers (grid, terrain, elevation, cliffs, auras, fog)
+  // are expensive to build (hundreds of SVG nodes + per-hex neighbour maths).
+  // Memoising them means dragging a token — which only changes `drag` — no longer
+  // rebuilds the whole map on every pointer move, killing the lag.
+  const staticLayers = useMemo(() => {
+    if (!map) return null;
+    const pal = map.palette && map.palette.length ? map.palette : DEFAULT_PALETTE;
+    const pById = new Map(pal.map((p) => [p.id, p] as const));
+    const isLib = !!c?.isLibrarian;
+    const auras = (map.auras ?? []).flatMap((a) => {
+      if (a.follow) { const t = map.tokens.find((x) => x.id === a.tokenId); return t ? [{ ...a, cq: t.q, cr: t.r }] : []; }
+      return [{ ...a, cq: a.q ?? 0, cr: a.r ?? 0 }];
+    });
+    return (
+      <>
+        {map.bg && bgRatio > 0 && (
+          <image href={map.bg.url} x={map.bg.x} y={map.bg.y} width={map.bg.w} height={map.bg.w * bgRatio} opacity={map.bg.opacity} preserveAspectRatio="none" pointerEvents="none" />
+        )}
+        {hexes.map((h) => {
+          const key = `${h.q},${h.r}`;
+          const ter = cellTerrain(key);
+          const col = ter ? pById.get(ter)?.color : undefined;
+          return <polygon key={key} points={h.pts} fill={col ?? (map.bg ? 'transparent' : '#fbf9f4')} fillOpacity={col ? 0.62 : 1} stroke="#c9c2b2" strokeWidth={1} />;
+        })}
+        {hexes.map((h) => {
+          const key = `${h.q},${h.r}`;
+          const v = cellElev(key);
+          if (v === 0) return null;
+          return (
+            <g key={`e${key}`} pointerEvents="none">
+              <polygon points={h.pts} fill={elevFill(v)} fillOpacity={v > 0 ? 0.55 : 0.6} />
+              {showElevNums && (
+                <text x={hexX(h.q, h.r)} y={hexY(h.r) - HEX * 0.45} textAnchor="middle" style={{ fontSize: 9.5, fontWeight: 800, fill: v > 0 ? '#6b4a17' : '#1c3a56', paintOrder: 'stroke', stroke: '#ffffffcc', strokeWidth: 2.5 }}>{v > 0 ? `+${v}` : v}</text>
+              )}
+            </g>
+          );
+        })}
+        {hexes.map((h) => {
+          const v = cellElev(`${h.q},${h.r}`);
+          const cx = hexX(h.q, h.r), cy = hexY(h.r);
+          const lines: React.ReactNode[] = [];
+          for (const [dq, dr, c1, c2] of edgeDirs(h.r)) {
+            const nq = h.q + dq, nr = h.r + dr;
+            if (nq < 0 || nr < 0 || nq >= map.cols || nr >= map.rows) continue;
+            const nv = cellElev(`${nq},${nr}`);
+            if (nv >= v) continue;
+            lines.push(<line key={`${dq},${dr}`} x1={cx + CORNERS[c1][0]} y1={cy + CORNERS[c1][1]} x2={cx + CORNERS[c2][0]} y2={cy + CORNERS[c2][1]} stroke={v > 0 || nv >= 0 ? '#5c4a2e' : '#16324f'} strokeWidth={1.6 + Math.min(v - nv, 4) * 0.9} strokeOpacity={0.55} strokeLinecap="round" />);
+          }
+          return lines.length ? <g key={`cl${h.q},${h.r}`} pointerEvents="none">{lines}</g> : null;
+        })}
+        {auras.map((a) => {
+          const cells = hexes.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) <= a.radius);
+          return (
+            <g key={a.id} pointerEvents="none">
+              {cells.map((h) => <polygon key={`${a.id}${h.q},${h.r}`} points={h.pts} fill={a.color} fillOpacity={0.18} />)}
+              {cells.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) === a.radius).map((h) => (
+                <polygon key={`${a.id}o${h.q},${h.r}`} points={h.pts} fill="none" stroke={a.color} strokeWidth={1.6} strokeOpacity={0.55} />
+              ))}
+              {a.label && <text x={hexX(a.cq, a.cr)} y={hexY(a.cr) + HEX * 1.1} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: a.color, paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◎ {a.label}</text>}
+            </g>
+          );
+        })}
+        {hexes.map((h) => {
+          const key = `${h.q},${h.r}`;
+          if (!cellFog(key)) return null;
+          return <polygon key={`f${key}`} points={h.pts} fill="#262019" fillOpacity={isLib ? 0.3 : 0.97} stroke={isLib ? '#26201955' : '#1b1712'} strokeWidth={1} pointerEvents="none" />;
+        })}
+      </>
+    );
+    // Rebuilds only when the map data, grid, bg, elev-number toggle, viewer role
+    // or a live brush stroke changes — NOT while dragging a token.
+  }, [map, hexes, bgRatio, showElevNums, c?.isLibrarian, overlayBump]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!user) return <div className={layout.page} style={{ paddingTop: 40 }}><Link to="/login">เข้าสู่ระบบ</Link></div>;
   if (!c) return <div className={layout.page} style={{ paddingTop: 40, color: '#a8a59d' }}>กำลังโหลด…</div>;
 
   // ── derived render data ──
   const palette = map?.palette && map.palette.length ? map.palette : DEFAULT_PALETTE;
-  const paletteById = new Map(palette.map((p) => [p.id, p]));
   // Current initiative turn → highlight the matching token on the board.
   const initiative = Array.isArray(c.data.initiative) ? (c.data.initiative as { id: string; name: string }[]) : [];
   const initTurn = typeof c.data.initTurn === 'string' ? (c.data.initTurn as string) : '';
@@ -586,70 +669,8 @@ export function BoardPage() {
             onDoubleClick={onDblClick}
           >
             <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-              {/* background map image */}
-              {map.bg && bgRatio > 0 && (
-                <image href={map.bg.url} x={map.bg.x} y={map.bg.y} width={map.bg.w} height={map.bg.w * bgRatio} opacity={map.bg.opacity} preserveAspectRatio="none" pointerEvents="none" />
-              )}
-              {/* grid + terrain */}
-              {hexes.map((h) => {
-                const key = `${h.q},${h.r}`;
-                const ter = cellTerrain(key);
-                const col = ter ? paletteById.get(ter)?.color : undefined;
-                return <polygon key={key} points={h.pts} fill={col ?? (map.bg ? 'transparent' : '#fbf9f4')} fillOpacity={col ? 0.62 : 1} stroke="#c9c2b2" strokeWidth={1} />;
-              })}
-              {/* elevation — banded topographic tint + level numbers */}
-              {hexes.map((h) => {
-                const key = `${h.q},${h.r}`;
-                const v = cellElev(key);
-                if (v === 0) return null;
-                return (
-                  <g key={`e${key}`} pointerEvents="none">
-                    <polygon points={h.pts} fill={elevFill(v)} fillOpacity={v > 0 ? 0.55 : 0.6} />
-                    {showElevNums && (
-                      <text x={hexX(h.q, h.r)} y={hexY(h.r) - HEX * 0.45} textAnchor="middle" style={{ fontSize: 9.5, fontWeight: 800, fill: v > 0 ? '#6b4a17' : '#1c3a56', paintOrder: 'stroke', stroke: '#ffffffcc', strokeWidth: 2.5 }}>
-                        {v > 0 ? `+${v}` : v}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-              {/* cliff edges — a dark rim wherever the ground drops to a neighbor,
-                  thicker the bigger the drop, so plateaus/pits read without numbers */}
-              {hexes.map((h) => {
-                const v = cellElev(`${h.q},${h.r}`);
-                const cx = hexX(h.q, h.r), cy = hexY(h.r);
-                const lines: React.ReactNode[] = [];
-                for (const [dq, dr, c1, c2] of edgeDirs(h.r)) {
-                  const nq = h.q + dq, nr = h.r + dr;
-                  if (nq < 0 || nr < 0 || nq >= map.cols || nr >= map.rows) continue;
-                  const nv = cellElev(`${nq},${nr}`);
-                  if (nv >= v) continue;
-                  lines.push(
-                    <line key={`${dq},${dr}`} x1={cx + CORNERS[c1][0]} y1={cy + CORNERS[c1][1]} x2={cx + CORNERS[c2][0]} y2={cy + CORNERS[c2][1]}
-                      stroke={v > 0 || nv >= 0 ? '#5c4a2e' : '#16324f'} strokeWidth={1.6 + Math.min(v - nv, 4) * 0.9} strokeOpacity={0.55} strokeLinecap="round" />,
-                  );
-                }
-                return lines.length ? <g key={`cl${h.q},${h.r}`} pointerEvents="none">{lines}</g> : null;
-              })}
-              {/* auras (พื้นที่อาณาเขต) */}
-              {resolvedAuras.map((a) => {
-                const cells = hexes.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) <= a.radius);
-                return (
-                  <g key={a.id} pointerEvents="none">
-                    {cells.map((h) => <polygon key={`${a.id}${h.q},${h.r}`} points={h.pts} fill={a.color} fillOpacity={0.18} />)}
-                    {cells.filter((h) => hexDist({ q: h.q, r: h.r }, { q: a.cq, r: a.cr }) === a.radius).map((h) => (
-                      <polygon key={`${a.id}o${h.q},${h.r}`} points={h.pts} fill="none" stroke={a.color} strokeWidth={1.6} strokeOpacity={0.55} />
-                    ))}
-                    {a.label && <text x={hexX(a.cq, a.cr)} y={hexY(a.cr) + HEX * 1.1} textAnchor="middle" style={{ fontSize: 10.5, fontWeight: 800, fill: a.color, paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3 }}>◎ {a.label}</text>}
-                  </g>
-                );
-              })}
-              {/* fog of war — opaque for players, translucent for the Librarian */}
-              {hexes.map((h) => {
-                const key = `${h.q},${h.r}`;
-                if (!cellFog(key)) return null;
-                return <polygon key={`f${key}`} points={h.pts} fill="#262019" fillOpacity={c.isLibrarian ? 0.3 : 0.97} stroke={c.isLibrarian ? '#26201955' : '#1b1712'} strokeWidth={1} pointerEvents="none" />;
-              })}
+              {/* static layers (grid / terrain / elevation / cliffs / auras / fog) — memoised */}
+              {staticLayers}
               {/* drag target highlight */}
               {drag && drag.moved && canMove(drag.token) && (() => {
                 const hex = nearestHex(drag.x, drag.y, map.cols, map.rows);
