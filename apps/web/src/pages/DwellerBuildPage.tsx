@@ -1169,9 +1169,14 @@ function CharacterSheet({
             <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82' }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
-                {campaignId && isLibrarian && campaignLog.length > 0 && (
-                  <button onClick={() => { if (window.confirm('ล้างประวัติ Log ของทั้งแคมเปญ?')) logClear.mutate(); }} title="Librarian: ล้าง Log ทั้งหมด" style={{ flex: 'none', border: '1px solid #3a3730', background: '#221f1a', color: '#a8a59d', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ล้าง LOG</button>
-                )}
+                <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                  {campaignId && (
+                    <Link to={`/campaign/${campaignId}/board`} title="เปิดกระดานวิวรณ์ (แผนที่)" style={{ border: '1px solid #4a4136', background: '#2a2620', color: '#f7dca0', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, textDecoration: 'none' }}>🗺 กระดานวิวรณ์</Link>
+                  )}
+                  {campaignId && isLibrarian && campaignLog.length > 0 && (
+                    <button onClick={() => { if (window.confirm('ล้างประวัติ Log ของทั้งแคมเปญ?')) logClear.mutate(); }} title="Librarian: ล้าง Log ทั้งหมด" style={{ border: '1px solid #3a3730', background: '#221f1a', color: '#a8a59d', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}>ล้าง LOG</button>
+                  )}
+                </div>
               </div>
               {!campaignId ? (
                 <div style={{ fontSize: 12, color: '#6b6860', lineHeight: 1.6 }}>ตัวละครนี้ยังไม่อยู่ในแคมเปญ — เข้าร่วมแคมเปญ (หน้า Dweller → “เข้าร่วมด้วยรหัส”) เพื่อใช้ Log ประวัติการทอยร่วมกัน</div>
