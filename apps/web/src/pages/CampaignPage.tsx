@@ -333,7 +333,7 @@ export function CampaignPage() {
               <div style={secLabel}>คุณสมบัติของตัวละคร <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· จากตอนสร้างตัวละคร · คนที่รับอันเดียวกันจะอยู่รวมกัน</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
                 {TRAIT_CATS.map((cat) => {
-                  const entries = [...traitGroups[cat.tag].values()];
+                  const entries = [...traitGroups[cat.tag].entries()];
                   return (
                     <div key={cat.tag} style={{ border: `1px solid ${cat.bd}`, background: cat.bg, borderRadius: 11, padding: '10px 12px' }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, color: cat.color, marginBottom: 7 }}>{cat.label} <span style={{ opacity: .7, fontWeight: 600 }}>{entries.length || ''}</span></div>
@@ -341,12 +341,18 @@ export function CampaignPage() {
                         <div style={{ fontSize: 11, color: '#b0ada4' }}>— ยังไม่มี —</div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                          {entries.map((e) => (
-                            <div key={e.name}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: cat.color }}>{e.name}</div>
-                              <div style={{ fontSize: 10.5, color: '#7a756c', marginTop: 1, lineHeight: 1.45 }}>{e.chars.join(' · ')}</div>
-                            </div>
-                          ))}
+                          {entries.map(([fid, e]) => {
+                            const item = featById.get(fid);
+                            return (
+                              <div key={fid}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: cat.color }}>{e.name}</span>
+                                  {item && <button onClick={() => setDetail(item)} title="ดูข้อมูล" style={{ flex: 'none', border: `1px solid ${cat.bd}`, background: '#fff', color: cat.color, borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer', lineHeight: 1.4 }}>ⓘ</button>}
+                                </div>
+                                <div style={{ fontSize: 10.5, color: '#7a756c', marginTop: 1, lineHeight: 1.45 }}>{e.chars.join(' · ')}</div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
