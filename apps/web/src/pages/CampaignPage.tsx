@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
@@ -26,6 +26,23 @@ async function fetchCatalogAll(category: string): Promise<CatalogItem[]> {
   return out;
 }
 const fetchMonsters = () => fetchCatalogAll('monster');
+// Every Feature (magic category, isFeature) — for resolving a character's
+// Virtues / Flaws / Merits / Demerits to names + tags in the Librarian overview.
+async function fetchFeaturesAll(): Promise<CatalogItem[]> {
+  const out: CatalogItem[] = [];
+  for (let page = 1; page < 50; page++) {
+    const d = await api.get<{ items: CatalogItem[]; total: number }>(`/catalog/magic?scope=all&isFeature=true&page=${page}`);
+    out.push(...d.items);
+    if (d.items.length === 0 || out.length >= d.total) break;
+  }
+  return out;
+}
+const TRAIT_CATS = [
+  { tag: 'Virtues', label: 'Virtues · คุณธรรม', color: '#2f7d4f', bg: '#eef6f0', bd: '#cfe6d6' },
+  { tag: 'Flaws', label: 'Flaws · ข้อด้อย', color: '#b0552f', bg: '#f9eeea', bd: '#f0d8ce' },
+  { tag: 'Merits', label: 'Merits · จุดเด่น', color: '#5b3fa0', bg: '#ede7f6', bd: '#d6c7f0' },
+  { tag: 'Demerits', label: 'Demerits · จุดด้อย', color: '#b4513a', bg: '#fbeae6', bd: '#f0d3cb' },
+] as const;
 
 const DAYS = 30, MONTHS = 12;
 const MONTH_NAMES = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -121,6 +138,17 @@ export function CampaignPage() {
   const purgeLoot = useMutation({ mutationFn: (lootId: string) => api.post(`/campaigns/${id}/loot/purge`, { lootId }), onSuccess: invalidate });
   const clearLootTrash = useMutation({ mutationFn: () => api.post(`/campaigns/${id}/loot/trash-clear`, {}), onSuccess: invalidate });
 
+  // Character traits (Virtues/Flaws/Merits/Demerits) chosen/granted at creation.
+  const { data: featAll } = useQuery({ queryKey: ['campaign-features'], queryFn: fetchFeaturesAll, enabled: !!user });
+  const members = data?.campaign?.members ?? [];
+  const grantRefs = Array.from(new Set(members.flatMap(({ character: ch }) => {
+    const cd = ch.data as Record<string, unknown>;
+    return [typeof cd.race === 'string' ? cd.race : '', typeof cd.ancestry === 'string' ? cd.ancestry : ''];
+  }).filter(Boolean)));
+  const grantQueries = useQueries({
+    queries: grantRefs.map((rid) => ({ queryKey: ['feature-grant', rid], queryFn: () => api.get<{ grant: { features: { featureId: string }[] } }>(`/wizard/race-grant/${rid}`), enabled: !!user })),
+  });
+
   // Plain dice roller (bottom-left) → the campaign Log, posted as the Librarian.
   const isLibRef = useRef(false); isLibRef.current = !!c?.isLibrarian;
   const postGMRollRef = useRef(postGMRoll); postGMRollRef.current = postGMRoll;
@@ -158,6 +186,36 @@ export function CampaignPage() {
 
   const box: React.CSSProperties = { background: '#fff', border: '1px solid #e4e2dc', borderRadius: 14, padding: 16 };
   const secLabel: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: '#a8a59d', marginBottom: 10 };
+
+  // Aggregate every member's traits by category; members sharing one feature are
+  // grouped under it.  featId → { name, chars[] } per category.
+  const featById = new Map((featAll ?? []).map((f) => [f.id, f] as const));
+  const grantsByRef = new Map<string, string[]>();
+  grantRefs.forEach((rid, i) => grantsByRef.set(rid, (grantQueries[i].data?.grant.features ?? []).map((f) => f.featureId)));
+  const traitGroups: Record<string, Map<string, { name: string; chars: string[] }>> = {};
+  for (const cat of TRAIT_CATS) traitGroups[cat.tag] = new Map();
+  for (const { character: ch } of c.members) {
+    const cd = ch.data as Record<string, unknown>;
+    const s11 = (cd.step11 && typeof cd.step11 === 'object' ? cd.step11 : {}) as { virtues?: string[]; flaws?: string[] };
+    const fids = new Set<string>([
+      ...(Array.isArray(s11.virtues) ? s11.virtues : []),
+      ...(Array.isArray(s11.flaws) ? s11.flaws : []),
+      ...(typeof cd.race === 'string' ? grantsByRef.get(cd.race) ?? [] : []),
+      ...(typeof cd.ancestry === 'string' ? grantsByRef.get(cd.ancestry) ?? [] : []),
+    ]);
+    const chName = ch.name || 'ตัวละคร';
+    for (const fid of fids) {
+      const f = featById.get(fid);
+      if (!f) continue;
+      for (const cat of TRAIT_CATS) {
+        if (!f.tags.includes(cat.tag)) continue;
+        const g = traitGroups[cat.tag];
+        const e = g.get(fid) ?? { name: f.name, chars: [] };
+        if (!e.chars.includes(chName)) e.chars.push(chName);
+        g.set(fid, e);
+      }
+    }
+  }
 
   return (
     <div className={layout.page} style={{ paddingTop: 28, maxWidth: 1200 }}>
@@ -268,6 +326,35 @@ export function CampaignPage() {
               </div>
             )}
           </div>
+
+          {/* character traits — Virtues / Flaws / Merits / Demerits (Librarian) */}
+          {c.isLibrarian && c.members.length > 0 && (
+            <div style={box}>
+              <div style={secLabel}>คุณสมบัติของตัวละคร <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· จากตอนสร้างตัวละคร · คนที่รับอันเดียวกันจะอยู่รวมกัน</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+                {TRAIT_CATS.map((cat) => {
+                  const entries = [...traitGroups[cat.tag].values()];
+                  return (
+                    <div key={cat.tag} style={{ border: `1px solid ${cat.bd}`, background: cat.bg, borderRadius: 11, padding: '10px 12px' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: cat.color, marginBottom: 7 }}>{cat.label} <span style={{ opacity: .7, fontWeight: 600 }}>{entries.length || ''}</span></div>
+                      {entries.length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#b0ada4' }}>— ยังไม่มี —</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                          {entries.map((e) => (
+                            <div key={e.name}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: cat.color }}>{e.name}</div>
+                              <div style={{ fontSize: 10.5, color: '#7a756c', marginTop: 1, lineHeight: 1.45 }}>{e.chars.join(' · ')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* initiative tracker — shared across the campaign */}
           <div style={box}>
