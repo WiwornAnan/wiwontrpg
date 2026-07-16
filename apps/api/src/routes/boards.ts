@@ -453,6 +453,22 @@ boardsRouter.post('/:id/maps/:mapId/cells', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Wipe a whole layer — e.g. reset all ground back to level 0.
+boardsRouter.post('/:id/maps/:mapId/cells/clear', async (req, res) => {
+  const c = await loadCampaign(req.params.id);
+  if (!c || c.librarianUserId !== req.currentUser!.id) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  const map = await prisma.campaignMap.findFirst({ where: { id: req.params.mapId, campaignId: c.id } });
+  if (!map) { res.status(404).json({ error: 'ไม่พบแผนที่' }); return; }
+  const layer = String(req.body?.layer ?? '');
+  if (!['terrain', 'elev', 'fog'].includes(layer)) { res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); return; }
+  const d = parseData(map.data);
+  if (layer === 'terrain') d.terrain = {};
+  else if (layer === 'elev') d.elev = {};
+  else d.fog = {};
+  await prisma.campaignMap.update({ where: { id: map.id }, data: { data: JSON.stringify(d) } });
+  res.json({ ok: true });
+});
+
 // ── ping (everyone) — a short-lived "look here" marker broadcast to the party ──
 boardsRouter.post('/:id/maps/:mapId/ping', async (req, res) => {
   const me = req.currentUser!;

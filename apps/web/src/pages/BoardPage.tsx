@@ -211,6 +211,10 @@ export function BoardPage() {
   const paintCells = useMutation({
     mutationFn: (b: { layer: CellLayer; cells: { q: number; r: number; v: string | number }[] }) => api.post(`/campaigns/${id}/maps/${mapId}/cells`, b),
   });
+  const clearCells = useMutation({
+    mutationFn: (layer: CellLayer) => api.post(`/campaigns/${id}/maps/${mapId}/cells/clear`, { layer }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+  });
   const addAura = useMutation({
     mutationFn: (b: { tokenId: string; radius: number; color: string; label: string; follow: boolean }) => api.post(`/campaigns/${id}/maps/${mapId}/auras`, b),
     onSuccess: () => { setAuraForm(null); qc.invalidateQueries({ queryKey: boardKey }); },
@@ -541,6 +545,9 @@ export function BoardPage() {
             <button key={t} onClick={() => { setTool(t); if (t !== 'measure') { setMeas(null); setMeasHover(null); } }} style={chip(tool === t)}>{label}</button>
           ))}
           <button onClick={() => setShowElevNums((s) => !s)} style={{ ...btn, opacity: showElevNums ? 1 : 0.55 }} title="แสดง/ซ่อนตัวเลขระดับความสูง">🔢 เลขระดับ</button>
+          {c.isLibrarian && (tool === 'elev-up' || tool === 'elev-down') && (
+            <button onClick={() => { if (window.confirm('รีเซ็ตระดับพื้นทั้งแผนที่กลับเป็น 0?')) clearCells.mutate('elev'); }} style={{ ...btn, color: '#b4513a', borderColor: '#f0d3cb' }} title="ปรับพื้นทั้งแผนที่กลับเป็นระดับ 0">⟲ รีเซ็ตระดับเป็น 0</button>
+          )}
           {tool === 'paint' && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4, padding: '4px 9px', background: '#faf9f7', border: '1px solid #ece9e3', borderRadius: 10 }}>
               {(map.palette && map.palette.length ? map.palette : DEFAULT_PALETTE).map((p) => (
