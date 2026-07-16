@@ -99,8 +99,11 @@ export function DwellerSheetPage() {
               <button key={c.id} onClick={() => navigate(`/campaign/${c.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', background: '#faf9f7', border: '1px solid #eae7e0', borderRadius: 11, padding: '12px 14px', cursor: 'pointer', width: '100%' }}>
                 <div style={{ width: 44, height: 44, borderRadius: 10, flex: 'none', background: c.isLibrarian ? 'linear-gradient(160deg,#2a2620,#4a463d)' : '#ece8df', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{c.isLibrarian ? '📖' : '🎲'}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#2f2c25', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                  <div style={{ fontSize: 11.5, color: '#9a978e', marginTop: 2 }}>{c.members.length} ตัวละคร · รหัส {c.joinCode}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#2f2c25', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    {(c.extraSlots ?? 0) > 0 && <span title={`ขยายช่องตัวละครแล้ว +${c.extraSlots}`} style={{ flex: 'none', fontSize: 9.5, fontWeight: 800, borderRadius: 5, padding: '2px 6px', background: '#fbf3dd', color: '#8a6a1e', border: '1px solid #ead9a6' }}>✨ +{c.extraSlots}</span>}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#9a978e', marginTop: 2 }}>{c.members.length}/{c.memberCap ?? 3} ตัวละคร · รหัส {c.joinCode}</div>
                 </div>
                 <span style={{ flex: 'none', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '3px 9px', background: c.isLibrarian ? '#efe7f6' : '#eef4fb', color: c.isLibrarian ? '#5b3fa0' : '#2a5fbd' }}>{c.isLibrarian ? 'บรรณารักษ์' : 'ผู้เล่น'}</span>
               </button>
