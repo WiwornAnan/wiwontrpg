@@ -6,6 +6,7 @@ import { NAV_ITEMS, type SearchHit, type Announcement } from '@wiwonanant/shared
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Modal } from './Modal';
+import { AccountModal } from './AccountModal';
 import { Button, inputStyle } from './ui';
 import styles from './Header.module.css';
 
@@ -15,7 +16,7 @@ function isNavActive(href: string, pathname: string): boolean {
 }
 
 export function Header() {
-  const { user, isDev, setUser } = useAuth();
+  const { user, isDev } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -24,6 +25,7 @@ export function Header() {
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [announceDraft, setAnnounceDraft] = useState('');
   const [catOpen, setCatOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const catRef = useRef<HTMLDivElement>(null);
   const catMenuRef = useRef<HTMLDivElement>(null);
@@ -37,15 +39,6 @@ export function Header() {
     queryKey: ['search', query],
     queryFn: () => api.get<{ hits: SearchHit[] }>(`/search?q=${encodeURIComponent(query)}`),
     enabled: query.trim().length > 0,
-  });
-
-  const logout = useMutation({
-    mutationFn: () => api.post('/auth/logout'),
-    onSuccess: () => {
-      setUser(null);
-      qc.clear();
-      navigate('/');
-    },
   });
 
   const claimCr = useMutation({
@@ -229,7 +222,7 @@ export function Header() {
                   </span>
                 )}
               </button>
-              <button className={styles.avatar} onClick={() => logout.mutate()} title="ออกจากระบบ">
+              <button className={styles.avatar} onClick={() => setAccountOpen(true)} title="บัญชีของฉัน">
                 <span className={styles.avatarName}>{user.displayName}</span>
                 <span className={styles.avatarInitial}>{user.displayName.charAt(0)}</span>
               </button>
@@ -296,6 +289,8 @@ export function Header() {
           autoFocus
         />
       </Modal>
+
+      <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)} />
     </header>
   );
 }

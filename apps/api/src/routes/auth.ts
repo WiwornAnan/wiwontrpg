@@ -82,3 +82,30 @@ authRouter.post('/logout', (req, res) => {
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json({ user: toPublicUser(req.currentUser!) });
 });
+
+// Update own profile (display name for now; email is the login key, left alone).
+const profileSchema = z.object({ displayName: z.string().min(1, 'กรุณากรอกชื่อ').max(60) });
+authRouter.patch('/profile', requireAuth, async (req, res) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }); return; }
+  const user = await prisma.user.update({ where: { id: req.currentUser!.id }, data: { displayName: parsed.data.displayName.trim() } });
+  res.json({ user: toPublicUser(user) });
+});
+
+// Change own password — verifies the current one first, then rehashes.
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'กรอกรหัสผ่านปัจจุบัน'),
+  newPassword: z.string().min(6, 'รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร'),
+});
+authRouter.post('/change-password', requireAuth, async (req, res) => {
+  const parsed = passwordSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' }); return; }
+  const user = await prisma.user.findUnique({ where: { id: req.currentUser!.id } });
+  if (!user || !(await bcrypt.compare(parsed.data.currentPassword, user.passwordHash))) {
+    res.status(401).json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+    return;
+  }
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  res.json({ ok: true });
+});

@@ -42,3 +42,41 @@ export const DAILY_CR_AMOUNT = 3;
 // Daily Cr. claim resets at 03:00 local time (matches prototype).
 export const CR_RESET_HOUR = 3;
 export const MAX_POPULAR_TAGS = 10;
+
+// Campaign seats: everyone gets 3 for free; each purchased pack adds 2 seats for 100 Cr.
+export const CAMPAIGN_BASE_SLOTS = 3;
+export const CAMPAIGN_SLOT_PACK_SIZE = 2;
+export const CAMPAIGN_SLOT_PACK_COST = 100;
+
+// Cr. wallet ledger reasons (server-authored; the client only displays them).
+export const CR_LEDGER_REASONS = [
+  'daily-claim',
+  'official-approval',
+  'topup',
+  'campaign-slot',
+  'admin-adjust',
+  'spend',
+] as const;
+export type CrLedgerReason = (typeof CR_LEDGER_REASONS)[number];
+
+export const CR_LEDGER_REASON_LABELS: Record<CrLedgerReason, string> = {
+  'daily-claim': 'รับประจำวัน',
+  'official-approval': 'อนุมัติเป็น Official',
+  topup: 'เติมเงิน',
+  'campaign-slot': 'เปิดช่องแคมเปญ',
+  'admin-adjust': 'ปรับโดยแอดมิน',
+  spend: 'ใช้จ่าย',
+};
+
+export const TOPUP_ORDER_STATUSES = ['pending', 'success', 'failed', 'expired'] as const;
+export type TopupOrderStatus = (typeof TOPUP_ORDER_STATUSES)[number];
+
+// Payment methods a gateway may report (used for display + the sandbox mock).
+export const PAYMENT_METHODS = ['promptpay', 'card', 'mobile-banking'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  promptpay: 'PromptPay QR',
+  card: 'บัตรเครดิต/เดบิต',
+  'mobile-banking': 'Mobile Banking',
+};

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth, requireDev } from '../middleware/auth.js';
 import { toPray } from '../serialize.js';
+import { applyCredits } from '../services/wallet.js';
 
 export const prayRouter = Router();
 
@@ -100,28 +101,25 @@ prayRouter.post('/:id/approve', requireDev, async (req, res) => {
     return;
   }
   const item = msg.catalogItem!;
-  await prisma.$transaction([
+  await prisma.$transaction(async (tx) => {
     // promote item: no longer homebrew, flagged as approved-from-homebrew (keeps owner credit)
-    prisma.catalogItem.update({
+    await tx.catalogItem.update({
       where: { id: item.id },
       data: { isHomebrew: false, approvedFromHomebrew: true, source: 'Official' },
-    }),
-    prisma.prayMessage.update({ where: { id: msg.id }, data: { approved: true, creditsAwarded: credits, readByUser: false } }),
-    prisma.prayReply.create({
+    });
+    await tx.prayMessage.update({ where: { id: msg.id }, data: { approved: true, creditsAwarded: credits, readByUser: false } });
+    await tx.prayReply.create({
       data: {
         prayMessageId: msg.id,
         byUserId: req.currentUser!.id,
         isDev: true,
         body: `🌙 List "${item.name}" ของคุณได้รับการอนุมัติแล้ว — ยกระดับเป็น Official เรียบร้อย${credits > 0 ? ` และได้รับ ${credits} Cr.` : ''}`,
       },
-    }),
-    ...(credits > 0 && item.ownerUserId
-      ? [
-          prisma.user.update({ where: { id: item.ownerUserId }, data: { creditBalance: { increment: credits } } }),
-          prisma.crLedgerEntry.create({ data: { userId: item.ownerUserId, amount: credits, reason: 'official-approval', refPrayMessageId: msg.id } }),
-        ]
-      : []),
-  ]);
+    });
+    if (credits > 0 && item.ownerUserId) {
+      await applyCredits(tx, item.ownerUserId, credits, 'official-approval', { refPrayMessageId: msg.id, note: `อนุมัติ "${item.name}"` });
+    }
+  });
   const row = await prisma.prayMessage.findUnique({ where: { id: msg.id }, include: prayInclude });
   res.json({ message: toPray(row!) });
 });

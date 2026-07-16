@@ -1,5 +1,12 @@
 // Shared DTO/domain types used by both web and api.
-import type { CatalogCategory, DocCategory, UserRole } from './constants.js';
+import type {
+  CatalogCategory,
+  CrLedgerReason,
+  DocCategory,
+  PaymentMethod,
+  TopupOrderStatus,
+  UserRole,
+} from './constants.js';
 
 export interface PublicUser {
   id: string;
@@ -8,6 +15,41 @@ export interface PublicUser {
   role: UserRole;
   creditBalance: number;
   canClaimCredits: boolean;
+}
+
+// ── Wallet / top-up ─────────────────────────────────────────────────────────
+
+export interface TopupPackage {
+  id: string;
+  label: string;
+  priceTHB: number;
+  credits: number;
+  bonusCredits: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface TopupOrder {
+  id: string;
+  userId: string;
+  packageId: string | null;
+  priceTHB: number;
+  credits: number;
+  status: TopupOrderStatus;
+  provider: string;
+  method: PaymentMethod | string | null;
+  transactionId: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export interface CrLedgerEntry {
+  id: string;
+  amount: number;
+  balanceAfter: number;
+  reason: CrLedgerReason | string;
+  note: string | null;
+  createdAt: string;
 }
 
 export type DocStatus = 'draft' | 'published';

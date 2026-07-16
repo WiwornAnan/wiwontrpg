@@ -29,6 +29,7 @@ model User {
   bookmarks    Bookmark[]
   characters   Character[]
   campaignsLed Campaign[]      @relation("CampaignLibrarian")
+  topupOrders  TopupOrder[]
 }
 
 // A player's "Dweller" — created via the character-creation wizard. Kept as a
@@ -60,6 +61,7 @@ model Campaign {
   librarianUserId String
   joinCode        String   @unique
   data            String   @default("{}")
+  extraSlots      Int      @default(0) // purchased seats beyond the base cap (each 100 Cr. adds 2)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -238,15 +240,61 @@ model PrayReply {
   byUser      User        @relation(fields: [byUserId], references: [id], onDelete: Cascade)
 }
 
+// Immutable audit trail of every Cr. change. `balanceAfter` snapshots the wallet
+// total right after this entry so the ledger reads correctly without recomputing.
 model CrLedgerEntry {
   id               String   @id @default(cuid())
   userId           String
-  amount           Int
-  reason           String // 'daily-claim' | 'official-approval'
+  amount           Int // signed: +credit, −debit
+  balanceAfter     Int      @default(0)
+  reason           String // 'daily-claim' | 'official-approval' | 'topup' | 'campaign-slot' | 'admin-adjust' | 'spend'
+  note             String?
   refPrayMessageId String?
+  refOrderId       String?
   createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// A top-up package an admin sells: THB price → Cr. granted (+ optional bonus).
+model TopupPackage {
+  id           String   @id @default(cuid())
+  label        String   @default("")
+  priceTHB     Int // price in whole Thai baht
+  credits      Int // base Cr. granted
+  bonusCredits Int      @default(0) // promotional bonus Cr.
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders TopupOrder[]
+}
+
+// A single top-up transaction. Created 'pending', flipped to 'success' only by
+// the payment webhook (or the sandbox mock-pay). Cr. is granted exactly once —
+// guarded by the unique transactionId (idempotency).
+model TopupOrder {
+  id            String    @id @default(cuid())
+  userId        String
+  packageId     String?
+  priceTHB      Int
+  credits       Int // total Cr. to grant (base + bonus), snapshotted at creation
+  status        String    @default("pending") // 'pending' | 'success' | 'failed' | 'expired'
+  provider      String    @default("mock")
+  method        String? // 'promptpay' | 'card' | 'mobile-banking' | …
+  transactionId String?   @unique // gateway txn id — dedupes webhooks
+  meta          String    @default("{}")
+  createdAt     DateTime  @default(now())
+  paidAt        DateTime?
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package TopupPackage? @relation(fields: [packageId], references: [id])
+
+  @@index([userId])
+  @@index([status])
 }
 
 model Comment {

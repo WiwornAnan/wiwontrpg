@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { toCharacter } from '../serialize.js';
+import { applyCredits, InsufficientCreditsError } from '../services/wallet.js';
+import { CAMPAIGN_BASE_SLOTS, CAMPAIGN_SLOT_PACK_COST, CAMPAIGN_SLOT_PACK_SIZE } from '@wiwonanant/shared';
 
 // Campaigns: a Librarian (GM) runs a campaign; players join with a code and add
 // one character. The Librarian may open every member's Dweller Sheet and
@@ -18,7 +20,7 @@ function genCode() {
 const parseData = (s: string) => { try { return JSON.parse(s) as Record<string, unknown>; } catch { return {}; } };
 
 function serializeCampaign(c: {
-  id: string; name: string; joinCode: string; librarianUserId: string; data: string;
+  id: string; name: string; joinCode: string; librarianUserId: string; data: string; extraSlots: number;
   createdAt: Date; updatedAt: Date;
   members: { id: string; characterId: string; character: Parameters<typeof toCharacter>[0] }[];
 }, meId: string) {
@@ -30,6 +32,8 @@ function serializeCampaign(c: {
     isLibrarian: c.librarianUserId === meId,
     data: parseData(c.data),
     members: c.members.map((m) => ({ memberId: m.id, character: toCharacter(m.character) })),
+    extraSlots: c.extraSlots,
+    memberCap: CAMPAIGN_BASE_SLOTS + c.extraSlots,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -101,12 +105,18 @@ campaignsRouter.post('/join', async (req, res) => {
   const joinCode = String(req.body?.joinCode ?? '').trim().toUpperCase();
   const characterId = String(req.body?.characterId ?? '');
   if (!joinCode || !characterId) { res.status(400).json({ error: 'กรอกรหัสและเลือกตัวละคร' }); return; }
-  const campaign = await prisma.campaign.findUnique({ where: { joinCode } });
+  const campaign = await prisma.campaign.findUnique({ where: { joinCode }, include: { _count: { select: { members: true } } } });
   if (!campaign) { res.status(404).json({ error: 'ไม่พบแคมเปญจากรหัสนี้' }); return; }
   const character = await prisma.character.findUnique({ where: { id: characterId } });
   if (!character || character.ownerUserId !== me) { res.status(404).json({ error: 'ไม่พบตัวละคร' }); return; }
   const existing = await prisma.campaignMember.findUnique({ where: { characterId } });
   if (existing) { res.status(400).json({ error: 'ตัวละครนี้อยู่ในแคมเปญอื่นแล้ว' }); return; }
+  // Seat cap: base 3 + purchased packs. The Librarian buys more with Cr.
+  const cap = CAMPAIGN_BASE_SLOTS + campaign.extraSlots;
+  if (campaign._count.members >= cap) {
+    res.status(409).json({ error: `แคมเปญเต็มแล้ว (${cap} คน) — ให้ Librarian เปิดช่องเพิ่ม` });
+    return;
+  }
   await prisma.campaignMember.create({ data: { campaignId: campaign.id, characterId } });
   const full = await prisma.campaign.findUnique({ where: { id: campaign.id }, include: withMembers });
   res.status(201).json({ campaign: serializeCampaign(full!, me) });
@@ -121,6 +131,28 @@ campaignsRouter.delete('/:id/members/:characterId', async (req, res) => {
   if (campaign.librarianUserId !== me && character.ownerUserId !== me) { res.status(403).json({ error: 'ไม่มีสิทธิ์' }); return; }
   await prisma.campaignMember.deleteMany({ where: { campaignId: req.params.id, characterId: req.params.characterId } });
   res.json({ ok: true });
+});
+
+// Librarian buys +2 seats for 100 Cr. Charges the wallet and grows the cap in one
+// transaction, so a failed charge never leaves phantom seats (and vice-versa).
+campaignsRouter.post('/:id/buy-slots', async (req, res) => {
+  const me = req.currentUser!.id;
+  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.id } });
+  if (!campaign || campaign.librarianUserId !== me) { res.status(404).json({ error: 'ไม่พบแคมเปญ' }); return; }
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      await applyCredits(tx, me, -CAMPAIGN_SLOT_PACK_COST, 'campaign-slot', { note: `เปิดช่องแคมเปญ "${campaign.name}" +${CAMPAIGN_SLOT_PACK_SIZE}` });
+      return tx.campaign.update({
+        where: { id: campaign.id },
+        data: { extraSlots: { increment: CAMPAIGN_SLOT_PACK_SIZE } },
+        include: withMembers,
+      });
+    });
+    res.json({ campaign: serializeCampaign(updated, me) });
+  } catch (e) {
+    if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: `Cr. ไม่พอ — ต้องใช้ ${CAMPAIGN_SLOT_PACK_COST} Cr.` }); return; }
+    res.status(500).json({ error: 'เปิดช่องไม่สำเร็จ' });
+  }
 });
 
 // The campaign a character belongs to (for the Dweller Sheet's shared roll log).

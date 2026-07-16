@@ -2,8 +2,11 @@ import type {
   Article as PArticle,
   CatalogItem as PCatalogItem,
   Comment as PComment,
+  CrLedgerEntry as PLedger,
   PrayMessage as PPray,
   PrayReply as PPrayReply,
+  TopupOrder as PTopupOrder,
+  TopupPackage as PTopupPackage,
   User as PUser,
   WiwonCover as PCover,
   Bookmark as PBookmark,
@@ -15,8 +18,11 @@ import {
   type CatalogItem,
   type Character,
   type Comment,
+  type CrLedgerEntry,
   type PrayMessage,
   type PublicUser,
+  type TopupOrder,
+  type TopupPackage,
   type WiwonCover,
 } from '@wiwonanant/shared';
 
@@ -177,6 +183,45 @@ export function toPray(
       createdAt: r.createdAt.toISOString(),
     })),
     createdAt: m.createdAt.toISOString(),
+  };
+}
+
+export function toTopupPackage(p: PTopupPackage): TopupPackage {
+  return {
+    id: p.id,
+    label: p.label,
+    priceTHB: p.priceTHB,
+    credits: p.credits,
+    bonusCredits: p.bonusCredits,
+    active: p.active,
+    sortOrder: p.sortOrder,
+  };
+}
+
+export function toTopupOrder(o: PTopupOrder): TopupOrder {
+  return {
+    id: o.id,
+    userId: o.userId,
+    packageId: o.packageId,
+    priceTHB: o.priceTHB,
+    credits: o.credits,
+    status: o.status as TopupOrder['status'],
+    provider: o.provider,
+    method: o.method,
+    transactionId: o.transactionId,
+    createdAt: o.createdAt.toISOString(),
+    paidAt: o.paidAt ? o.paidAt.toISOString() : null,
+  };
+}
+
+export function toLedgerEntry(e: PLedger): CrLedgerEntry {
+  return {
+    id: e.id,
+    amount: e.amount,
+    balanceAfter: e.balanceAfter,
+    reason: e.reason,
+    note: e.note,
+    createdAt: e.createdAt.toISOString(),
   };
 }
 

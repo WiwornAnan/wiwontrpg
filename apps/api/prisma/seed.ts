@@ -289,6 +289,18 @@ async function main() {
     });
   }
 
+  // Default top-up packages (admin can add/edit/close these later).
+  if ((await prisma.topupPackage.count()) === 0) {
+    await prisma.topupPackage.createMany({
+      data: [
+        { label: 'เริ่มต้น', priceTHB: 50, credits: 50, bonusCredits: 0, sortOrder: 1 },
+        { label: 'คุ้มค่า', priceTHB: 100, credits: 100, bonusCredits: 10, sortOrder: 2 },
+        { label: 'ยอดนิยม', priceTHB: 300, credits: 300, bonusCredits: 50, sortOrder: 3 },
+        { label: 'จัดเต็ม', priceTHB: 500, credits: 500, bonusCredits: 100, sortOrder: 4 },
+      ],
+    });
+  }
+
   console.log('Seed complete.');
 }
 

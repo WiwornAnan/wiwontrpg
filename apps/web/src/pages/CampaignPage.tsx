@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -10,7 +10,7 @@ import { BUFF_EFFECTS, STATUS_EFFECTS } from '../data/statusEffects';
 import type { CampaignDTO } from '../data/statusEffects';
 import { DWELLER_SKILLS, SKILL_ATTR_COLOR } from '../data/dwellerSkills';
 import { CatalogDetail } from '../components/CatalogDetail';
-import { CATALOG_CONFIGS } from '@wiwonanant/shared';
+import { CATALOG_CONFIGS, CAMPAIGN_BASE_SLOTS, CAMPAIGN_SLOT_PACK_COST, CAMPAIGN_SLOT_PACK_SIZE } from '@wiwonanant/shared';
 import type { CatalogItem } from '@wiwonanant/shared';
 
 const SKILL_DICE = [2, 4, 6, 8, 10, 12, 20];
@@ -114,6 +114,12 @@ export function CampaignPage() {
   const delCamp = useMutation({
     mutationFn: () => api.delete(`/campaigns/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); navigate('/dweller'); },
+  });
+  const [slotMsg, setSlotMsg] = useState('');
+  const buySlots = useMutation({
+    mutationFn: () => api.post<{ campaign: CampaignDTO }>(`/campaigns/${id}/buy-slots`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); qc.invalidateQueries({ queryKey: ['me'] }); setSlotMsg('เปิดช่องเพิ่มแล้ว +2 ✓'); setTimeout(() => setSlotMsg(''), 2600); },
+    onError: (e) => setSlotMsg(e instanceof ApiError ? e.message : 'เปิดช่องไม่สำเร็จ'),
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ['campaign', id] });
   const addMonster = useMutation({ mutationFn: (b: { name: string; value: number }) => api.post(`/campaigns/${id}/initiative/monster`, b), onSuccess: invalidate });
@@ -264,7 +270,22 @@ export function CampaignPage() {
         {/* LEFT: members + broadcast */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={box}>
-            <div style={secLabel}>ตัวละครในแคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· อัปเดตเรียลไทม์</span></div>
+            {(() => {
+              const cap = c.memberCap ?? CAMPAIGN_BASE_SLOTS;
+              const full = c.members.length >= cap;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <div style={{ ...secLabel, marginBottom: 0, flex: 1 }}>ตัวละครในแคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· อัปเดตเรียลไทม์</span></div>
+                  <span title={`เต็มที่ ${cap} คน (พื้นฐาน ${CAMPAIGN_BASE_SLOTS}${cap > CAMPAIGN_BASE_SLOTS ? ` + ซื้อเพิ่ม ${cap - CAMPAIGN_BASE_SLOTS}` : ''})`} style={{ fontSize: 11, fontWeight: 800, color: full ? '#b4513a' : '#2f6b4f', background: full ? '#fbeae6' : '#eaf6ee', border: `1px solid ${full ? '#f0d0c4' : '#cfe6d6'}`, borderRadius: 7, padding: '3px 9px' }}>👥 {c.members.length}/{cap}</span>
+                  {c.isLibrarian && (
+                    <button onClick={() => buySlots.mutate()} disabled={buySlots.isPending} title={`เปิดช่องอีก ${CAMPAIGN_SLOT_PACK_SIZE} คน ด้วย ${CAMPAIGN_SLOT_PACK_COST} Cr.`} style={{ border: '1px solid #d8c48f', background: '#fbf3dd', color: '#8a6a1e', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 800, cursor: buySlots.isPending ? 'wait' : 'pointer' }}>
+                      ＋ เปิดช่อง +{CAMPAIGN_SLOT_PACK_SIZE} · {CAMPAIGN_SLOT_PACK_COST} Cr.
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {slotMsg && <div style={{ fontSize: 11.5, fontWeight: 700, color: slotMsg.includes('✓') ? '#2f6b4f' : '#b4513a', marginBottom: 6 }}>{slotMsg}</div>}
             {c.members.length === 0 ? <div style={{ fontSize: 13, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มีผู้เล่นเข้าร่วม — แชร์รหัส {c.joinCode}</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {c.members.map(({ character: ch }) => {

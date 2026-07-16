@@ -60,6 +60,8 @@ export interface CampaignDTO {
   isLibrarian: boolean;
   data: Record<string, unknown>;
   members: CampaignMemberDTO[];
+  extraSlots?: number;
+  memberCap?: number;
   createdAt: string;
   updatedAt: string;
 }
