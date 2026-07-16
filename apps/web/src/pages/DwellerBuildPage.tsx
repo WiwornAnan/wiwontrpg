@@ -357,6 +357,7 @@ function CharacterSheet({
   const scratchMax = n('baseScratch') + n('scratchRollEND') + a('scratch') + sumLvScratch(character);
   const sanityMax = n('sanityBase') + faces('CVN') + n('sanityRollINT') + a('sanity');
   const natureDef = n('natureBase') + natDefOf(byAbbr, 'DEX') + natDefOf(byAbbr, 'PER') + a('natureDef');
+  const naManual = sv('naManual', 0); // free manual ± on Natural Defense, resettable
   const movement = n('movement') + a('movement');
 
   // Ehen
@@ -862,7 +863,7 @@ function CharacterSheet({
   const summaryRef = useRef('');
   const gradesSig = JSON.stringify(byAbbr);
   useEffect(() => {
-    const natDef = natureDef + naFromGear + wornDefBonus;
+    const natDef = natureDef + naFromGear + wornDefBonus + naManual;
     const key = `${natDef}|${scrMax}|${sanMax}|${gradesSig}`;
     if (summaryRef.current === key) return;
     summaryRef.current = key;
@@ -871,7 +872,7 @@ function CharacterSheet({
       setSheet({ summary: { natDef, scrMax, sanMax, grades: byAbbr } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [natureDef, naFromGear, wornDefBonus, scrMax, sanMax, gradesSig]);
+  }, [natureDef, naFromGear, wornDefBonus, naManual, scrMax, sanMax, gradesSig]);
   const toggleHandSlot = (slot: string) => setSheet({ handsOn: { ...(sheet.handsOn as Record<string, boolean> || {}), [slot]: !handOn(slot) } });
   // Dweller Skill round tick toggle
   const skillChecked = sheet.skillChecked && typeof sheet.skillChecked === 'object' ? (sheet.skillChecked as Record<string, boolean>) : {};
@@ -1353,11 +1354,18 @@ function CharacterSheet({
                 <span style={{ fontSize: 9.5, color: '#bb9a86' }}>10 + DEX + PER · กดเลขเพื่อทอย</span>
               </div>
               {/* NATURAL DEFENSE — teal accent */}
-              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#eef7f1,#e6f1ea)', border: '1px solid #cfe6d6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={naFromGear + wornDefBonus > 0 ? `ฐาน ${natureDef}${naFromGear ? ` + โล่/มือ ${naFromGear}` : ''}${wornDefBonus ? ` + เกราะสวม ${wornDefBonus}` : ''}` : undefined}>
+              <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#eef7f1,#e6f1ea)', border: '1px solid #cfe6d6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={`ฐาน ${natureDef}${naFromGear ? ` + โล่/มือ ${naFromGear}` : ''}${wornDefBonus ? ` + เกราะสวม ${wornDefBonus}` : ''}${naManual ? ` + ปรับเอง ${naManual > 0 ? '+' : ''}${naManual}` : ''}`}>
                 <span style={{ fontSize: 16 }}>🛡️</span>
-                <div style={{ fontSize: 32, fontWeight: 800, color: '#2f6b4f', lineHeight: 1 }}>{natureDef + naFromGear + wornDefBonus}</div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: '#2f6b4f', lineHeight: 1 }}>{natureDef + naFromGear + wornDefBonus + naManual}</div>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5a8a72', letterSpacing: '.03em' }}>Natural Defense</div>
                 {naFromGear + wornDefBonus > 0 && <div style={{ fontSize: 9.5, color: '#2f6b4f', fontWeight: 700, background: '#fff', border: '1px solid #cfe6d6', borderRadius: 6, padding: '1px 7px' }}>เกราะ/โล่ +{naFromGear + wornDefBonus}</div>}
+                {/* Manual ± adjustment — a separate resettable number */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                  <button onClick={() => setSheet({ naManual: naManual - 1 })} title="ลด NA เอง −1" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #b7d3c2', background: '#fff', color: '#2f6b4f', fontSize: 14, fontWeight: 800, cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                  <span title="ค่าที่ปรับเอง" style={{ minWidth: 34, textAlign: 'center', fontSize: 11.5, fontWeight: 800, color: naManual === 0 ? '#a8b8ae' : '#2f6b4f', background: '#fff', border: '1px solid #cfe6d6', borderRadius: 6, padding: '2px 6px' }}>{naManual > 0 ? `+${naManual}` : naManual}</span>
+                  <button onClick={() => setSheet({ naManual: naManual + 1 })} title="เพิ่ม NA เอง +1" style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #b7d3c2', background: '#fff', color: '#2f6b4f', fontSize: 14, fontWeight: 800, cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
+                  {naManual !== 0 && <button onClick={() => setSheet({ naManual: 0 })} title="รีเซ็ตค่าที่ปรับเองเป็น 0" style={{ border: 'none', background: 'none', color: '#8aa89a', cursor: 'pointer', fontSize: 10, fontWeight: 700, textDecoration: 'underline' }}>รีเซ็ต</button>}
+                </div>
               </div>
               {/* MOVEMENT — earthy accent */}
               <div style={{ borderRadius: 14, padding: '12px 14px', background: 'linear-gradient(160deg,#faf5ea,#f4ecdb)', border: '1px solid #e8dcc2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }} title={movementHalf ? `เหลือครึ่ง (ปกติ ${movement} เมตร)` : undefined}>
