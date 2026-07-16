@@ -5220,6 +5220,7 @@ function LevelTable({
   // maps so useEffectiveGrades / the skills table can derive the effect directly.
   const corePicks = levelCorePicksOf(character);
   const skillPicks = levelSkillPicksOf(character);
+  const manualSkillProf = Array.isArray(character.data.skillProf) ? (character.data.skillProf as string[]) : [];
   const setCorePick = (optId: string, attr: string) => {
     const next = { ...corePicks };
     if (attr) next[optId] = attr; else delete next[optId];
@@ -5433,36 +5434,59 @@ function LevelTable({
                         </div>
                         {claimedThis && gt === 'core' && (() => {
                           const pickedAttr = corePicks[o.id] ?? '';
-                          const abbr = pickedAttr ? (pickedAttr.match(/\(([^)]+)\)/)?.[1] ?? pickedAttr) : '';
+                          const abbrOf = (a: string) => a.match(/\(([^)]+)\)/)?.[1] ?? a;
+                          // Base grade of an attr WITHOUT this option's own +1. Only D/C/B
+                          // (base 1–3) can rise — X (0) and A (4) are ineligible.
+                          const baseVal = (attr: string) => gval(byAbbr[abbrOf(attr)] ?? '—') - (pickedAttr === attr ? 1 : 0);
+                          const eligible = CORE_ATTR_OPTIONS.filter((attr) => { const b = baseVal(attr); return b >= 1 && b <= 3; });
+                          const pickedAbbr = pickedAttr ? abbrOf(pickedAttr) : '';
                           return (
                             <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
                               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING.core}</div>
-                              <select value={pickedAttr} onChange={(e) => setCorePick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
-                                <option value="">— เลือก Core Attribute —</option>
-                                {CORE_ATTR_OPTIONS.map((attr) => <option key={attr} value={attr}>{attr}</option>)}
-                              </select>
-                              {abbr && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>⬆ {abbr} พัฒนา +1 → เกรดปัจจุบัน {byAbbr[abbr] ?? '—'}</div>}
+                              {eligible.length === 0 && !pickedAttr ? (
+                                <div style={{ fontSize: 12, color: '#a8a59d' }}>ไม่มี Core Attribute ที่เพิ่มได้ (ต้องยังไม่ถึง A และไม่ใช่ X)</div>
+                              ) : (
+                                <select value={pickedAttr} onChange={(e) => setCorePick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
+                                  <option value="">— เลือก Core Attribute —</option>
+                                  {eligible.map((attr) => { const b = baseVal(attr); return <option key={attr} value={attr}>{attr} · {gname(b)} → {gname(Math.min(4, b + 1))}</option>; })}
+                                </select>
+                              )}
+                              {pickedAbbr && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>⬆ {pickedAbbr} พัฒนา +1 → เกรดปัจจุบัน {byAbbr[pickedAbbr] ?? '—'}</div>}
                             </div>
                           );
                         })()}
-                        {claimedThis && gt === 'skill' && (
-                          <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING.skill}</div>
-                            <select value={skillPicks[o.id] ?? ''} onChange={(e) => setSkillPick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
-                              <option value="">— เลือกทักษะ —</option>
-                              {DWELLER_SKILLS.map((cat) => (
-                                <optgroup key={cat.en} label={cat.name}>
-                                  {cat.skills.map((s) => {
-                                    const k = skillKey(cat.en, s.en);
-                                    const takenByOther = Object.entries(skillPicks).some(([oid, v]) => oid !== o.id && v === k);
-                                    return takenByOther ? null : <option key={k} value={k}>{s.name} ({s.en})</option>;
-                                  })}
-                                </optgroup>
-                              ))}
-                            </select>
-                            {skillPicks[o.id] && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>▲ ได้ความเชี่ยวชาญ — ทอยทักษะนี้แบบ Advantage</div>}
-                          </div>
-                        )}
+                        {claimedThis && gt === 'skill' && (() => {
+                          const picked = skillPicks[o.id] ?? '';
+                          // Hide skills the character is already proficient in (manual or
+                          // granted by another option) — you can only add a NEW proficiency.
+                          const alreadyProf = new Set<string>([
+                            ...manualSkillProf,
+                            ...Object.entries(skillPicks).filter(([oid]) => oid !== o.id).map(([, v]) => v),
+                          ]);
+                          const catOptions = DWELLER_SKILLS.map((cat) => ({
+                            cat,
+                            items: cat.skills.map((s) => ({ k: skillKey(cat.en, s.en), s })).filter(({ k }) => k === picked || !alreadyProf.has(k)),
+                          })).filter((g) => g.items.length > 0);
+                          const anyLeft = catOptions.some((g) => g.items.length > 0);
+                          return (
+                            <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING.skill}</div>
+                              {!anyLeft && !picked ? (
+                                <div style={{ fontSize: 12, color: '#a8a59d' }}>เชี่ยวชาญทุกทักษะแล้ว — ไม่มีทักษะให้เพิ่ม</div>
+                              ) : (
+                                <select value={picked} onChange={(e) => setSkillPick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
+                                  <option value="">— เลือกทักษะ —</option>
+                                  {catOptions.map(({ cat, items }) => (
+                                    <optgroup key={cat.en} label={cat.name}>
+                                      {items.map(({ k, s }) => <option key={k} value={k}>{s.name} ({s.en})</option>)}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                              )}
+                              {picked && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>▲ ได้ความเชี่ยวชาญ — ทอยทักษะนี้แบบ Advantage</div>}
+                            </div>
+                          );
+                        })()}
                         {claimedThis && (gt === 'weapon' || gt === 'language' || gt === 'lifestyle') && (
                           <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
                             <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING[gt]}</div>
