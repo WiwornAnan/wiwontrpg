@@ -309,7 +309,7 @@ export function CampaignPage() {
                         {stat('WP', cur(sheet.wpCur, 3), '#2f6b4f')}
                         {stat('Nat. Def', has(sm.natDef) ? String(sm.natDef) : '—', '#5c4a2e')}
                         {stat('Wounds', <span style={{ color: wl >= 4 ? '#b4513a' : '#5f5c54' }}>{WOUND_NAMES[wl] ?? wl} <span style={{ fontSize: 9, fontWeight: 600, color: '#a8a59d' }}>{wl}/5</span></span>)}
-                        {stat('Cal (ทาน/สะสม)', `${num(sheet.calEaten)}/${num(sheet.calStored)}`, '#5f5030')}
+                        {stat('Cal (สะสม/ดับหิว)', `${num(sheet.calStored)}/${Math.max(0, Math.round(num(sheet.bodyKg) * 30) + num(sheet.calGoalAdj))}`, '#5f5030')}
                         {stat('ดื่มน้ำ', <span style={{ color: drank ? '#2f6b4f' : '#b4513a' }}>{drank ? '💧 แล้ว' : '🫗 ยัง'}</span>)}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 9 }}>
