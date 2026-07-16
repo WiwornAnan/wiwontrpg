@@ -373,7 +373,8 @@ function CharacterSheet({
   const s11 = d.step11 && typeof d.step11 === 'object' ? (d.step11 as { virtues?: string[]; flaws?: string[] }) : {};
   const virtues = (s11.virtues ?? []).map((id) => ({ id, name: featById.get(id)?.name ?? '(?)', item: featById.get(id) ?? null }));
   const flaws = (s11.flaws ?? []).map((id) => ({ id, name: featById.get(id)?.name ?? '(?)', item: featById.get(id) ?? null }));
-  const prof: string[] = Array.isArray(d.skillProf) ? (d.skillProf as string[]) : [];
+  // Manual proficiencies + those granted by claimed class-level 'skill' rewards.
+  const prof: string[] = [...(Array.isArray(d.skillProf) ? (d.skillProf as string[]) : []), ...levelSkillProfOf(character)];
   const talent: string[] = Array.isArray(d.skillTalent) ? (d.skillTalent as string[]) : [];
   const languages = (langFeatures ?? []).map((f) => f.name);
   // Proficiency = Features tagged "Specialization" the player picks via the + button.
@@ -2822,8 +2823,10 @@ const GRANT_HEADING: Record<string, string> = {
   weapon: 'เลือกอาวุธที่เชี่ยวชาญเพิ่ม (ที่ยังไม่เคยเลือก)',
   language: 'เลือกภาษาที่เรียนรู้เพิ่ม (ที่ยังไม่เคยเลือก)',
   lifestyle: 'เลือกวิถีชีวิตเพิ่ม (ที่ยังไม่เคยเลือก)',
+  core: 'เลือก Core Attribute ที่จะพัฒนา +1 ระดับ',
+  skill: 'เลือกทักษะที่จะเพิ่มความเชี่ยวชาญ (Advantage)',
 };
-const GRANT_BADGE: Record<string, string> = { weapon: '⚔ +อาวุธ', language: '🗣 +ภาษา', lifestyle: '🌿 +วิถีชีวิต' };
+const GRANT_BADGE: Record<string, string> = { weapon: '⚔ +อาวุธ', language: '🗣 +ภาษา', lifestyle: '🌿 +วิถีชีวิต', core: '⬆ +Core Attribute', skill: '▲ +เชี่ยวชาญ' };
 interface WeaponOption {
   id: string;
   featureId: string | null;
@@ -3050,6 +3053,19 @@ const coreAdjustOf = (c: Character): Record<string, number> =>
   c.data.coreAdjust && typeof c.data.coreAdjust === 'object' ? (c.data.coreAdjust as Record<string, number>) : {};
 const coreBoostOf = (c: Character): string[] =>
   Array.isArray(c.data.coreBoostA) ? (c.data.coreBoostA as string[]) : [];
+// Class level-table grants: 'core' picks (optionId → Core Attribute name) each
+// raise that attribute +1 grade; 'skill' picks (optionId → skill key) each add a
+// Dweller Skill proficiency. Derived so cancelling a claim reverts the effect.
+const levelCorePicksOf = (c: Character): Record<string, string> =>
+  c.data.levelCorePicks && typeof c.data.levelCorePicks === 'object' ? (c.data.levelCorePicks as Record<string, string>) : {};
+const levelSkillPicksOf = (c: Character): Record<string, string> =>
+  c.data.levelSkillPicks && typeof c.data.levelSkillPicks === 'object' ? (c.data.levelSkillPicks as Record<string, string>) : {};
+const levelCoreBumpsOf = (c: Character): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const attr of Object.values(levelCorePicksOf(c))) if (attr) out[attr] = (out[attr] ?? 0) + 1;
+  return out;
+};
+const levelSkillProfOf = (c: Character): string[] => Object.values(levelSkillPicksOf(c)).filter(Boolean);
 
 // Final Core Attribute grade per abbreviation (STR/DEX/…), applying the Step 3
 // combine formula plus the player's manual ±1 adjustments and A-boosts. Shared
@@ -3087,11 +3103,12 @@ function useEffectiveGrades(character: Character): Record<string, string> {
   const baseAttrs = isAncestryRace ? bData?.core.attributes : aData?.core.attributes;
   const adjust = coreAdjustOf(character);
   const boosts = coreBoostOf(character);
+  const lvBumps = levelCoreBumpsOf(character); // +1 per claimed class-level 'core' grant
   const byAbbr: Record<string, string> = {};
   CORE_ATTR_OPTIONS.forEach((attr) => {
     const abbr = attr.match(/\(([^)]+)\)/)?.[1] ?? attr;
     const combined = combineGrade(gradeOf(baseAttrs, attr), gradeOf(cData?.core.attributes, attr));
-    byAbbr[abbr] = boosts.includes(attr) ? 'A' : gname(Math.max(0, Math.min(4, gval(combined) + (adjust[attr] ?? 0))));
+    byAbbr[abbr] = boosts.includes(attr) ? 'A' : gname(Math.max(0, Math.min(4, gval(combined) + (adjust[attr] ?? 0) + (lvBumps[attr] ?? 0))));
   });
   // While the source grades are still loading, don't flash a wrong intermediate
   // value — reuse the last grades persisted on the sheet if we have them.
@@ -3321,6 +3338,7 @@ function SkillsTable({
   const [roll, setRoll] = useState<{ faces: number; adv: boolean } | null>(null);
 
   const prof = Array.isArray(character.data.skillProf) ? (character.data.skillProf as string[]) : [];
+  const granted = levelSkillProfOf(character); // proficiency from claimed class-level 'skill' grants (locked here)
   const talent = Array.isArray(character.data.skillTalent) ? (character.data.skillTalent as string[]) : [];
   const commit = (nextProf: string[], nextTalent: string[]) =>
     patch.mutate({ data: { ...character.data, skillProf: nextProf, skillTalent: nextTalent } });
@@ -3372,7 +3390,8 @@ function SkillsTable({
               const id = skillKey(cat.en, s.en);
               const on = hover === id;
               const grade = effByAbbr[s.attr] ?? '—';
-              const hasProf = prof.includes(id);
+              const isGranted = granted.includes(id); // from a class-level 'skill' grant
+              const hasProf = prof.includes(id) || isGranted;
               const hasTalent = talent.includes(id);
               const baseIdx = GRADE_LADDER_IDX[grade] ?? 0;
               const idx = Math.min(DIE_LADDER.length - 1, baseIdx + (hasTalent ? 1 : 0));
@@ -3407,7 +3426,7 @@ function SkillsTable({
                     )}
                   </div>
                   <div style={{ ...rowCell, justifyContent: 'flex-end', gap: 6 }}>
-                    <button onClick={() => toggleProf(id)} disabled={!hasProf && prof.length >= PROF_MAX} title="เชี่ยวชาญ — ทอยแบบ Advantage" style={{ ...tag(hasProf, '#2f7d4f'), opacity: !hasProf && prof.length >= PROF_MAX ? 0.4 : 1 }}>▲</button>
+                    <button onClick={() => toggleProf(id)} disabled={isGranted || (!prof.includes(id) && prof.length >= PROF_MAX)} title={isGranted ? 'เชี่ยวชาญจากเลเวลของคลาส (ยกเลิกได้ที่ตารางเลเวล)' : 'เชี่ยวชาญ — ทอยแบบ Advantage'} style={{ ...tag(hasProf, '#2f7d4f'), opacity: isGranted ? 0.85 : (!prof.includes(id) && prof.length >= PROF_MAX ? 0.4 : 1), cursor: isGranted ? 'not-allowed' : 'pointer' }}>▲</button>
                     <button onClick={() => toggleTalent(id)} disabled={!hasTalent && talent.length >= TALENT_MAX} title="พรสวรรค์ — อัพเกรดลูกเต๋า +1 ขั้น" style={{ ...tag(hasTalent, '#5b3fa0'), opacity: !hasTalent && talent.length >= TALENT_MAX ? 0.4 : 1 }}>✦</button>
                     <button
                       onClick={() => setRoll({ faces: rollFaces, adv: hasProf })}
@@ -5197,6 +5216,20 @@ function LevelTable({
     else delete next[optId];
     patch.mutate({ data: { ...character.data, levelGrantPicks: next } });
   };
+  // Core-Attribute (+1) and Skill (proficiency) grant picks — kept in their own
+  // maps so useEffectiveGrades / the skills table can derive the effect directly.
+  const corePicks = levelCorePicksOf(character);
+  const skillPicks = levelSkillPicksOf(character);
+  const setCorePick = (optId: string, attr: string) => {
+    const next = { ...corePicks };
+    if (attr) next[optId] = attr; else delete next[optId];
+    patch.mutate({ data: { ...character.data, levelCorePicks: next } });
+  };
+  const setSkillPick = (optId: string, key: string) => {
+    const next = { ...skillPicks };
+    if (key) next[optId] = key; else delete next[optId];
+    patch.mutate({ data: { ...character.data, levelSkillPicks: next } });
+  };
 
   const save = useMutation({
     mutationFn: () => api.put(`/wizard/class-levels/${encodeURIComponent(classValue)}`, { levels: draft }),
@@ -5226,8 +5259,10 @@ function LevelTable({
     const next = { ...claims };
     delete next[String(cancelTarget)];
     const nextPicks = { ...grantPicks };
-    if (claimedOptId) delete nextPicks[claimedOptId];
-    patch.mutate({ data: { ...character.data, levelClaims: next, levelGrantPicks: nextPicks } }, { onSuccess: () => setCancelTarget(null) });
+    const nextCore = { ...corePicks };
+    const nextSkill = { ...skillPicks };
+    if (claimedOptId) { delete nextPicks[claimedOptId]; delete nextCore[claimedOptId]; delete nextSkill[claimedOptId]; }
+    patch.mutate({ data: { ...character.data, levelClaims: next, levelGrantPicks: nextPicks, levelCorePicks: nextCore, levelSkillPicks: nextSkill } }, { onSuccess: () => setCancelTarget(null) });
   };
 
   // Blood per level: keep existing rolls for retained levels (2..target), roll a
@@ -5248,7 +5283,7 @@ function LevelTable({
   };
   const confirmLevelDown = () => {
     if (pendingLevel == null) return;
-    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {}, levelGrantPicks: {}, lvScratch: buildLvScratch(pendingLevel) } }, { onSuccess: () => setPendingLevel(null) });
+    patch.mutate({ data: { ...character.data, level: pendingLevel, levelClaims: {}, levelGrantPicks: {}, levelCorePicks: {}, levelSkillPicks: {}, lvScratch: buildLvScratch(pendingLevel) } }, { onSuccess: () => setPendingLevel(null) });
   };
 
   const view = editing ? draft : levels;
@@ -5354,6 +5389,8 @@ function LevelTable({
                             <option value="weapon">+ อาวุธ</option>
                             <option value="language">+ ภาษา</option>
                             <option value="lifestyle">+ วิถีชีวิต</option>
+                            <option value="core">+ Core Attribute (พัฒนา +1)</option>
+                            <option value="skill">+ ความเชี่ยวชาญทักษะ</option>
                           </select>
                           <button onClick={() => removeOption(level.lv, o.id)} title="ลบตัวเลือก" style={{ flex: 'none', border: '1px solid #e6c4bc', background: '#fbf3f1', color: '#b4513a', borderRadius: 7, width: 30, height: 30, cursor: 'pointer' }}>×</button>
                         </div>
@@ -5394,7 +5431,39 @@ function LevelTable({
                             <button onClick={() => claim(level.lv, o.id)} style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>กดรับ</button>
                           )}
                         </div>
-                        {claimedThis && gt && (
+                        {claimedThis && gt === 'core' && (() => {
+                          const pickedAttr = corePicks[o.id] ?? '';
+                          const abbr = pickedAttr ? (pickedAttr.match(/\(([^)]+)\)/)?.[1] ?? pickedAttr) : '';
+                          return (
+                            <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING.core}</div>
+                              <select value={pickedAttr} onChange={(e) => setCorePick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
+                                <option value="">— เลือก Core Attribute —</option>
+                                {CORE_ATTR_OPTIONS.map((attr) => <option key={attr} value={attr}>{attr}</option>)}
+                              </select>
+                              {abbr && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>⬆ {abbr} พัฒนา +1 → เกรดปัจจุบัน {byAbbr[abbr] ?? '—'}</div>}
+                            </div>
+                          );
+                        })()}
+                        {claimedThis && gt === 'skill' && (
+                          <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING.skill}</div>
+                            <select value={skillPicks[o.id] ?? ''} onChange={(e) => setSkillPick(o.id, e.target.value)} style={{ width: '100%', border: '1px solid #e0ded7', borderRadius: 7, padding: '7px 9px', fontSize: 12.5, background: '#fff' }}>
+                              <option value="">— เลือกทักษะ —</option>
+                              {DWELLER_SKILLS.map((cat) => (
+                                <optgroup key={cat.en} label={cat.name}>
+                                  {cat.skills.map((s) => {
+                                    const k = skillKey(cat.en, s.en);
+                                    const takenByOther = Object.entries(skillPicks).some(([oid, v]) => oid !== o.id && v === k);
+                                    return takenByOther ? null : <option key={k} value={k}>{s.name} ({s.en})</option>;
+                                  })}
+                                </optgroup>
+                              ))}
+                            </select>
+                            {skillPicks[o.id] && <div style={{ fontSize: 11.5, color: '#2f7d4f', fontWeight: 700, marginTop: 5 }}>▲ ได้ความเชี่ยวชาญ — ทอยทักษะนี้แบบ Advantage</div>}
+                          </div>
+                        )}
+                        {claimedThis && (gt === 'weapon' || gt === 'language' || gt === 'lifestyle') && (
                           <div style={{ marginLeft: 12, padding: '8px 12px', background: '#fff7f4', border: '1px dashed #e6c4bc', borderRadius: 9 }}>
                             <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b4513a', marginBottom: 6 }}>{GRANT_HEADING[gt]}</div>
                             {grantItems.length === 0 && !currentGrant ? (

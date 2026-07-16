@@ -15,10 +15,11 @@ const optionSchema = z.object({
   featureId: z.string().nullable().default(null),
   featureName: z.string().nullable().default(null),
   text: z.string().default(''),
-  // When claimed, lets the player pick an extra unused Feature from a pool:
+  // When claimed, lets the player pick an extra effect:
   // weapon = class Weapon Proficiency, language = tag Language,
-  // lifestyle = tags Specialization/Social/Local Knowledge/Life lesson.
-  grantType: z.enum(['none', 'weapon', 'language', 'lifestyle']).default('none'),
+  // lifestyle = tags Specialization/Social/Local Knowledge/Life lesson,
+  // core = raise one Core Attribute +1 grade, skill = one Dweller Skill proficiency.
+  grantType: z.enum(['none', 'weapon', 'language', 'lifestyle', 'core', 'skill']).default('none'),
 });
 const levelSchema = z.object({
   lv: z.number().int().min(1).max(LEVELS),

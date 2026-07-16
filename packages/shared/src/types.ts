@@ -159,7 +159,7 @@ export interface WizardLevelOption {
   featureId: string | null;
   featureName: string | null;
   text: string;
-  grantType?: 'none' | 'weapon' | 'language' | 'lifestyle';
+  grantType?: 'none' | 'weapon' | 'language' | 'lifestyle' | 'core' | 'skill';
 }
 export interface WizardLevel {
   lv: number;
