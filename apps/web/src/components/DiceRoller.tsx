@@ -201,7 +201,7 @@ function specialLabel(ego,amb,fort){
 function emitRoll(ego,amb,fort,manual){
   window.dispatchEvent(new CustomEvent('wiwon-dice',{detail:{ego:ego,ambient:amb,fortuity:fort,total:ego+amb+fort,egoFaces:state.egoFaces,egoMode:state.egoMode,ambientMode:state.ambientMode,fortuityMode:state.fortuityMode,special:specialLabel(ego,amb,fort),manual:!!manual}}));
 }
-var state={egoFaces:(window.__wiwonEgoFaces||20),egoMode:(window.__wiwonEgoMode||"normal"),ambientMode:"normal",fortuityMode:"normal",egoTurn:0,ambientTurn:0,fortuityTurn:0,topOrbit:0,topSpin:0,bottomOrbit:0,bottomSpin:0};
+var state={egoFaces:(window.__wiwonEgoFaces||20),egoMode:(window.__wiwonEgoMode||"normal"),ambientMode:(window.__wiwonAmbientMode||"normal"),fortuityMode:"normal",egoTurn:0,ambientTurn:0,fortuityTurn:0,topOrbit:0,topSpin:0,bottomOrbit:0,bottomSpin:0};
 var MARKER_R={ego:133,ambient:85,fortuity:38};
 var MARKER_THEME={ego:{bg:"#3a1414",border:"#e05a5a",text:"#ffe3e3"},ambient:{bg:"#0c2b23",border:"#4fb99f",text:"#d8f2e9"},fortuity:{bg:"#3a2a08",border:"#f0c76a",text:"#fff3d6"}};
 var DIM_THEME={bg:"#262626",border:"#8a8a8a",text:"#cfcfcf"};
@@ -230,7 +230,7 @@ function showFlash(){var f=document.getElementById("flash-burst");f.classList.re
 function triggerRipple(big){var rings=document.querySelectorAll("#ripple-group .ripple-ring");rings.forEach(function(r,i){r.classList.remove("go","big","gold");void r.offsetWidth;r.style.animationDelay=(i*0.18)+"s";if(big)r.classList.add("big","gold");r.classList.add("go");});}
 function checkSpecialEffects(results){var ego=results[0].value,amb=results[1].value,fort=results[2].value;var dialEl=document.getElementById("dial");if(ego===amb&&amb===fort){if(ego===1){dialEl.classList.remove("shake");void dialEl.offsetWidth;dialEl.classList.add("shake");showCrack("grand-crack-group",5000);showFlash();}else if(ego<=8){triggerRipple(true);}}else{if(fort===10)triggerRipple(false);if(fort===1)showCrack("fortuity-crack-group",3500);}}
 async function rollAll(){var btn=document.getElementById("rollBtn");btn.disabled=true;resetEffects();clearMarkers("ego");clearMarkers("ambient");clearMarkers("fortuity");state.topOrbit+=720;state.topSpin+=1080;state.bottomOrbit-=720;state.bottomSpin-=1080;document.getElementById("deco-top-orbit").style.transform="rotate("+state.topOrbit+"deg)";document.getElementById("deco-top").style.transform="rotate("+state.topSpin+"deg)";document.getElementById("deco-bottom-orbit").style.transform="rotate("+state.bottomOrbit+"deg)";document.getElementById("deco-bottom").style.transform="rotate("+state.bottomSpin+"deg)";var egoPivotEl=document.getElementById("ego-pivot"),ambientPivotEl=document.getElementById("ambient-pivot"),fortuityPivotEl=document.getElementById("fortuity-pivot");var results=await Promise.all([rollRingAnimated("ego",egoPivotEl,state.egoFaces,-1,state.egoMode,state.egoFaces,2600),rollRingAnimated("ambient",ambientPivotEl,8,1,state.ambientMode,8,2200),rollRingAnimated("fortuity",fortuityPivotEl,10,-1,state.fortuityMode,10,3000)]);document.getElementById("ego-result").textContent=formatResult(results[0],state.egoMode,"(d"+state.egoFaces+")");document.getElementById("ambient-result").textContent=formatResult(results[1],state.ambientMode,"(d8)");document.getElementById("fortuity-result").textContent=formatResult(results[2],state.fortuityMode,"(d10)");checkSpecialEffects(results);emitRoll(results[0].value,results[1].value,results[2].value,false);btn.disabled=false;}
-renderEgoRing(state.egoFaces);renderRingNumerals("ambient-numerals",109,8,1,22,"#e8f9f2",PERMS.ambient);renderRingNumerals("fortuity-numerals",63,10,-1,14,"#fff6e0",PERMS.fortuity);buildChips();buildSeg("ego-seg","egoMode");buildSeg("ambient-seg","ambientMode");buildSeg("fortuity-seg","fortuityMode");(function(){var m=state.egoMode;var row=document.getElementById("row-ego");if(row){if(m==="adv")row.classList.add("adv");else if(m==="dis")row.classList.add("dis");}updateRingVisual("ego",m);})();document.getElementById("rollBtn").addEventListener("click",rollAll);window.__wiwonRoll=rollAll;
+renderEgoRing(state.egoFaces);renderRingNumerals("ambient-numerals",109,8,1,22,"#e8f9f2",PERMS.ambient);renderRingNumerals("fortuity-numerals",63,10,-1,14,"#fff6e0",PERMS.fortuity);buildChips();buildSeg("ego-seg","egoMode");buildSeg("ambient-seg","ambientMode");buildSeg("fortuity-seg","fortuityMode");(function(){var m=state.egoMode;var row=document.getElementById("row-ego");if(row){if(m==="adv")row.classList.add("adv");else if(m==="dis")row.classList.add("dis");}updateRingVisual("ego",m);})();(function(){var m=state.ambientMode;var row=document.getElementById("row-ambient");if(row){if(m==="adv")row.classList.add("adv");else if(m==="dis")row.classList.add("dis");}updateRingVisual("ambient",m);})();document.getElementById("rollBtn").addEventListener("click",rollAll);window.__wiwonRoll=rollAll;
 var svgEl=document.getElementById("dial");var dragZone=document.getElementById("drag-zone");var PIVOTS={ego:document.getElementById("ego-pivot"),ambient:document.getElementById("ambient-pivot"),fortuity:document.getElementById("fortuity-pivot")};var DIRS={ego:-1,ambient:1,fortuity:-1};var dragging=false,lastAngle=0,dragRing=null,dragStart=0;
 function ringAt(evt){var pt=svgEl.createSVGPoint();pt.x=evt.clientX;pt.y=evt.clientY;var loc=pt.matrixTransform(svgEl.getScreenCTM().inverse());var dx=loc.x-200,dy=loc.y-200;var dist=Math.sqrt(dx*dx+dy*dy);return dist>=133?'ego':dist>=86?'ambient':'fortuity';}
 function ringCount(r){return r==='ego'?state.egoFaces:r==='ambient'?8:10;}
@@ -259,7 +259,7 @@ interface LogEntry {
   label?: string;
 }
 
-export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false, egoDisadvantage = false }: { open: boolean; onClose: () => void; egoFaces?: number; egoAdvantage?: boolean; egoDisadvantage?: boolean }) {
+export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false, egoDisadvantage = false, ambientAdvantage = false, ambientDisadvantage = false }: { open: boolean; onClose: () => void; egoFaces?: number; egoAdvantage?: boolean; egoDisadvantage?: boolean; ambientAdvantage?: boolean; ambientDisadvantage?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -271,9 +271,10 @@ export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false,
     if (!open) return;
     const host = hostRef.current;
     if (!host) return;
-    const w = window as unknown as { __wiwonEgoFaces?: number; __wiwonEgoMode?: string };
+    const w = window as unknown as { __wiwonEgoFaces?: number; __wiwonEgoMode?: string; __wiwonAmbientMode?: string };
     w.__wiwonEgoFaces = egoFaces;
     w.__wiwonEgoMode = egoDisadvantage ? 'dis' : egoAdvantage ? 'adv' : 'normal';
+    w.__wiwonAmbientMode = ambientDisadvantage ? 'dis' : ambientAdvantage ? 'adv' : 'normal';
     host.innerHTML = WIDGET_HTML;
     const script = document.createElement('script');
     script.textContent = WIDGET_JS;
@@ -301,7 +302,7 @@ export function DiceRoller({ open, onClose, egoFaces = 20, egoAdvantage = false,
       setDropped(false);
       setPending(null);
     };
-  }, [open, egoFaces, egoAdvantage, egoDisadvantage]);
+  }, [open, egoFaces, egoAdvantage, egoDisadvantage, ambientAdvantage, ambientDisadvantage]);
 
   if (!open) return null;
 

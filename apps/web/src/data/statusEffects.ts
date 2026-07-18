@@ -13,6 +13,9 @@ export const BUFF_EFFECTS: [string, string, string][] = [
   ['Fortified', 'แข็งแกร่ง (Fortified)', 'ต้านทานสถานะผิดปกติ'],
 ];
 export const STATUS_EFFECTS: [string, string, string][] = [
+  ['Sweltering', 'สภาพอากาศร้อนอบ', 'Ambient Dice เสียเปรียบ (Disadvantage): การใช้ร่างกาย · พลังงานและเวทมนตร์ · คำสาปและสติ · การเอาชีวิตรอด · ต่อสู้'],
+  ['Freezing', 'สภาพอากาศหนาวจัด', 'Ambient Dice เสียเปรียบ (Disadvantage): การใช้ร่างกาย · การสังเกต · การแพทย์ · คำสาปและสติ · การเอาชีวิตรอด · ต่อสู้'],
+  ['Rainstorm', 'สภาพอากาศห่าฝน', 'Ambient Dice เสียเปรียบ (Disadvantage): การสังเกต · การเอาชีวิตรอด · ต่อสู้'],
   ['มานาเฮือดแห้ง', 'มานาเฮือดแห้ง (Mana Drained)', 'มานาติดลบ — ฟื้นฟูช้า ใช้เวทที่ต้องมานาไม่ได้จนกว่าจะกลับมาเป็นบวก'],
   ['Injured', 'บาดเจ็บ', 'เคลื่อนไหวช้าลงครึ่งหนึ่ง · STR ได้สถานการณ์ไม่เป็นใจ'],
   ['Bleeding', 'เลือดออก', 'Scratch −2 ทุกครั้งที่ติ๊ก Action Point'],

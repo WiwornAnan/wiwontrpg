@@ -171,6 +171,9 @@ const BUFF_EFFECTS: [string, string, string][] = [
   ['Fortified', 'แข็งแกร่ง (Fortified)', 'ต้านทานสถานะผิดปกติ'],
 ];
 const STATUS_EFFECTS: [string, string, string][] = [
+  ['Sweltering', 'สภาพอากาศร้อนอบ', 'Ambient Dice เสียเปรียบ (Disadvantage): การใช้ร่างกาย · พลังงานและเวทมนตร์ · คำสาปและสติ · การเอาชีวิตรอด · ต่อสู้'],
+  ['Freezing', 'สภาพอากาศหนาวจัด', 'Ambient Dice เสียเปรียบ (Disadvantage): การใช้ร่างกาย · การสังเกต · การแพทย์ · คำสาปและสติ · การเอาชีวิตรอด · ต่อสู้'],
+  ['Rainstorm', 'สภาพอากาศห่าฝน', 'Ambient Dice เสียเปรียบ (Disadvantage): การสังเกต · การเอาชีวิตรอด · ต่อสู้'],
   ['มานาเฮือดแห้ง', 'มานาเฮือดแห้ง (Mana Drained)', 'มานาติดลบ — ฟื้นฟูช้า ใช้เวทที่ต้องมานาไม่ได้จนกว่าจะกลับมาเป็นบวก'],
   ['Injured', 'บาดเจ็บ', 'เคลื่อนไหวช้าลงครึ่งหนึ่ง · STR ได้สถานการณ์ไม่เป็นใจ'],
   ['Bleeding', 'เลือดออก', 'Scratch −2 ทุกครั้งที่ติ๊ก Action Point'],
@@ -208,6 +211,13 @@ const STATUS_EFFECTS: [string, string, string][] = [
   ['Thirsty', 'กระหาย', 'ไม่ดื่ม 3 วัน → ลด Wounds'],
   ['Sleep-Deprived', 'อดนอน', 'เสียค่าสติวันละ d6 SAN'],
 ];
+// Weather debuffs → Disadvantage on the AMBIENT die for these skill categories (cat.en).
+const WEATHER_AMBIENT_DIS: Record<string, string[]> = {
+  Sweltering: ['Athletics', 'Ehen Studies', 'Curse & Sanity', 'Survival', 'Combat'],
+  Freezing: ['Athletics', 'Observation', 'Medicine', 'Curse & Sanity', 'Survival', 'Combat'],
+  Rainstorm: ['Observation', 'Survival', 'Combat'],
+};
+const statusThai = (key: string) => STATUS_EFFECTS.find((e) => e[0] === key)?.[1] ?? key;
 const LANG_TIER_DEFS = [
   { key: 'master', label: 'ภาษาที่ชำนาญ (Fluent)' },
   { key: 'read', label: 'ภาษาที่อ่านออก (Literate)' },
@@ -232,7 +242,7 @@ function CharacterSheet({
   const [editName, setEditName] = useState(false);
   const [editCamp, setEditCamp] = useState(false);
   const [editXp, setEditXp] = useState(false);
-  const [roll, setRoll] = useState<{ faces: number; adv: boolean; dis?: boolean } | null>(null);
+  const [roll, setRoll] = useState<{ faces: number; adv: boolean; dis?: boolean; ambientDis?: boolean } | null>(null);
   const [sanAmt, setSanAmt] = useState(0);
   const [scrAmt, setScrAmt] = useState(0);
   const [endAmt, setEndAmt] = useState(0);
@@ -770,6 +780,11 @@ function CharacterSheet({
     ];
     return R.filter(([a, m]) => a && m).map(([, , label]) => label);
   };
+  // Weather debuffs impose Disadvantage on the AMBIENT die for whole skill categories.
+  const ambientDisReasons = (catEn: string): string[] =>
+    Object.entries(WEATHER_AMBIENT_DIS)
+      .filter(([key, cats]) => activeStatusSet.has(key) && cats.includes(catEn))
+      .map(([key]) => statusThai(key));
   // Non-dice status effects
   const infected = activeStatusSet.has('Infected'); // halves all Scratch healing
   const despair = activeStatusSet.has('Despair'); // Willpower gone, cannot regain
@@ -1796,6 +1811,8 @@ function CharacterSheet({
                           const hasDis = reasons.length > 0;
                           const advNet = hasAdv && !hasDis;
                           const disNet = hasDis && !hasAdv;
+                          const ambReasons = ambientDisReasons(cat.en); // weather → Ambient die Disadvantage
+                          const ambDis = ambReasons.length > 0;
                           return (
                             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f4f1ec' }}>
                               <button onClick={() => toggleSkillCheck(key)} title="ติ๊ก / ยกเลิก" style={{ width: 18, height: 18, borderRadius: '50%', flex: 'none', border: `2px solid ${skillChecked[key] ? '#2f7d4f' : '#cfccc4'}`, background: skillChecked[key] ? '#2f7d4f' : '#fff', color: '#fff', fontSize: 10, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{skillChecked[key] ? '✓' : ''}</button>
@@ -1807,9 +1824,10 @@ function CharacterSheet({
                               >{s.name}</span>
                               {hasAdv && <span title="เชี่ยวชาญ · Advantage" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
                               {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
-                              {hasDis && <span title={`Disadvantage: ${reasons.join(', ')}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
+                              {hasDis && <span title={`Ego Disadvantage: ${reasons.join(', ')}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
+                              {ambDis && <span title={`Ambient Disadvantage (สภาพอากาศ): ${ambReasons.join(', ')}`} style={{ fontSize: 11, color: '#2f7d8a', fontWeight: 800 }}>☁▼</span>}
                               <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
-                              <button onClick={() => { rollLabelRef.current = `${s.name}${advNet ? ' (Adv)' : ''}${disNet ? ' (Dis)' : ''}`; setRoll({ faces: info.roll, adv: advNet, dis: disNet }); }} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
+                              <button onClick={() => { rollLabelRef.current = `${s.name}${advNet ? ' (Adv)' : ''}${disNet ? ' (Dis)' : ''}${ambDis ? ' (Amb.Dis)' : ''}`; setRoll({ faces: info.roll, adv: advNet, dis: disNet, ambientDis: ambDis }); }} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${ambDis ? ` · Ambient Disadvantage (${ambReasons.join(', ')})` : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
                             </div>
                           );
                         })}
@@ -2094,7 +2112,7 @@ function CharacterSheet({
           </div>
         </div>
       </div>
-      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} egoDisadvantage={roll?.dis ?? false} onClose={() => setRoll(null)} />
+      <DiceRoller open={roll !== null} egoFaces={roll?.faces ?? 20} egoAdvantage={roll?.adv ?? false} egoDisadvantage={roll?.dis ?? false} ambientDisadvantage={roll?.ambientDis ?? false} onClose={() => setRoll(null)} />
 
       {/* ── Campaign LOG + Initiative: floating buttons + windows (only when in a campaign) ── */}
       {campaignId && (
