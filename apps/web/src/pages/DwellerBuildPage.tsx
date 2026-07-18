@@ -1808,9 +1808,15 @@ function CharacterSheet({
                           const info = skillInfo(s.attr, talent.includes(key), ch.level);
                           const hasAdv = prof.includes(key);
                           const reasons = disReasons(s.attr, s.name, cat.en);
-                          const hasDis = reasons.length > 0;
-                          const advNet = hasAdv && !hasDis;
-                          const disNet = hasDis && !hasAdv;
+                          // Net tally on the EGO die: proficiency = +1 Advantage; each active
+                          // status reason = −1 Disadvantage. They cancel; whichever side has
+                          // more wins; an exact tie cancels out (roll normal).
+                          const advCount = hasAdv ? 1 : 0;
+                          const disCount = reasons.length;
+                          const net = advCount - disCount;
+                          const advNet = net > 0;
+                          const disNet = net < 0;
+                          const cancelled = net === 0 && advCount > 0 && disCount > 0;
                           const ambReasons = ambientDisReasons(cat.en); // weather → Ambient die Disadvantage
                           const ambDis = ambReasons.length > 0;
                           return (
@@ -1822,12 +1828,13 @@ function CharacterSheet({
                                 onMouseLeave={() => setSkillTip(null)}
                                 style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#3c3a33', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'help' }}
                               >{s.name}</span>
-                              {hasAdv && <span title="เชี่ยวชาญ · Advantage" style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
+                              {advNet && <span title={`Advantage${disCount > 0 ? ` (▲${advCount} − ▼${disCount})` : ''}`} style={{ fontSize: 11, color: '#2f7d4f', fontWeight: 800 }}>▲</span>}
                               {talent.includes(key) && <span title="พรสวรรค์" style={{ fontSize: 11, color: '#5b3fa0', fontWeight: 800 }}>✦</span>}
-                              {hasDis && <span title={`Ego Disadvantage: ${reasons.join(', ')}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
+                              {disNet && <span title={`Disadvantage: ${reasons.join(', ')}${advCount > 0 ? ` (หักล้าง ▲${advCount})` : ''}`} style={{ fontSize: 11, color: '#c0432a', fontWeight: 800 }}>▼</span>}
+                              {cancelled && <span title={`หักล้าง — ▲ เชี่ยวชาญ ↔ ▼ ${reasons.join(', ')} · ทอยปกติ`} style={{ fontSize: 10.5, color: '#8a857c', fontWeight: 800, border: '1px solid #d8d4cc', borderRadius: 5, padding: '0 5px', lineHeight: 1.5 }}>⇄ หักล้าง</span>}
                               {ambDis && <span title={`Ambient Disadvantage (สภาพอากาศ): ${ambReasons.join(', ')}`} style={{ fontSize: 11, color: '#2f7d8a', fontWeight: 800 }}>☁▼</span>}
                               <button onClick={() => setChallengeSkill(key)} title="ท้าทาย" style={{ flex: 'none', border: '1px solid #e0ded7', background: '#fff', color: '#8d6a4a', borderRadius: 7, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>ท้าทาย</button>
-                              <button onClick={() => { rollLabelRef.current = `${s.name}${advNet ? ' (Adv)' : ''}${disNet ? ' (Dis)' : ''}${ambDis ? ' (Amb.Dis)' : ''}`; setRoll({ faces: info.roll, adv: advNet, dis: disNet, ambientDis: ambDis }); }} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${ambDis ? ` · Ambient Disadvantage (${ambReasons.join(', ')})` : ''}${hasAdv && hasDis ? ' · Adv+Dis หักล้าง' : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
+                              <button onClick={() => { rollLabelRef.current = `${s.name}${advNet ? ' (Adv)' : ''}${disNet ? ' (Dis)' : ''}${cancelled ? ' (หักล้าง)' : ''}${ambDis ? ' (Amb.Dis)' : ''}`; setRoll({ faces: info.roll, adv: advNet, dis: disNet, ambientDis: ambDis }); }} title={`ทอย ${info.label}${advNet ? ' · Advantage' : ''}${disNet ? ' · Disadvantage' : ''}${cancelled ? ' · Adv+Dis หักล้าง (ทอยปกติ)' : ''}${ambDis ? ` · Ambient Disadvantage (${ambReasons.join(', ')})` : ''}`} style={{ flex: 'none', minWidth: 34, textAlign: 'center', border: 'none', borderRadius: 7, padding: '4px 8px', background: disNet ? '#b4513a' : '#e07a5f', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>{info.label}</button>
                             </div>
                           );
                         })}
