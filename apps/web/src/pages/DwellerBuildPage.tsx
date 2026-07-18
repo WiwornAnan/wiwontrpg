@@ -1876,6 +1876,7 @@ function CharacterSheet({
                     <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: '#a8a59d' }}>FEATURES &amp; TRAITS</span>
                     <button onClick={() => setFeatPicker(true)} style={{ padding: '5px 12px', background: '#15140f', color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>＋ เพิ่ม Feature</button>
                   </div>
+                  {campaignId && featRows.length > 0 && <div style={{ fontSize: 10.5, color: '#7a6ca8', background: '#f6f2fd', border: '1px solid #e2d7f4', borderRadius: 8, padding: '6px 10px', marginBottom: 9, lineHeight: 1.5 }}>ℹ️ การกด <b>ใช้</b> หรือ <b>📋 Log</b> จะส่งข้อมูลนี้ไปยัง Log แคมเปญ</div>}
                   {featRows.length === 0 ? <div style={{ fontSize: 12.5, color: '#bdbab2', padding: '8px 0' }}>ยังไม่มี Feature</div> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {featRows.map((r) => {
