@@ -349,7 +349,7 @@ export function CampaignPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 6 }}>
                         {stat('SAN', cur(sheet.sanCur, sm.sanMax), '#2a5fbd')}
                         {stat('Scratch', cur(sheet.scratchCur, sm.scrMax), '#c15a3f')}
-                        {stat('WP', cur(sheet.wpCur, 3), '#2f6b4f')}
+                        {stat('WP', cur(sheet.wpCur, 3 + num(sheet.wpBonus)), '#2f6b4f')}
                         {stat('Nat. Def', has(sm.natDef) ? String(sm.natDef) : '—', '#5c4a2e')}
                         {stat('Wounds', <span style={{ color: wl >= 4 ? '#b4513a' : '#5f5c54' }}>{WOUND_NAMES[wl] ?? wl} <span style={{ fontSize: 9, fontWeight: 600, color: '#a8a59d' }}>{wl}/5</span></span>)}
                         {stat('Cal (สะสม/ดับหิว)', `${num(sheet.calStored)}/${Math.max(0, Math.round(num(sheet.bodyKg) * 30) + num(sheet.calGoalAdj))}`, '#5f5030')}

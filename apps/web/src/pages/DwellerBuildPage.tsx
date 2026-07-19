@@ -894,7 +894,8 @@ function CharacterSheet({
   const toggleSkillCheck = (key: string) => { const n = { ...skillChecked }; if (n[key]) delete n[key]; else n[key] = true; setSheet({ skillChecked: n }); };
 
   // ── Short / Long Rest mechanics ──
-  const WP_MAX = 3;
+  const wpBonus = Math.max(0, Math.min(2, sv('wpBonus', 0))); // up to +2 extra Willpower slots
+  const WP_MAX = 3 + wpBonus;
   const rollDie = (f: number) => (f > 0 ? 1 + Math.floor(Math.random() * f) : 0);
   const endFaces = skillInfo('END', false, 0).roll; // Core Attribute END die
   const recKey = skillKey('Medicine', 'Rehabilitation'); // Dweller Skill "ฟื้นกำลัง"
@@ -1394,8 +1395,7 @@ function CharacterSheet({
               const apCur = sv('apCur', apMax);
               const apRes = sv('apRes', 0); // reserve slot (0/1) — Next Round never fills it
               const roundNum = sv('roundNum', 1);
-              const WP_MAX = 3;
-              const wpCur = despair ? 0 : sv('wpCur', WP_MAX);
+              const wpCur = despair ? 0 : Math.min(WP_MAX, sv('wpCur', WP_MAX));
               const phase = svs('apPhase', 'Action');
               return (
                 <div style={{ background: '#f0eee9', borderRadius: 20, padding: 16 }}>
@@ -1557,9 +1557,15 @@ function CharacterSheet({
                       </div>
                       {/* Will-power — 3 segments, centered */}
                       <div style={{ flex: 1, minWidth: 140, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: '#6b5b45' }}>WILL-POWER</span>
                           <span style={{ fontSize: 11, color: '#9a978e', fontWeight: 700 }}>{wpCur} / {WP_MAX}</span>
+                          <span style={{ flex: 1 }} />
+                          <span title="ช่อง Willpower เสริม (สูงสุด +2) — เพิ่ม/ลดเองได้" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <button onClick={() => { const nb = Math.max(0, wpBonus - 1); setSheet({ wpBonus: nb, wpCur: Math.min(sv('wpCur', WP_MAX), 3 + nb) }); }} disabled={wpBonus <= 0} title="ลดช่องเสริม" style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #cdd8df', background: '#fff', color: '#5d84a4', fontSize: 13, fontWeight: 800, cursor: wpBonus <= 0 ? 'not-allowed' : 'pointer', opacity: wpBonus <= 0 ? 0.4 : 1, lineHeight: 1 }}>−</button>
+                            <span style={{ fontSize: 10, fontWeight: 800, color: wpBonus > 0 ? '#4f7290' : '#b7c2c9', minWidth: 26, textAlign: 'center' }}>+{wpBonus} ช่อง</span>
+                            <button onClick={() => setSheet({ wpBonus: Math.min(2, wpBonus + 1) })} disabled={wpBonus >= 2} title="เพิ่มช่องเสริม (สูงสุด +2)" style={{ width: 20, height: 20, borderRadius: 6, border: '1px solid #cdd8df', background: '#fff', color: '#5d84a4', fontSize: 13, fontWeight: 800, cursor: wpBonus >= 2 ? 'not-allowed' : 'pointer', opacity: wpBonus >= 2 ? 0.4 : 1, lineHeight: 1 }}>＋</button>
+                          </span>
                         </div>
                         {/* Will-power as 3 stacked boxes (same style as the blessing boxes) */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1, justifyContent: 'center' }}>
