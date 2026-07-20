@@ -6,6 +6,7 @@ import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLeve
 import { CATALOG_CONFIGS } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { useIsActive } from '../lib/useIsActive';
 import { Modal } from '../components/Modal';
 import { CatalogDetail } from '../components/CatalogDetail';
 import { Button } from '../components/ui';
@@ -47,16 +48,15 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   const { id } = useParams();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const active = useIsActive();
 
   const { data, isLoading } = useQuery({
     queryKey: ['character', id],
     queryFn: () => api.get<{ character: Character }>(`/characters/${id}`),
     enabled: !!user && !!id,
-    // In sheet mode, poll so Librarian broadcasts / edits reach the player. Kept
-    // infrequent (the character row is large) to limit DB egress; window-focus
-    // refetch covers the "just came back to the tab" case.
-    refetchInterval: mode === 'sheet' ? 20000 : false,
-    refetchIntervalInBackground: false,
+    // In sheet mode, poll so Librarian broadcasts / edits reach the player.
+    // Gzip keeps the (large) character row small on the wire; pause when idle.
+    refetchInterval: mode === 'sheet' && active ? 12000 : false,
   });
   const { data: coversData } = useQuery({
     queryKey: ['wiwon-covers'],
@@ -238,6 +238,7 @@ function CharacterSheet({
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const active = useIsActive();
   const byAbbr = useEffectiveGrades(character);
   const wiwonIds = wiwonIdsOf(character);
   const d = character.data;
@@ -286,8 +287,8 @@ function CharacterSheet({
   const { data: campForChar } = useQuery({
     queryKey: ['sheet-campaign', character.id],
     queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[]; loot: LootItem[] } | null }>(`/campaigns/for-character/${character.id}`),
-    refetchInterval: 15000,
-    refetchIntervalInBackground: false,
+    // Shared log/loot/initiative — kept live-ish while playing, paused when idle.
+    refetchInterval: active ? 4000 : false,
   });
   const campaignId = campForChar?.campaign?.id;
   const isLibrarian = campForChar?.campaign?.isLibrarian ?? false;

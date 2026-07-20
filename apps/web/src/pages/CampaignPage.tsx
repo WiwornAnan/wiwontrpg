@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
+import { useIsActive } from '../lib/useIsActive';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -95,6 +96,7 @@ export function CampaignPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const active = useIsActive();
   const [delOpen, setDelOpen] = useState(false);
   const [pickBuffs, setPickBuffs] = useState<Record<string, boolean>>({});
   const [pickStatus, setPickStatus] = useState<Record<string, boolean>>({});
@@ -104,10 +106,9 @@ export function CampaignPage() {
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    // This payload is heavy (every member's full sheet). Poll slowly to spare DB
-    // egress/compute; window-focus refetch keeps it fresh when the GM returns.
-    refetchInterval: 20000,
-    refetchIntervalInBackground: false,
+    // Heavy payload (every member's sheet), but gzip shrinks it a lot; poll while
+    // the GM is active, pause when idle.
+    refetchInterval: active ? 8000 : false,
   });
   const c = data?.campaign;
 

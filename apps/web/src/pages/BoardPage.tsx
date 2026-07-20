@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, uploadImage } from '../lib/api';
+import { useIsActive } from '../lib/useIsActive';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -124,13 +125,14 @@ export function BoardPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const qc = useQueryClient();
+  // Poll fast while actively playing; pause entirely when the tab is idle/hidden.
+  const active = useIsActive();
 
   const { data: campData } = useQuery({
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    refetchInterval: 20000, // heavy (member sheets) + rarely changes during a battle
-    refetchIntervalInBackground: false,
+    refetchInterval: active ? 15000 : false, // heavy (member sheets); rarely changes mid-battle
   });
   const c = campData?.campaign;
 
@@ -138,8 +140,7 @@ export function BoardPage() {
     queryKey: ['board-maps', id],
     queryFn: () => api.get<{ maps: MapMeta[] }>(`/campaigns/${id}/maps`),
     enabled: !!id && !!user,
-    refetchInterval: 30000,
-    refetchIntervalInBackground: false,
+    refetchInterval: active ? 15000 : false,
   });
   const maps = mapsData?.maps ?? [];
   const activeMap = maps.find((m) => m.isActive);
@@ -152,10 +153,9 @@ export function BoardPage() {
     queryKey: boardKey,
     queryFn: () => api.get<{ map: BoardMap }>(`/campaigns/${id}/maps/${mapId}`),
     enabled: !!id && !!user && !!mapId,
-    // The live board — the one poll that must feel responsive. 4s (up from 2s)
-    // roughly halves its egress while token moves still sync quickly enough.
-    refetchInterval: 4000,
-    refetchIntervalInBackground: false,
+    // The live board — the one poll that must feel responsive. Snappy while
+    // playing (gzip keeps each read small), paused when idle.
+    refetchInterval: active ? 2000 : false,
   });
   const map = boardData?.map;
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['board', id] }); qc.invalidateQueries({ queryKey: ['board-maps', id] }); };

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import session from 'express-session';
 import cors from 'cors';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { ENV } from './env.js';
 import { prisma } from './db.js';
@@ -36,6 +37,12 @@ const app = express();
 const isProd = ENV.NODE_ENV === 'production';
 // Behind Render/any reverse proxy: trust it so secure cookies + protocol work.
 if (isProd) app.set('trust proxy', 1);
+
+// gzip every response. JSON compresses ~70–80%, which is the single biggest
+// cut to network egress — the polling payloads (character/campaign/board) shrink
+// dramatically with zero behavioural change. Images already carry their own
+// bytes; compression skips them via its default content-type filter.
+app.use(compression());
 
 // CORS only matters when the frontend is served from a different origin (dev).
 // In production the SPA is served same-origin by this server, so CORS is a no-op.
