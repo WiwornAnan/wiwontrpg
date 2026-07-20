@@ -52,8 +52,11 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
     queryKey: ['character', id],
     queryFn: () => api.get<{ character: Character }>(`/characters/${id}`),
     enabled: !!user && !!id,
-    // In sheet mode, poll so Librarian broadcasts / edits reach the player live.
-    refetchInterval: mode === 'sheet' ? 5000 : false,
+    // In sheet mode, poll so Librarian broadcasts / edits reach the player. Kept
+    // infrequent (the character row is large) to limit DB egress; window-focus
+    // refetch covers the "just came back to the tab" case.
+    refetchInterval: mode === 'sheet' ? 20000 : false,
+    refetchIntervalInBackground: false,
   });
   const { data: coversData } = useQuery({
     queryKey: ['wiwon-covers'],
@@ -283,7 +286,8 @@ function CharacterSheet({
   const { data: campForChar } = useQuery({
     queryKey: ['sheet-campaign', character.id],
     queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[]; loot: LootItem[] } | null }>(`/campaigns/for-character/${character.id}`),
-    refetchInterval: 4000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
   const campaignId = campForChar?.campaign?.id;
   const isLibrarian = campForChar?.campaign?.isLibrarian ?? false;
@@ -914,10 +918,16 @@ function CharacterSheet({
     if (lr.badFood || lr.badDream) { sanGain = 0; wpGain = 0; notes.push('อาหารไม่อร่อย/ฝันร้าย — ไม่ฟื้นค่าสติ และไม่ได้ Willpower'); }
     if (!lr.safe) { scratchGain = Math.floor(scratchGain / 2); sanGain = Math.floor(sanGain / 2); wpGain = Math.floor(wpGain / 2); if (woundDelta < 0) woundDelta = Math.ceil(woundDelta / 2); notes.push('สถานที่ไม่ปลอดภัย — ผลฟื้นฟูเหลือครึ่ง (ปัดลง)'); }
     if (lr.noSleep) { scratchGain = 0; notes.push('นอนไม่หลับ — ไม่ฟื้น Scratch'); }
-    // Long Rest clears all Active-Feature use counts back to 0.
-    const featReset = Object.fromEntries(Object.entries(featTrack).map(([k, v]) => [k, { ...v, used: 0 }]));
+    // Long Rest clears every Feature's use count back to 0 — unless the rest was
+    // ruined by insomnia or nightmares, in which case the used count only drops by
+    // half (the reduction is rounded up, i.e. new used = floor(used / 2)).
+    const halfRecover = lr.noSleep || lr.badDream;
+    const featReset = Object.fromEntries(Object.entries(featTrack).map(([k, v]) => {
+      const used = v.used ?? 0;
+      return [k, { ...v, used: halfRecover ? used - Math.ceil(used / 2) : 0 }];
+    }));
     const usedFeatCount = Object.values(featTrack).filter((v) => (v.used ?? 0) > 0).length;
-    if (usedFeatCount > 0) notes.push(`คืนการใช้ Active Feature ${usedFeatCount} รายการ`);
+    if (usedFeatCount > 0) notes.push(halfRecover ? `คืนการใช้ Feature ครึ่งเดียว (นอนไม่หลับ/ฝันร้าย)` : `คืนการใช้ Feature ทั้งหมด ${usedFeatCount} รายการ`);
     setSheet({
       scratchCur: Math.min(scrMax, scrCur + scratchGain),
       sanCur: Math.min(sanMax, sanCur + sanGain),

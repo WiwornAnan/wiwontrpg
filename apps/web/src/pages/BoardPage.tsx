@@ -129,7 +129,8 @@ export function BoardPage() {
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    refetchInterval: 5000,
+    refetchInterval: 20000, // heavy (member sheets) + rarely changes during a battle
+    refetchIntervalInBackground: false,
   });
   const c = campData?.campaign;
 
@@ -137,7 +138,8 @@ export function BoardPage() {
     queryKey: ['board-maps', id],
     queryFn: () => api.get<{ maps: MapMeta[] }>(`/campaigns/${id}/maps`),
     enabled: !!id && !!user,
-    refetchInterval: 8000,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
   const maps = mapsData?.maps ?? [];
   const activeMap = maps.find((m) => m.isActive);
@@ -150,7 +152,10 @@ export function BoardPage() {
     queryKey: boardKey,
     queryFn: () => api.get<{ map: BoardMap }>(`/campaigns/${id}/maps/${mapId}`),
     enabled: !!id && !!user && !!mapId,
-    refetchInterval: 2000,
+    // The live board — the one poll that must feel responsive. 4s (up from 2s)
+    // roughly halves its egress while token moves still sync quickly enough.
+    refetchInterval: 4000,
+    refetchIntervalInBackground: false,
   });
   const map = boardData?.map;
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['board', id] }); qc.invalidateQueries({ queryKey: ['board-maps', id] }); };

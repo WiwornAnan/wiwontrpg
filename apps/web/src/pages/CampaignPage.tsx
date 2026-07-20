@@ -104,7 +104,10 @@ export function CampaignPage() {
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    refetchInterval: 4000, // near real-time member updates
+    // This payload is heavy (every member's full sheet). Poll slowly to spare DB
+    // egress/compute; window-focus refetch keeps it fresh when the GM returns.
+    refetchInterval: 20000,
+    refetchIntervalInBackground: false,
   });
   const c = data?.campaign;
 
