@@ -6,7 +6,6 @@ import type { CatalogItem, Character, ClassLevelTemplate, WiwonCover, WizardLeve
 import { CATALOG_CONFIGS } from '@wiwonanant/shared';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
-import { useIsActive } from '../lib/useIsActive';
 import { Modal } from '../components/Modal';
 import { CatalogDetail } from '../components/CatalogDetail';
 import { Button } from '../components/ui';
@@ -48,15 +47,13 @@ export function DwellerBuildPage({ mode }: { mode: 'build' | 'sheet' }) {
   const { id } = useParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const active = useIsActive();
 
   const { data, isLoading } = useQuery({
     queryKey: ['character', id],
     queryFn: () => api.get<{ character: Character }>(`/characters/${id}`),
     enabled: !!user && !!id,
-    // In sheet mode, poll so Librarian broadcasts / edits reach the player.
-    // Gzip keeps the (large) character row small on the wire; pause when idle.
-    refetchInterval: mode === 'sheet' && active ? 12000 : false,
+    // No auto-poll: the sheet loads on open and refreshes only via the 🔄 button,
+    // so an idle sheet costs nothing and lets the DB sleep.
   });
   const { data: coversData } = useQuery({
     queryKey: ['wiwon-covers'],
@@ -238,7 +235,6 @@ function CharacterSheet({
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const active = useIsActive();
   const byAbbr = useEffectiveGrades(character);
   const wiwonIds = wiwonIdsOf(character);
   const d = character.data;
@@ -284,11 +280,10 @@ function CharacterSheet({
   interface LogEntry { id: string; at: string; characterName: string; kind: string; text: string; itemId?: string; isFeature?: boolean; roll?: RollData }
   interface InitEntry { id: string; name: string; value: number; kind: string }
   interface LootItem { id: string; name: string; kg?: number; desc?: string; itemId?: string }
-  const { data: campForChar } = useQuery({
+  const { data: campForChar, isFetching: campFetching } = useQuery({
     queryKey: ['sheet-campaign', character.id],
     queryFn: () => api.get<{ campaign: { id: string; name: string; isLibrarian: boolean; log: LogEntry[]; initiative: InitEntry[]; loot: LootItem[] } | null }>(`/campaigns/for-character/${character.id}`),
-    // Shared log/loot/initiative — kept live-ish while playing, paused when idle.
-    refetchInterval: active ? 4000 : false,
+    // No auto-poll — refreshed on demand via the 🔄 button in the campaign panel.
   });
   const campaignId = campForChar?.campaign?.id;
   const isLibrarian = campForChar?.campaign?.isLibrarian ?? false;
@@ -1197,8 +1192,11 @@ function CharacterSheet({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ background: '#1b1813', borderRadius: 12, padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82' }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· เรียลไทม์ · ทุกคนเห็นเหมือนกัน</span></div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#8d8a82' }}>📜 LOG แคมเปญ <span style={{ color: '#5f5c54', fontWeight: 400 }}>· กด 🔄 เพื่อดึงล่าสุด · ทุกคนเห็นเหมือนกัน</span></div>
                 <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                  {campaignId && (
+                    <button onClick={() => { qc.invalidateQueries({ queryKey: ['sheet-campaign', character.id] }); qc.invalidateQueries({ queryKey: ['character', character.id] }); }} disabled={campFetching} title="ดึงข้อมูลล่าสุดของแคมเปญ (LOG / loot / บัฟจาก Librarian)" style={{ border: '1px solid #4a4136', background: '#2a2620', color: '#f7dca0', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, cursor: campFetching ? 'wait' : 'pointer', opacity: campFetching ? 0.6 : 1 }}>{campFetching ? '⏳' : '🔄'} ดึงล่าสุด</button>
+                  )}
                   {campaignId && (
                     <Link to={`/campaign/${campaignId}/board`} title="เปิดกระดานวิวรณ์ (แผนที่)" style={{ border: '1px solid #4a4136', background: '#2a2620', color: '#f7dca0', borderRadius: 7, padding: '3px 10px', fontSize: 10.5, fontWeight: 700, textDecoration: 'none' }}>🗺 กระดานวิวรณ์</Link>
                   )}

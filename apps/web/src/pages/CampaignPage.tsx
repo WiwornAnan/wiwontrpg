@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
-import { useIsActive } from '../lib/useIsActive';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -96,19 +95,17 @@ export function CampaignPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const active = useIsActive();
   const [delOpen, setDelOpen] = useState(false);
   const [pickBuffs, setPickBuffs] = useState<Record<string, boolean>>({});
   const [pickStatus, setPickStatus] = useState<Record<string, boolean>>({});
   const [targets, setTargets] = useState<string[] | null>(null); // null = all
 
-  const { data } = useQuery({
+  const { data, isFetching } = useQuery({
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    // Heavy payload (every member's sheet), but gzip shrinks it a lot; poll while
-    // the GM is active, pause when idle.
-    refetchInterval: active ? 8000 : false,
+    // No auto-poll — this heavy payload loads on open and refreshes only via the
+    // 🔄 button, so a campaign tab left open costs nothing.
   });
   const c = data?.campaign;
 
@@ -299,7 +296,8 @@ export function CampaignPage() {
               const full = c.members.length >= cap;
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <div style={{ ...secLabel, marginBottom: 0, flex: 1 }}>ตัวละครในแคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· อัปเดตเรียลไทม์</span></div>
+                  <div style={{ ...secLabel, marginBottom: 0, flex: 1 }}>ตัวละครในแคมเปญ <span style={{ color: '#cbc8c0', fontWeight: 400 }}>· กด 🔄 เพื่อดึงล่าสุด</span></div>
+                  <button onClick={() => qc.invalidateQueries({ queryKey: ['campaign', id] })} disabled={isFetching} title="ดึงข้อมูลล่าสุดของแคมเปญ" style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#6b5b45', borderRadius: 7, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: isFetching ? 'wait' : 'pointer', opacity: isFetching ? 0.6 : 1 }}>{isFetching ? '⏳' : '🔄'} ดึงล่าสุด</button>
                   <span title={`เต็มที่ ${cap} คน (พื้นฐาน ${CAMPAIGN_BASE_SLOTS}${cap > CAMPAIGN_BASE_SLOTS ? ` + ซื้อเพิ่ม ${cap - CAMPAIGN_BASE_SLOTS}` : ''})`} style={{ fontSize: 11, fontWeight: 800, color: full ? '#b4513a' : '#2f6b4f', background: full ? '#fbeae6' : '#eaf6ee', border: `1px solid ${full ? '#f0d0c4' : '#cfe6d6'}`, borderRadius: 7, padding: '3px 9px' }}>👥 {c.members.length}/{cap}</span>
                   {(c.extraSlots ?? 0) > 0 && <span title={`แคมเปญนี้ขยายช่องตัวละครแล้ว +${c.extraSlots} (ซื้อ ${(c.extraSlots ?? 0) / CAMPAIGN_SLOT_PACK_SIZE} ครั้ง)`} style={{ fontSize: 11, fontWeight: 800, color: '#8a6a1e', background: '#fbf3dd', border: '1px solid #ead9a6', borderRadius: 7, padding: '3px 9px' }}>✨ ขยายช่องแล้ว +{c.extraSlots}</span>}
                   {c.isLibrarian && (

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, uploadImage } from '../lib/api';
-import { useIsActive } from '../lib/useIsActive';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/ui';
@@ -125,14 +124,11 @@ export function BoardPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  // Poll fast while actively playing; pause entirely when the tab is idle/hidden.
-  const active = useIsActive();
 
   const { data: campData } = useQuery({
     queryKey: ['campaign', id],
     queryFn: () => api.get<{ campaign: CampaignDTO }>(`/campaigns/${id}`),
     enabled: !!id && !!user,
-    refetchInterval: active ? 15000 : false, // heavy (member sheets); rarely changes mid-battle
   });
   const c = campData?.campaign;
 
@@ -140,7 +136,6 @@ export function BoardPage() {
     queryKey: ['board-maps', id],
     queryFn: () => api.get<{ maps: MapMeta[] }>(`/campaigns/${id}/maps`),
     enabled: !!id && !!user,
-    refetchInterval: active ? 15000 : false,
   });
   const maps = mapsData?.maps ?? [];
   const activeMap = maps.find((m) => m.isActive);
@@ -149,14 +144,19 @@ export function BoardPage() {
   const mapId = c?.isLibrarian ? (selMapId && maps.some((m) => m.id === selMapId) ? selMapId : activeMap?.id ?? maps[0]?.id) : activeMap?.id;
 
   const boardKey = ['board', id, mapId];
-  const { data: boardData } = useQuery({
+  // No auto-poll: the board loads on open and refreshes via the 🔄 button. Your
+  // own moves/edits update instantly (optimistic + refetch on write); others'
+  // changes appear when you refresh.
+  const { data: boardData, isFetching: boardFetching } = useQuery({
     queryKey: boardKey,
     queryFn: () => api.get<{ map: BoardMap }>(`/campaigns/${id}/maps/${mapId}`),
     enabled: !!id && !!user && !!mapId,
-    // The live board — the one poll that must feel responsive. Snappy while
-    // playing (gzip keeps each read small), paused when idle.
-    refetchInterval: active ? 2000 : false,
   });
+  const refreshBoard = () => {
+    qc.invalidateQueries({ queryKey: ['board', id] });
+    qc.invalidateQueries({ queryKey: ['board-maps', id] });
+    qc.invalidateQueries({ queryKey: ['campaign', id] });
+  };
   const map = boardData?.map;
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['board', id] }); qc.invalidateQueries({ queryKey: ['board-maps', id] }); };
 
@@ -583,6 +583,7 @@ export function BoardPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <Link to={`/campaign/${id}`} style={{ fontSize: 12.5, color: '#8d8a82', textDecoration: 'none', flex: 'none' }}>← กลับแคมเปญ</Link>
         <span style={{ fontSize: 17, fontWeight: 800, color: '#2f2c25', display: 'inline-flex', alignItems: 'center', gap: 7 }}>🗺 กระดานวิวรณ์ <span style={{ fontSize: 12, fontWeight: 600, color: '#a8a59d' }}>· {c.name}</span></span>
+        <button onClick={refreshBoard} disabled={boardFetching} title="ดึงกระดานล่าสุด (การเปลี่ยนแปลงของคนอื่น)" style={{ flex: 'none', border: '1px solid #d8d4cc', background: '#fff', color: '#46443c', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: boardFetching ? 'wait' : 'pointer', opacity: boardFetching ? 0.6 : 1 }}>{boardFetching ? '⏳' : '🔄'} ดึงล่าสุด</button>
         <span style={{ flex: 1 }} />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <button onClick={() => zoomBy(0.85)} style={btn} title="ซูมออก">−</button>
