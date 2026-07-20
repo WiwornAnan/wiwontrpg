@@ -148,7 +148,7 @@ export function CampaignPage() {
   const [skillDie, setSkillDie] = useState<Record<string, number>>({}); // per-skill chosen die faces
   const [skillQuery, setSkillQuery] = useState('');
   const [detail, setDetail] = useState<CatalogItem | null>(null); // log ⓘ detail
-  const { data: monsters } = useQuery({ queryKey: ['campaign-monsters'], queryFn: fetchMonsters, enabled: !!user });
+  const { data: monsters } = useQuery({ queryKey: ['campaign-monsters'], queryFn: fetchMonsters, enabled: !!user && monPicker });
   const { data: magicAll } = useQuery({ queryKey: ['campaign-magic'], queryFn: () => fetchCatalogAll('magic'), enabled: !!user });
   const magicById = new Map((magicAll ?? []).map((m) => [m.id, m]));
   const postGMRoll = useMutation({ mutationFn: (b: { kind: string; text: string; roll?: RollData }) => api.post(`/campaigns/${id}/log`, b), onSuccess: invalidate });

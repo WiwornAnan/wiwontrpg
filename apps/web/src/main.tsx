@@ -32,6 +32,19 @@ queryClient.setQueryDefaults(['hero'], { staleTime: 30 * 60_000 });
 queryClient.setQueryDefaults(['tags'], { staleTime: 30 * 60_000 });
 queryClient.setQueryDefaults(['announcement'], { staleTime: 5 * 60_000 });
 
+// The sheet/campaign/board pull large catalog reference lists (all spells /
+// features / equipment / monsters) to resolve item details + fill pickers. These
+// change rarely, so cache them for 10 min — opening a sheet repeatedly no longer
+// re-downloads the catalog each time. (Editors invalidate ['catalog'] on save.)
+for (const key of [
+  'campaign-monsters', 'campaign-magic', 'campaign-features',
+  'sheet-features', 'sheet-magic', 'sheet-all-magic', 'sheet-all-features',
+  'sheet-equipment', 'sheet-lang-features', 'sheet-monsters', 'sheet-magic-books',
+  'board-monsters',
+]) {
+  queryClient.setQueryDefaults([key], { staleTime: 10 * 60_000 });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
