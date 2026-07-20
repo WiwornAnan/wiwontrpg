@@ -19,6 +19,19 @@ function genCode() {
 
 const parseData = (s: string) => { try { return JSON.parse(s) as Record<string, unknown>; } catch { return {}; } };
 
+// The campaign roster + board only read these fields off a member's character.
+// Trimming the (potentially large) rest — inventory, wizard answers, magic/level
+// picks, notes — keeps each roster fetch small. Verified against every read site
+// in CampaignPage / BoardPage / DwellerSheetPage.
+const MEMBER_DATA_KEYS = ['sheet', 'step11', 'race', 'ancestry', 'raceName', 'className'] as const;
+function toCampaignCharacter(ch: Parameters<typeof toCharacter>[0]) {
+  const full = toCharacter(ch);
+  const data = full.data as Record<string, unknown>;
+  const trimmed: Record<string, unknown> = {};
+  for (const k of MEMBER_DATA_KEYS) if (data[k] !== undefined) trimmed[k] = data[k];
+  return { ...full, data: trimmed };
+}
+
 function serializeCampaign(c: {
   id: string; name: string; joinCode: string; librarianUserId: string; data: string; extraSlots: number;
   createdAt: Date; updatedAt: Date;
@@ -31,7 +44,7 @@ function serializeCampaign(c: {
     librarianUserId: c.librarianUserId,
     isLibrarian: c.librarianUserId === meId,
     data: parseData(c.data),
-    members: c.members.map((m) => ({ memberId: m.id, character: toCharacter(m.character) })),
+    members: c.members.map((m) => ({ memberId: m.id, character: toCampaignCharacter(m.character) })),
     extraSlots: c.extraSlots,
     memberCap: CAMPAIGN_BASE_SLOTS + c.extraSlots,
     createdAt: c.createdAt.toISOString(),

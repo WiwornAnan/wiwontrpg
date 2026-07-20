@@ -128,9 +128,20 @@ app.use('/api/stats', statsRouter);
 // Serve the built frontend (single-port deployment). SPA fallback for client routes.
 const webDist = path.join(__dirname, '..', '..', 'web', 'dist');
 if (fs.existsSync(webDist)) {
-  app.use(express.static(webDist));
+  // Vite fingerprints asset filenames (…-a1b2c3.js), so /assets/* is safe to cache
+  // for a year — repeat visits and reloads re-download nothing. A new build gets a
+  // new hash, so there's no stale-asset risk.
+  app.use('/assets', express.static(path.join(webDist, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+  }));
+  // Everything else (fonts, favicon, etc.) — modest cache, still revalidated.
+  app.use(express.static(webDist, { maxAge: '1h' }));
+  // index.html must NEVER be cached hard, or users keep an old app after a deploy;
+  // it's tiny and points at the fingerprinted assets.
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(webDist, 'index.html'));
   });
   console.log('[api] serving built frontend from', webDist);
